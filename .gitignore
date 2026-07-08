@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs
+logs/
+*.log
+last_task_result.json
+maya_worker_last_log.txt
+
+# Render outputs
+Render/images/
+output/
+outputs/
+renders/
+
+# Heavy source images / texture caches
+Render/sourceimages/
+*.tx
+*.exr
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
