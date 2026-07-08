@@ -1,3 +1,4 @@
+import argparse
 import json
 from pathlib import Path
 
@@ -11,53 +12,33 @@ from adapters.maya_adapter import MayaAdapter
 WORKER_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = WORKER_DIR / "config.json"
 
+DEFAULT_TASK_PATH = WORKER_DIR / "tasks" / "task_maya_test.json"
+
 
 # ============================================================
-# CONFIG
+# CONFIG / JSON
 # ============================================================
 
-def load_config():
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+def load_json(path):
+    path = Path(path)
+
+    if not path.exists():
+        raise FileNotFoundError(f"JSON file not found: {path}")
+
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_json(path, data):
-    parent = Path(path).parent
-    parent.mkdir(parents=True, exist_ok=True)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
 
-# ============================================================
-# TEST TASK
-# ============================================================
-
-TEST_TASK = {
-    "job_id": 1,
-    "task_id": 1,
-
-    "software": "maya",
-
-    "scene_path": r"D:\Moemen\iti\CGTD\RenderHiveProject\Render\scenes\test_scene.ma",
-    "project_path": r"D:\Moemen\iti\CGTD\RenderHiveProject\Render",
-    "output_path": r"D:\Moemen\iti\CGTD\RenderHiveProject\Render\images",
-
-    "frame_start": 1,
-    "frame_end": 5,
-
-    "renderer": "arnold",
-    # "renderer": "sw",
-
-    "camera": "renderCam",
-
-    "image_name": "shot01",
-    "image_format": "png",
-    "frame_padding": 4,
-
-    "width": 1280,
-    "height": 720,
-}
+def load_config():
+    return load_json(CONFIG_PATH)
 
 
 # ============================================================
@@ -77,20 +58,57 @@ def get_adapter(task, config):
 
 
 # ============================================================
-# WORKER SIMULATION
+# VALIDATION
 # ============================================================
 
-def run_worker_once():
-    """
-    دلوقتي دي simulation.
-    بعدين هنا هنبدل TEST_TASK بـ task جاي من السيرفر.
-    """
+def validate_task_schema(task):
+    required_keys = [
+        "job_id",
+        "task_id",
+        "software",
+        "scene_path",
+        "project_path",
+        "output_path",
+        "frame_start",
+        "frame_end",
+        "camera",
+    ]
 
+    missing = []
+
+    for key in required_keys:
+        if key not in task:
+            missing.append(key)
+
+    if missing:
+        raise ValueError(f"Task is missing required keys: {missing}")
+
+    if int(task["frame_start"]) > int(task["frame_end"]):
+        raise ValueError("frame_start cannot be greater than frame_end")
+
+
+# ============================================================
+# WORKER
+# ============================================================
+
+def run_worker_once(task_path=None, result_path=None):
     config = load_config()
-    task = TEST_TASK
+
+    if task_path is None:
+        task_path = DEFAULT_TASK_PATH
+
+    task = load_json(task_path)
+    validate_task_schema(task)
+
+    if result_path is None:
+        result_path = config["result_json_path"]
 
     print("=" * 70)
-    print(f"WORKER CLAIMED TASK {task['task_id']} FROM JOB {task['job_id']}")
+    print("RENDERHIVE WORKER")
+    print("=" * 70)
+    print("Task file:", task_path)
+    print("Result file:", result_path)
+    print(f"Claimed task {task['task_id']} from job {task['job_id']}")
     print("=" * 70)
 
     try:
@@ -106,20 +124,44 @@ def run_worker_once():
             "error": str(e),
         }
 
-    save_json(config["result_json_path"], result)
+    save_json(result_path, result)
 
     print("=" * 70)
     print("FINAL TASK RESULT")
     print("=" * 70)
     print("Task status:", result["status"].upper())
-    print("Result saved to:", config["result_json_path"])
+    print("Result saved to:", result_path)
 
     return result
 
 
 # ============================================================
-# MAIN
+# CLI
 # ============================================================
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="RenderHive Worker - Local Task Runner"
+    )
+
+    parser.add_argument(
+        "--task",
+        default=str(DEFAULT_TASK_PATH),
+        help="Path to task JSON file"
+    )
+
+    parser.add_argument(
+        "--result",
+        default=None,
+        help="Path to output result JSON file"
+    )
+
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    run_worker_once()
+    args = parse_args()
+    run_worker_once(
+        task_path=args.task,
+        result_path=args.result,
+    )
