@@ -1,28 +1,20 @@
-# Python
+# Python cache
 __pycache__/
 *.pyc
-.venv/
-venv/
 
-# Logs
+# RenderHive generated files
+RenderHive_Maya/logs/
+RenderHive_Maya/worker/tasks/*.json
+RenderHive_Maya/renderhive_install_info.json
+
+# Worker generated files
+worker/tasks/*.json
 logs/
 *.log
 last_task_result.json
-maya_worker_last_log.txt
 
-# Render outputs
+# Render outputs / heavy files
 Render/images/
-output/
-outputs/
-renders/
-
-# Heavy source images / texture caches
 Render/sourceimages/
 *.tx
 *.exr
-
-# OS / IDE
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
