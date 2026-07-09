@@ -32,8 +32,7 @@ class MayaAdapter:
 
     def preflight(self, task):
         """
-        Preflight = فحص قبل الرندر.
-        بنتأكد إن الملف موجود، الكاميرا موجودة، الفريمات صح، والـRender.exe موجود.
+        Strong Maya/Arnold preflight before rendering.
         """
 
         print("=" * 70)
@@ -74,14 +73,6 @@ class MayaAdapter:
 
         cmds.file(scene_path, open=True, force=True)
 
-        camera_shapes = cmds.ls(type="camera") or []
-        camera_names = []
-
-        for cam_shape in camera_shapes:
-            parents = cmds.listRelatives(cam_shape, parent=True) or []
-            if parents:
-                camera_names.append(parents[0])
-
         current_renderer = cmds.getAttr("defaultRenderGlobals.currentRenderer")
         scene_start = cmds.getAttr("defaultRenderGlobals.startFrame")
         scene_end = cmds.getAttr("defaultRenderGlobals.endFrame")
@@ -93,15 +84,9 @@ class MayaAdapter:
         print("Requested renderer:", requested_renderer)
         print("Scene frame range:", scene_start, "to", scene_end)
         print("Requested frame range:", frame_start, "to", frame_end)
-        print("Available cameras:", camera_names)
         print("Requested camera:", requested_camera)
 
-        if requested_camera not in camera_names:
-            errors.append(
-                f"Camera '{requested_camera}' does not exist. "
-                f"Available cameras: {camera_names}"
-            )
-
+        # Frame validation
         if frame_start > frame_end:
             errors.append("frame_start is greater than frame_end.")
 
@@ -111,20 +96,501 @@ class MayaAdapter:
                 "Command line render may still work because it overrides scene settings."
             )
 
-        if current_renderer != requested_renderer:
-            warnings.append(
-                f"Scene renderer is '{current_renderer}', "
-                f"but command will use '{requested_renderer}'."
-            )
+        # Arnold validation
+        arnold_check = self.check_arnold_environment(requested_renderer)
+        errors.extend(arnold_check["errors"])
+        warnings.extend(arnold_check["warnings"])
+
+        # Camera validation
+        camera_check = self.check_camera_validity(requested_camera)
+        errors.extend(camera_check["errors"])
+        warnings.extend(camera_check["warnings"])
+
+        # Output validation
+        output_check = self.check_output_settings(task)
+        errors.extend(output_check["errors"])
+        warnings.extend(output_check["warnings"])
+
+        # Missing textures validation
+        texture_check = self.check_missing_textures(task)
+        errors.extend(texture_check["errors"])
+        warnings.extend(texture_check["warnings"])
+
+        # Side plugins warning
+        side_plugin_check = self.check_side_plugins()
+        warnings.extend(side_plugin_check["warnings"])
+
+        print("Available cameras:", camera_check.get("available_cameras", []))
+        print("mtoa loaded:", arnold_check.get("mtoa_loaded"))
+        print("mtoa path:", arnold_check.get("mtoa_path"))
+        print("Checked textures:", len(texture_check.get("checked_textures", [])))
+        print("Missing textures:", len(texture_check.get("missing_textures", [])))
+        print("Side plugins:", side_plugin_check.get("side_plugins", []))
 
         return {
             "passed": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
+
             "scene_renderer": current_renderer,
             "scene_frame_start": scene_start,
             "scene_frame_end": scene_end,
+
+            "arnold_check": arnold_check,
+            "camera_check": camera_check,
+            "output_check": output_check,
+            "texture_check": texture_check,
+            "side_plugin_check": side_plugin_check,
+        }
+
+    def check_arnold_environment(self, requested_renderer):
+        """
+        Checks Arnold plugin availability and renderer setup.
+        """
+
+        import maya.cmds as cmds
+
+        errors = []
+        warnings = []
+
+        requested_renderer = requested_renderer.lower()
+
+        arnold_loaded = False
+        arnold_path = None
+
+        try:
+            arnold_loaded = cmds.pluginInfo("mtoa", query=True, loaded=True)
+        except Exception:
+            arnold_loaded = False
+
+        if not arnold_loaded:
+            try:
+                cmds.loadPlugin("mtoa")
+                arnold_loaded = True
+                warnings.append(
+                    "mtoa plugin was not loaded, RenderHive loaded it automatically.")
+            except Exception as e:
+                arnold_loaded = False
+                if requested_renderer == "arnold":
+                    errors.append(
+                        "Arnold plugin mtoa is not loaded and could not be loaded: {}".format(e))
+
+        try:
+            arnold_path = cmds.pluginInfo("mtoa", query=True, path=True)
+        except Exception:
+            arnold_path = "Not found"
+
+        try:
+            current_renderer = cmds.getAttr(
+                "defaultRenderGlobals.currentRenderer")
+        except Exception:
+            current_renderer = "unknown"
+
+        if requested_renderer == "arnold":
+            if current_renderer != "arnold":
+                warnings.append(
+                    "Scene renderer is '{}', but task renderer is Arnold. Command line render will override it.".format(
+                        current_renderer
+                    )
+                )
+        else:
+            warnings.append(
+                "Task renderer is '{}'. Arnold validation is limited because this task is not using Arnold.".format(
+                    requested_renderer
+                )
+            )
+
+        return {
+            "errors": errors,
+            "warnings": warnings,
+            "mtoa_loaded": arnold_loaded,
+            "mtoa_path": arnold_path,
+            "scene_renderer": current_renderer,
+        }
+
+    def check_camera_validity(self, requested_camera):
+        """
+        Checks if the requested camera exists and is a valid camera transform.
+        """
+
+        import maya.cmds as cmds
+
+        errors = []
+        warnings = []
+
+        camera_shapes = cmds.ls(type="camera") or []
+        camera_names = []
+
+        for cam_shape in camera_shapes:
+            parents = cmds.listRelatives(cam_shape, parent=True) or []
+            if parents:
+                camera_names.append(parents[0])
+
+        if requested_camera not in camera_names:
+            errors.append(
+                "Camera '{}' does not exist. Available cameras: {}".format(
+                    requested_camera,
+                    camera_names
+                )
+            )
+            return {
+                "errors": errors,
+                "warnings": warnings,
+                "available_cameras": camera_names,
+                "camera_shape": None,
+                "is_renderable": False,
+            }
+
+        shapes = cmds.listRelatives(
+            requested_camera, shapes=True, type="camera") or []
+
+        if not shapes:
+            errors.append(
+                "'{}' exists but has no camera shape.".format(requested_camera))
+            return {
+                "errors": errors,
+                "warnings": warnings,
+                "available_cameras": camera_names,
+                "camera_shape": None,
+                "is_renderable": False,
+            }
+
+        camera_shape = shapes[0]
+
+        try:
+            is_renderable = cmds.getAttr(camera_shape + ".renderable")
+        except Exception:
+            is_renderable = False
+
+        if requested_camera in ["persp", "top", "front", "side"]:
+            warnings.append(
+                "Requested camera '{}' is a default Maya camera. For production, use a dedicated render camera like renderCam.".format(
+                    requested_camera
+                )
+            )
+
+        if not is_renderable:
+            warnings.append(
+                "Camera '{}' exists but is not marked as renderable. Command line render may still use it because -cam is provided.".format(
+                    requested_camera
+                )
+            )
+
+        return {
+            "errors": errors,
+            "warnings": warnings,
             "available_cameras": camera_names,
+            "camera_shape": camera_shape,
+            "is_renderable": is_renderable,
+        }
+
+    def check_output_settings(self, task):
+        """
+        Validates output format, image name, frame padding and output path.
+        """
+
+        errors = []
+        warnings = []
+
+        output_path = task["output_path"]
+        image_name = task.get("image_name", "render")
+        image_format = task.get("image_format", "png").lower().replace(".", "")
+        frame_padding = int(task.get("frame_padding", 4))
+        renderer = task.get("renderer", "arnold").lower()
+
+        allowed_arnold_formats = [
+            "exr",
+            "png",
+            "jpg",
+            "jpeg",
+            "tif",
+            "tiff"
+        ]
+
+        if renderer == "arnold" and image_format not in allowed_arnold_formats:
+            errors.append(
+                "Unsupported image format for Arnold: '{}'. Allowed formats: {}".format(
+                    image_format,
+                    allowed_arnold_formats
+                )
+            )
+
+        if not image_name:
+            errors.append("Image name is empty.")
+
+        if frame_padding < 1:
+            errors.append("Frame padding must be at least 1.")
+
+        if not output_path:
+            errors.append("Output path is empty.")
+        else:
+            try:
+                self.ensure_folder(output_path)
+            except Exception as e:
+                errors.append(
+                    "Could not create output path '{}': {}".format(output_path, e))
+
+        if " " in image_name:
+            warnings.append(
+                "Image name contains spaces. RenderHive will still work, but underscores are recommended."
+            )
+
+        return {
+            "errors": errors,
+            "warnings": warnings,
+            "image_format": image_format,
+            "output_path": output_path,
+        }
+
+    def get_texture_search_folders(self, project_path, scene_path):
+        """
+        Common Maya texture folders.
+        """
+
+        import os
+
+        folders = []
+
+        if project_path:
+            folders.extend([
+                project_path,
+                os.path.join(project_path, "sourceimages"),
+                os.path.join(project_path, "images"),
+                os.path.join(project_path, "textures"),
+                os.path.join(project_path, "tex"),
+            ])
+
+        if scene_path:
+            scene_dir = os.path.dirname(scene_path)
+            folders.extend([
+                scene_dir,
+                os.path.join(scene_dir, "sourceimages"),
+                os.path.join(scene_dir, "..", "sourceimages"),
+                os.path.join(scene_dir, "..", "textures"),
+                os.path.join(scene_dir, "..", "tex"),
+            ])
+
+        clean_folders = []
+
+        for folder in folders:
+            folder = os.path.abspath(folder)
+
+            if folder not in clean_folders and os.path.exists(folder):
+                clean_folders.append(folder)
+
+        return clean_folders
+
+    def resolve_texture_path(self, texture_path, project_path=None, scene_path=None):
+        """
+        Resolves:
+        - absolute paths
+        - environment variables
+        - Maya workspace-relative paths
+        - filename-only paths by searching sourceimages/textures folders
+        """
+
+        import os
+        import glob
+        import maya.cmds as cmds
+
+        if not texture_path:
+            return ""
+
+        original_path = texture_path
+        path = os.path.expandvars(texture_path)
+        path = path.replace("\\", "/")
+
+        # 1. Direct absolute path
+        if os.path.isabs(path) and os.path.exists(path):
+            return path
+
+        # 2. Maya workspace expansion
+        try:
+            expanded = cmds.workspace(expandName=path)
+            if expanded and os.path.exists(expanded):
+                return expanded.replace("\\", "/")
+        except Exception:
+            pass
+
+        # 3. Search common project folders
+        basename = os.path.basename(path)
+        search_folders = self.get_texture_search_folders(
+            project_path, scene_path)
+
+        for folder in search_folders:
+            direct_candidate = os.path.join(folder, basename)
+
+            if os.path.exists(direct_candidate):
+                return direct_candidate.replace("\\", "/")
+
+        # 4. Recursive search inside common folders
+        for folder in search_folders:
+            pattern = os.path.join(folder, "**", basename)
+            matches = glob.glob(pattern, recursive=True)
+
+            if matches:
+                return matches[0].replace("\\", "/")
+
+        # fallback
+        return original_path
+
+    def texture_path_exists(self, texture_path, project_path=None, scene_path=None):
+        """
+        Supports normal paths, filename-only paths, UDIM paths and sequence paths.
+        """
+
+        import os
+        import glob
+        import re
+
+        if not texture_path:
+            return False
+
+        resolved = self.resolve_texture_path(
+            texture_path,
+            project_path=project_path,
+            scene_path=scene_path
+        )
+
+        if os.path.exists(resolved):
+            return True
+
+        patterns = []
+
+        patterns.extend([
+            resolved.replace("<UDIM>", "*"),
+            resolved.replace("<udim>", "*"),
+            resolved.replace("%(UDIM)d", "*"),
+        ])
+
+        if "#" in resolved:
+            patterns.append(re.sub(r"#+", "*", resolved))
+
+        for pattern in patterns:
+            if pattern != resolved and glob.glob(pattern):
+                return True
+
+        return False
+
+    def check_missing_textures(self, task):
+        """
+        Checks Maya file nodes and Arnold aiImage nodes for missing textures.
+        Also resolves filename-only paths by searching project sourceimages/textures.
+        """
+
+        import maya.cmds as cmds
+
+        project_path = task.get("project_path")
+        scene_path = task.get("scene_path")
+
+        checked_textures = []
+        missing_textures = []
+
+        texture_nodes = []
+
+        file_nodes = cmds.ls(type="file") or []
+        for node in file_nodes:
+            texture_nodes.append((node, "fileTextureName", "file"))
+
+        ai_image_nodes = cmds.ls(type="aiImage") or []
+        for node in ai_image_nodes:
+            texture_nodes.append((node, "filename", "aiImage"))
+
+        for node, attr_name, node_type in texture_nodes:
+            attr = node + "." + attr_name
+
+            if not cmds.objExists(attr):
+                continue
+
+            texture_path = cmds.getAttr(attr)
+
+            if not texture_path:
+                continue
+
+            resolved_path = self.resolve_texture_path(
+                texture_path,
+                project_path=project_path,
+                scene_path=scene_path
+            )
+
+            exists = self.texture_path_exists(
+                texture_path,
+                project_path=project_path,
+                scene_path=scene_path
+            )
+
+            item = {
+                "node": node,
+                "type": node_type,
+                "path": texture_path,
+                "resolved_path": resolved_path,
+                "exists": exists,
+            }
+
+            checked_textures.append(item)
+
+            if not exists:
+                missing_textures.append(item)
+
+        errors = []
+
+        for missing in missing_textures:
+            errors.append(
+                "Missing texture on node '{}': {} | resolved: {}".format(
+                    missing["node"],
+                    missing["path"],
+                    missing["resolved_path"]
+                )
+            )
+
+        return {
+            "errors": errors,
+            "warnings": [],
+            "checked_textures": checked_textures,
+            "missing_textures": missing_textures,
+        }
+
+    def check_side_plugins(self):
+        """
+        Detects non-render side plugins that may slow or pollute headless rendering.
+        This is warning-only for now.
+        """
+
+        import maya.cmds as cmds
+
+        warnings = []
+        found_side_plugins = []
+
+        loaded_plugins = cmds.pluginInfo(query=True, listPlugins=True) or []
+
+        side_keywords = [
+            "zoo",
+            "mgear",
+            "ngskintools",
+            "redshift",
+            "vray",
+            "renderman",
+            "yeti"
+        ]
+
+        for plugin in loaded_plugins:
+            low = plugin.lower()
+
+            for keyword in side_keywords:
+                if keyword in low:
+                    found_side_plugins.append(plugin)
+
+        if found_side_plugins:
+            warnings.append(
+                "Potential side plugins loaded: {}. Clean Worker Mode should reduce this later.".format(
+                    found_side_plugins
+                )
+            )
+
+        return {
+            "warnings": warnings,
+            "loaded_plugins": loaded_plugins,
+            "side_plugins": found_side_plugins,
         }
 
     # ============================================================
