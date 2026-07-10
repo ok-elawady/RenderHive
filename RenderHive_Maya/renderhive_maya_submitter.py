@@ -9,6 +9,13 @@ import maya.cmds as cmds
 
 WINDOW_NAME = "renderHiveMayaSubmitter"
 
+VALIDATION_LIST_NAME = "rh_validation_results"
+VALIDATION_SUMMARY_NAME = "rh_validation_summary"
+STATUS_TEXT_NAME = "rh_status_text"
+
+VALIDATION_RESULTS = []
+VALIDATION_REPORT = {}
+
 
 # ============================================================
 # PATHS
@@ -245,24 +252,47 @@ def save_scene_if_needed():
 # UI HELPERS
 # ============================================================
 
-def get_text(name):
-    return cmds.textField(name, query=True, text=True)
+def get_text(name, default=""):
+    """
+    Read a textField safely.
+
+    The fallback allows RenderHive validation and task building to work
+    even when the Submitter UI has not been opened yet.
+    """
+    if cmds.textField(name, exists=True):
+        return cmds.textField(name, query=True, text=True)
+
+    return default
 
 
 def set_text(name, value):
-    cmds.textField(name, edit=True, text=value)
+    if cmds.textField(name, exists=True):
+        cmds.textField(name, edit=True, text=value)
 
 
-def get_int(name):
-    return int(cmds.intField(name, query=True, value=True))
+def get_int(name, default=0):
+    """
+    Read an intField safely when the UI exists.
+    """
+    if cmds.intField(name, exists=True):
+        return int(cmds.intField(name, query=True, value=True))
+
+    return int(default)
 
 
 def set_int(name, value):
-    cmds.intField(name, edit=True, value=int(value))
+    if cmds.intField(name, exists=True):
+        cmds.intField(name, edit=True, value=int(value))
 
 
-def get_option(name):
-    return cmds.optionMenu(name, query=True, value=True)
+def get_option(name, default=""):
+    """
+    Read an optionMenu safely when the UI exists.
+    """
+    if cmds.optionMenu(name, exists=True):
+        return cmds.optionMenu(name, query=True, value=True)
+
+    return default
 
 
 def safe_name(name):
@@ -375,37 +405,402 @@ def refresh_from_scene(*args):
 
 
 # ============================================================
+# VALIDATION UI / ACTIONS
+# ============================================================
+
+def set_status(message):
+    label = "Status: {}".format(message)
+
+    if cmds.text(STATUS_TEXT_NAME, exists=True):
+        cmds.text(STATUS_TEXT_NAME, edit=True, label=label)
+
+    print("[RenderHive] {}".format(message))
+
+
+def get_validation_reports_folder():
+    folder = os.path.join(
+        get_original_package_root(),
+        "logs",
+        "validation"
+    )
+
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    return folder
+
+
+def load_validation_engine_class():
+    """
+    Load RenderHive's validation package from the current installation.
+    """
+
+    import importlib
+
+    submitter_dir = os.path.abspath(get_submitter_dir())
+
+    if submitter_dir in sys.path:
+        sys.path.remove(submitter_dir)
+
+    sys.path.insert(0, submitter_dir)
+
+    existing_package = sys.modules.get("validation")
+
+    if existing_package is not None:
+        existing_file = getattr(existing_package, "__file__", "") or ""
+        existing_file = os.path.abspath(existing_file) if existing_file else ""
+
+        if existing_file and not existing_file.startswith(submitter_dir):
+            for module_name in list(sys.modules):
+                if module_name == "validation" or module_name.startswith("validation."):
+                    del sys.modules[module_name]
+
+    import validation.scene_checks as scene_checks
+    import validation.naming_checks as naming_checks
+    import validation.validator as validator
+
+    importlib.reload(scene_checks)
+    importlib.reload(naming_checks)
+    importlib.reload(validator)
+
+    return validator.ValidationEngine
+
+
+def format_validation_result(result):
+    severity = result.get("severity", "INFO")
+    category = result.get("category", "General")
+    node = result.get("node") or "-"
+    message = result.get("message", "")
+
+    return "[{0}] [{1}] {2} | {3}".format(
+        severity,
+        category,
+        node,
+        message
+    )
+
+
+def update_validation_ui(report):
+    results = report.get("results", [])
+    summary = report.get("summary", {})
+
+    if cmds.textScrollList(VALIDATION_LIST_NAME, exists=True):
+        cmds.textScrollList(
+            VALIDATION_LIST_NAME,
+            edit=True,
+            removeAll=True
+        )
+
+        for result in results:
+            cmds.textScrollList(
+                VALIDATION_LIST_NAME,
+                edit=True,
+                append=format_validation_result(result)
+            )
+
+    summary_label = (
+        "Errors: {ERROR}    Warnings: {WARNING}    "
+        "Info: {INFO}    Passed: {PASSED}    Total: {total}"
+    ).format(
+        ERROR=summary.get("ERROR", 0),
+        WARNING=summary.get("WARNING", 0),
+        INFO=summary.get("INFO", 0),
+        PASSED=summary.get("PASSED", 0),
+        total=summary.get("total", 0)
+    )
+
+    if cmds.text(VALIDATION_SUMMARY_NAME, exists=True):
+        cmds.text(
+            VALIDATION_SUMMARY_NAME,
+            edit=True,
+            label=summary_label
+        )
+
+
+def run_validation(show_dialog_on_error=True):
+    """
+    Run the modular RenderHive validation engine using the current UI values.
+    """
+
+    global VALIDATION_RESULTS
+    global VALIDATION_REPORT
+
+    try:
+        set_status("Validating scene...")
+
+        task = build_task()
+        engine_class = load_validation_engine_class()
+        engine = engine_class(task)
+
+        results = engine.run()
+        report = engine.to_dict()
+
+        VALIDATION_RESULTS = results
+        VALIDATION_REPORT = report
+
+        update_validation_ui(report)
+
+        summary = report.get("summary", {})
+        error_count = summary.get("ERROR", 0)
+        warning_count = summary.get("WARNING", 0)
+
+        if error_count:
+            set_status(
+                "Validation failed: {} error(s), {} warning(s).".format(
+                    error_count,
+                    warning_count
+                )
+            )
+        elif warning_count:
+            set_status(
+                "Validation passed with {} warning(s).".format(
+                    warning_count
+                )
+            )
+        else:
+            set_status("Validation passed successfully.")
+
+        return report
+
+    except Exception as error:
+        VALIDATION_RESULTS = []
+        VALIDATION_REPORT = {}
+
+        set_status("Validation could not run.")
+
+        if show_dialog_on_error:
+            cmds.confirmDialog(
+                title="RenderHive Validation Error",
+                message=str(error),
+                button=["OK"],
+                icon="critical"
+            )
+
+        return None
+
+
+def validate_scene_from_ui(*args):
+    return run_validation(show_dialog_on_error=True)
+
+
+def get_selected_validation_result():
+    if not cmds.textScrollList(VALIDATION_LIST_NAME, exists=True):
+        return None
+
+    selected_indexes = cmds.textScrollList(
+        VALIDATION_LIST_NAME,
+        query=True,
+        selectIndexedItem=True
+    ) or []
+
+    if not selected_indexes:
+        return None
+
+    index = int(selected_indexes[0]) - 1
+
+    if index < 0 or index >= len(VALIDATION_RESULTS):
+        return None
+
+    return VALIDATION_RESULTS[index]
+
+
+def select_validation_node(*args):
+    result = get_selected_validation_result()
+
+    if not result:
+        set_status("Select a validation result first.")
+        return
+
+    node = result.get("node")
+
+    if not node or node == "-":
+        set_status("The selected result is not linked to a Maya node.")
+        return
+
+    if not cmds.objExists(node):
+        set_status("Validation node no longer exists: {}".format(node))
+        return
+
+    cmds.select(node, replace=True)
+    set_status("Selected node: {}".format(node))
+
+
+def clear_validation_results(*args):
+    global VALIDATION_RESULTS
+    global VALIDATION_REPORT
+
+    VALIDATION_RESULTS = []
+    VALIDATION_REPORT = {}
+
+    if cmds.textScrollList(VALIDATION_LIST_NAME, exists=True):
+        cmds.textScrollList(
+            VALIDATION_LIST_NAME,
+            edit=True,
+            removeAll=True
+        )
+
+    if cmds.text(VALIDATION_SUMMARY_NAME, exists=True):
+        cmds.text(
+            VALIDATION_SUMMARY_NAME,
+            edit=True,
+            label="Errors: 0    Warnings: 0    Info: 0    Passed: 0    Total: 0"
+        )
+
+    set_status("Validation results cleared.")
+
+
+def export_validation_report(*args):
+    global VALIDATION_REPORT
+
+    if not VALIDATION_REPORT:
+        report = run_validation(show_dialog_on_error=True)
+
+        if not report:
+            return None
+
+    folder = get_validation_reports_folder()
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    default_name = "renderhive_validation_{}.json".format(timestamp)
+
+    selected = cmds.fileDialog2(
+        fileMode=0,
+        caption="Export RenderHive Validation Report",
+        fileFilter="JSON Files (*.json)",
+        startingDirectory=folder
+    )
+
+    if not selected:
+        return None
+
+    path = selected[0]
+
+    if not path.lower().endswith(".json"):
+        path += ".json"
+
+    task = build_task()
+
+    payload = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "maya_version": cmds.about(version=True),
+        "scene_path": task.get("scene_path", ""),
+        "project_path": task.get("project_path", ""),
+        "task": task,
+        "summary": VALIDATION_REPORT.get("summary", {}),
+        "results": VALIDATION_REPORT.get("results", [])
+    }
+
+    with open(path, "w", encoding="utf-8") as file_handle:
+        json.dump(payload, file_handle, indent=4)
+
+    set_status("Validation report exported.")
+
+    cmds.confirmDialog(
+        title="RenderHive Validation",
+        message="Validation report exported:\n\n{}".format(path),
+        button=["OK"],
+        icon="information"
+    )
+
+    return path
+
+
+# ============================================================
 # TASK
 # ============================================================
 
 def build_task():
+    """
+    Build a task from the current Submitter UI values.
+
+    If the UI is not open, RenderHive falls back to values read directly
+    from the current Maya scene. This keeps validation independent from
+    the window and makes the tool safer for scripts and future backend use.
+    """
+
+    scene_name = get_scene_name()
+    scene_path = get_scene_path()
+    project_path = get_project_path()
+    output_path = get_default_output_path()
+
+    frame_start, frame_end = get_frame_range()
+    width, height = get_resolution()
+
+    renderer = get_current_renderer()
+    camera = get_renderable_camera()
+
     task = {
         "job_id": 1,
         "task_id": 1,
 
-        "job_name": get_text("rh_job_name"),
-        "project_name": get_text("rh_project_name"),
+        "job_name": get_text(
+            "rh_job_name",
+            scene_name
+        ),
+        "project_name": get_text(
+            "rh_project_name",
+            os.path.basename(os.path.normpath(project_path))
+            if project_path else "RenderHive Project"
+        ),
 
         "software": "maya",
 
-        "scene_path": get_text("rh_scene_path"),
-        "project_path": get_text("rh_project_path"),
-        "output_path": get_text("rh_output_path"),
+        "scene_path": get_text(
+            "rh_scene_path",
+            scene_path
+        ),
+        "project_path": get_text(
+            "rh_project_path",
+            project_path
+        ),
+        "output_path": get_text(
+            "rh_output_path",
+            output_path
+        ),
 
-        "frame_start": get_int("rh_frame_start"),
-        "frame_end": get_int("rh_frame_end"),
+        "frame_start": get_int(
+            "rh_frame_start",
+            frame_start
+        ),
+        "frame_end": get_int(
+            "rh_frame_end",
+            frame_end
+        ),
 
-        "renderer": get_option("rh_renderer"),
-        "camera": get_option("rh_camera"),
+        "renderer": get_option(
+            "rh_renderer",
+            renderer
+        ),
+        "camera": get_option(
+            "rh_camera",
+            camera
+        ),
 
-        "image_name": get_text("rh_image_name"),
-        "image_format": get_option("rh_image_format"),
-        "frame_padding": get_int("rh_frame_padding"),
+        "image_name": get_text(
+            "rh_image_name",
+            scene_name
+        ),
+        "image_format": get_option(
+            "rh_image_format",
+            "png"
+        ),
+        "frame_padding": get_int(
+            "rh_frame_padding",
+            4
+        ),
 
-        "width": get_int("rh_width"),
-        "height": get_int("rh_height"),
+        "width": get_int(
+            "rh_width",
+            width
+        ),
+        "height": get_int(
+            "rh_height",
+            height
+        ),
 
-        "priority": get_int("rh_priority")
+        "priority": get_int(
+            "rh_priority",
+            50
+        )
     }
 
     return task
@@ -491,6 +886,13 @@ def write_task_json(path, task):
 
 
 def save_task_json_auto(*args):
+    """
+    Save the values currently shown in the Submitter UI.
+
+    Do not refresh from the Maya scene here, because that would overwrite
+    job settings edited by the user before saving or starting the worker.
+    """
+
     ok, message = save_scene_if_needed()
 
     if not ok:
@@ -501,8 +903,6 @@ def save_task_json_auto(*args):
             icon="warning"
         )
         return None
-
-    refresh_from_scene()
 
     task = build_task()
     errors = validate_task(task)
@@ -568,6 +968,32 @@ def save_task_json_as(*args):
 
 
 def run_local_worker(*args):
+    """
+    Validate the current job first, then save it and start the local worker.
+    Validation warnings are allowed; validation errors block submission.
+    """
+
+    report = run_validation(show_dialog_on_error=True)
+
+    if not report:
+        return
+
+    summary = report.get("summary", {})
+    error_count = summary.get("ERROR", 0)
+
+    if error_count:
+        cmds.confirmDialog(
+            title="RenderHive Submission Blocked",
+            message=(
+                "The job contains {} validation error(s).\n\n"
+                "Fix the errors shown in the Validation section before "
+                "starting the worker."
+            ).format(error_count),
+            button=["OK"],
+            icon="critical"
+        )
+        return
+
     json_path = save_task_json_auto()
 
     if not json_path:
@@ -602,6 +1028,8 @@ def run_local_worker(*args):
             creationflags=creation_flags
         )
 
+        set_status("Local worker started.")
+
         cmds.confirmDialog(
             title="RenderHive",
             message="Local worker started.\n\nTask:\n" + json_path,
@@ -609,10 +1037,12 @@ def run_local_worker(*args):
             icon="information"
         )
 
-    except Exception as e:
+    except Exception as error:
+        set_status("Local worker failed to start.")
+
         cmds.confirmDialog(
             title="RenderHive Worker Failed",
-            message=str(e),
+            message=str(error),
             button=["OK"],
             icon="critical"
         )
@@ -843,16 +1273,17 @@ def show_submitter():
 
     window = cmds.window(
         WINDOW_NAME,
-        title="RenderHive Maya Submitter",
-        widthHeight=(580, 780),
+        title="RenderHive Maya Submitter v0.3",
+        widthHeight=(720, 900),
         sizeable=True
     )
 
+    cmds.scrollLayout(childResizable=True)
     cmds.columnLayout(adjustableColumn=True, rowSpacing=8)
 
     cmds.text(
         label="RenderHive Maya Submitter",
-        height=38,
+        height=40,
         align="center"
     )
 
@@ -870,12 +1301,12 @@ def show_submitter():
 
     cmds.rowColumnLayout(
         numberOfColumns=2,
-        columnWidth=[(1, 150), (2, 390)],
+        columnWidth=[(1, 170), (2, 500)],
         columnSpacing=[(1, 8), (2, 8)]
     )
 
     cmds.text(label="Project Name")
-    cmds.textField("rh_project_name", text="RenderHive Demo")
+    cmds.textField("rh_project_name", text="RenderHive_Demo")
 
     cmds.text(label="Job Name")
     cmds.textField("rh_job_name", text=scene_name)
@@ -898,7 +1329,7 @@ def show_submitter():
 
     cmds.rowColumnLayout(
         numberOfColumns=2,
-        columnWidth=[(1, 150), (2, 390)],
+        columnWidth=[(1, 170), (2, 500)],
         columnSpacing=[(1, 8), (2, 8)]
     )
 
@@ -909,9 +1340,17 @@ def show_submitter():
     cmds.textField("rh_project_path", text=get_project_path())
 
     cmds.text(label="Output Path")
-    cmds.rowLayout(numberOfColumns=2, columnWidth2=(280, 100))
-    cmds.textField("rh_output_path", text=get_default_output_path(), width=280)
-    cmds.button(label="Browse", width=100, command=browse_output_path)
+    cmds.rowLayout(numberOfColumns=2, columnWidth2=(385, 105))
+    cmds.textField(
+        "rh_output_path",
+        text=get_default_output_path(),
+        width=385
+    )
+    cmds.button(
+        label="Browse",
+        width=105,
+        command=browse_output_path
+    )
     cmds.setParent("..")
 
     cmds.setParent("..")
@@ -929,7 +1368,7 @@ def show_submitter():
 
     cmds.rowColumnLayout(
         numberOfColumns=2,
-        columnWidth=[(1, 150), (2, 390)],
+        columnWidth=[(1, 170), (2, 500)],
         columnSpacing=[(1, 8), (2, 8)]
     )
 
@@ -948,7 +1387,11 @@ def show_submitter():
     current_renderer = get_current_renderer()
 
     if current_renderer in ["arnold", "sw", "mayaHardware2"]:
-        cmds.optionMenu("rh_renderer", edit=True, value=current_renderer)
+        cmds.optionMenu(
+            "rh_renderer",
+            edit=True,
+            value=current_renderer
+        )
 
     cmds.text(label="Camera")
     cmds.optionMenu("rh_camera")
@@ -975,6 +1418,73 @@ def show_submitter():
     cmds.setParent("..")
     cmds.setParent("..")
 
+    # ---------------- Validation ----------------
+
+    cmds.frameLayout(
+        label="Scene Validation",
+        collapsable=True,
+        collapse=False,
+        marginWidth=8,
+        marginHeight=8
+    )
+
+    cmds.columnLayout(adjustableColumn=True, rowSpacing=6)
+
+    cmds.text(
+        VALIDATION_SUMMARY_NAME,
+        label="Errors: 0    Warnings: 0    Info: 0    Passed: 0    Total: 0",
+        align="left",
+        height=24
+    )
+
+    cmds.textScrollList(
+        VALIDATION_LIST_NAME,
+        numberOfRows=10,
+        allowMultiSelection=False,
+        doubleClickCommand=select_validation_node,
+        height=220
+    )
+
+    cmds.rowLayout(
+        numberOfColumns=4,
+        columnWidth4=(165, 165, 165, 165)
+    )
+
+    cmds.button(
+        label="Validate Scene",
+        height=34,
+        command=validate_scene_from_ui
+    )
+
+    cmds.button(
+        label="Select Node",
+        height=34,
+        command=select_validation_node
+    )
+
+    cmds.button(
+        label="Export Report",
+        height=34,
+        command=export_validation_report
+    )
+
+    cmds.button(
+        label="Clear Results",
+        height=34,
+        command=clear_validation_results
+    )
+
+    cmds.setParent("..")
+
+    cmds.text(
+        label="Double-click a result to select its linked Maya node.",
+        align="left",
+        height=20
+    )
+
+    cmds.setParent("..")
+    cmds.setParent("..")
+
     # ---------------- Actions ----------------
 
     cmds.frameLayout(
@@ -987,7 +1497,7 @@ def show_submitter():
 
     cmds.columnLayout(adjustableColumn=True, rowSpacing=6)
 
-    cmds.rowLayout(numberOfColumns=2, columnWidth2=(280, 280))
+    cmds.rowLayout(numberOfColumns=2, columnWidth2=(335, 335))
 
     cmds.button(
         label="Refresh From Scene",
@@ -1003,7 +1513,7 @@ def show_submitter():
 
     cmds.setParent("..")
 
-    cmds.rowLayout(numberOfColumns=2, columnWidth2=(280, 280))
+    cmds.rowLayout(numberOfColumns=2, columnWidth2=(335, 335))
 
     cmds.button(
         label="Auto Save Task JSON",
@@ -1019,7 +1529,7 @@ def show_submitter():
 
     cmds.setParent("..")
 
-    cmds.rowLayout(numberOfColumns=2, columnWidth2=(280, 280))
+    cmds.rowLayout(numberOfColumns=2, columnWidth2=(335, 335))
 
     cmds.button(
         label="Open Output Folder",
@@ -1035,7 +1545,7 @@ def show_submitter():
 
     cmds.setParent("..")
 
-    cmds.rowLayout(numberOfColumns=2, columnWidth2=(280, 280))
+    cmds.rowLayout(numberOfColumns=2, columnWidth2=(335, 335))
 
     cmds.button(
         label="Generate Diagnostics Log",
@@ -1066,11 +1576,36 @@ def show_submitter():
     cmds.separator(height=8, style="in")
 
     cmds.text(
-        label="V2: Portable submitter + Auto JSON + Local Worker + Diagnostics + Uninstall.",
+        STATUS_TEXT_NAME,
+        label="Status: Ready",
+        align="left",
+        height=26
+    )
+
+    cmds.text(
+        label="V0.3: Portable Submitter + Modular Validation + Local Worker",
         align="center",
         height=25
     )
 
+    cmds.setParent("..")
+    cmds.setParent("..")
+
     cmds.showWindow(window)
 
     rebuild_camera_menu()
+    set_status("Ready")
+
+
+# RENDERHIVE_UI_V1_OVERRIDE
+def show_submitter():
+    import importlib
+    import sys
+
+    import ui.renderhive_submitter_window as renderhive_submitter_window
+
+    importlib.reload(renderhive_submitter_window)
+
+    return renderhive_submitter_window.show_submitter(
+        sys.modules[__name__]
+    )
