@@ -1,0 +1,24 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# RenderHive generated files
+RenderHive_Maya/logs/
+RenderHive_Maya/worker/tasks/*.json
+RenderHive_Maya/renderhive_install_info.json
+Render/renderhive_logs/
+
+# Worker generated files
+worker/tasks/*.json
+logs/
+*.log
+last_task_result.json
+
+# Render outputs / heavy files
+Render/images/
+Render/sourceimages/
+*.tx
+*.exr
+
+renderhive_logs/
+*/renderhive_logs/

@@ -1,0 +1,6 @@
+{
+    "maya_version": "2023",
+    "maya_render_exe": "C:\\Program Files\\Autodesk\\Maya2023\\bin\\Render.exe",
+    "log_folder": "D:\\Moemen\\iti\\CGTD\\RenderHiveProject\\logs",
+    "result_json_path": "D:\\Moemen\\iti\\CGTD\\RenderHiveProject\\last_task_result.json"
+}

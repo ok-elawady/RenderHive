@@ -1,0 +1,45 @@
+{
+    "naming": {
+        "enabled": true,
+        "allowed_name_pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+        "warn_on_non_ascii": true,
+        "check_default_names": true,
+        "check_duplicate_short_names": true,
+        "check_shape_names": true,
+        "check_namespaces": true,
+        "default_name_patterns": [
+            "^p(Cube|Sphere|Cylinder|Cone|Plane|Torus|Pipe|Prism|Pyramid|Helix)\\d+$",
+            "^polySurface\\d+$",
+            "^nurbs(Circle|Sphere|Cube|Plane|Cylinder|Cone|Torus)\\d+$",
+            "^curve\\d+$",
+            "^locator\\d+$",
+            "^camera\\d+$",
+            "^(point|spot|directional|area|volume)Light\\d+$",
+            "^ai(AreaLight|SkyDomeLight|PhotometricLight|MeshLight)\\d+$",
+            "^(lambert|blinn|phong|phongE|surfaceShader|useBackground)\\d+$",
+            "^(standardSurface|aiStandardSurface|material)\\d+$",
+            "^(shadingGroup|set)\\d+$",
+            "^group\\d+$"
+        ],
+        "ignored_exact_names": [
+            "persp",
+            "top",
+            "front",
+            "side",
+            "perspShape",
+            "topShape",
+            "frontShape",
+            "sideShape",
+            "defaultLightSet",
+            "defaultObjectSet",
+            "initialShadingGroup",
+            "initialParticleSE",
+            "lambert1",
+            "particleCloud1"
+        ],
+        "ignored_prefixes": [
+            "default",
+            "initial"
+        ]
+    }
+}
