@@ -64,7 +64,9 @@ def frame_pre_save(sender, instance, **kwargs):
     1. Update parent Job and Layer counter caches.
     2. Resolve dependencies if frame SUCCEEDED or SKIPPED.
     """
-    if not instance.id:
+    try:
+        old_instance = Frame.objects.get(id=instance.id)
+    except Frame.DoesNotExist:
         # Initial creation - increment the new state counter
         Layer.objects.filter(id=instance.layer_id).update(
             **{f"{instance.state.lower()}_frames": F(f"{instance.state.lower()}_frames") + 1},
@@ -74,11 +76,6 @@ def frame_pre_save(sender, instance, **kwargs):
             **{f"{instance.state.lower()}_frames": F(f"{instance.state.lower()}_frames") + 1},
             total_frames=F('total_frames') + 1
         )
-        return
-
-    try:
-        old_instance = Frame.objects.get(id=instance.id)
-    except Frame.DoesNotExist:
         return
 
     if old_instance.state != instance.state:
