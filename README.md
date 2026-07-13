@@ -32,9 +32,24 @@ This repository is organized as a monorepo containing the following main compone
 
 ### Prerequisites
 
+- Docker and Docker Compose
 - Node.js (v20+ recommended)
 - `pnpm` (package manager for the frontend)
 - Autodesk Maya (for using the Maya submitter/worker plugins)
+
+### 🐳 Running the Backend Services (API, Postgres, Redis)
+
+To launch the orchestration backend:
+
+1. Copy `.env.example` to `.env` in the root directory:
+   ```bash
+   cp .env.example .env
+   ```
+2. Run the Docker Compose stack:
+   ```bash
+   docker compose up --build
+   ```
+3. The backend API will be available at [http://localhost:8000](http://localhost:8000).
 
 ### 💻 Running the Frontend
 

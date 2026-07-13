@@ -56,6 +56,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
 
 # vercel
 .vercel
@@ -63,3 +65,29 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+
+# Environment variables
+**/.env
+
+# SQLite databases
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+db.sqlite3
+**/db.sqlite3
+
+# Django static and media files
+backend/staticfiles/
+backend/media/
+
+# Python tooling caches
+**/.ruff_cache/
+**/.pytest_cache/
+**/.mypy_cache/
