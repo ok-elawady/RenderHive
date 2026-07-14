@@ -1,0 +1,94 @@
+{
+    "job_id": 1,
+    "task_id": 1,
+    "job_name": "test_scene",
+    "project_name": "Render",
+    "software": "maya",
+    "scene_path": "D:/Moemen/iti/CGTD/RenderHiveProject/Render/scenes/test_scene.ma",
+    "project_path": "D:/Moemen/iti/CGTD/RenderHiveProject/Render/",
+    "output_path": "D:/Moemen/iti/CGTD/RenderHiveProject/Render/images",
+    "frame_start": 1,
+    "frame_end": 10,
+    "renderer": "arnold",
+    "camera": "renderCam",
+    "image_name": "test_scene",
+    "image_format": "png",
+    "frame_padding": 4,
+    "width": 960,
+    "height": 540,
+    "priority": 50,
+    "schema_version": "2.0",
+    "task_uid": "RH-20260713-210326-DC71FB",
+    "created_at": "2026-07-13T18:03:26Z",
+    "frame_step": 1,
+    "chunk_size": 10,
+    "machine_limit": 0,
+    "concurrent_tasks": 1,
+    "pool": "Any",
+    "hardware_preset": "Any Compatible Worker",
+    "allowed_workers": [],
+    "denied_workers": [],
+    "start_suspended": false,
+    "retry_count": 2,
+    "task_timeout_minutes": 0,
+    "submission_mode": "Shared Storage",
+    "department": "",
+    "comment": "",
+    "job_dependencies": [],
+    "minimum_ram_gb": 0,
+    "minimum_vram_gb": 0,
+    "job": {
+        "uid": "RH-20260713-210326-DC71FB",
+        "name": "test_scene",
+        "project": "Render",
+        "department": "",
+        "comment": "",
+        "priority": 50,
+        "start_suspended": false,
+        "dependencies": []
+    },
+    "frames": {
+        "start": 1,
+        "end": 10,
+        "step": 1,
+        "count": 10,
+        "chunk_size": 10,
+        "task_count": 1
+    },
+    "farm": {
+        "pool": "Any",
+        "machine_limit": 0,
+        "concurrent_tasks": 1,
+        "allowed_workers": [],
+        "denied_workers": [],
+        "hardware": {
+            "preset": "Any Compatible Worker",
+            "minimum_ram_gb": 0,
+            "minimum_vram_gb": 0
+        }
+    },
+    "failure_policy": {
+        "retry_count": 2,
+        "task_timeout_minutes": 0
+    },
+    "submission": {
+        "mode": "Shared Storage",
+        "scene_path": "D:/Moemen/iti/CGTD/RenderHiveProject/Render/scenes/test_scene.ma",
+        "project_path": "D:/Moemen/iti/CGTD/RenderHiveProject/Render/",
+        "output_path": "D:/Moemen/iti/CGTD/RenderHiveProject/Render/images"
+    },
+    "software_info": {
+        "dcc": "maya",
+        "maya_version": "2023",
+        "renderer": "arnold",
+        "host_os": "Windows"
+    },
+    "validation": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 9,
+        "info": 6,
+        "passed": 44,
+        "total": 59
+    }
+}

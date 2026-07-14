@@ -3,11 +3,12 @@ from __future__ import print_function
 import importlib
 import os
 import sys
+import time
 
 import maya.cmds as cmds
 
 
-UI_VERSION = "0.5"
+UI_VERSION = "1.0"
 UI_SETTING_PREFIX = "renderHive_"
 
 VALIDATION_SEVERITY_FILTER = "rh_validation_severity_filter"
@@ -19,26 +20,96 @@ VALIDATION_INFO_COUNT = "rh_validation_info_count"
 VALIDATION_PASSED_COUNT = "rh_validation_passed_count"
 VALIDATION_TOTAL_COUNT = "rh_validation_total_count"
 
+MAIN_TABS_NAME = "rh_main_tabs"
+VALIDATION_SEARCH_FIELD = "rh_validation_search"
+VALIDATION_DETAIL_TITLE = "rh_validation_detail_title"
+VALIDATION_DETAIL_BODY = "rh_validation_detail_body"
+VALIDATION_HEALTH_BADGE = "rh_validation_health_badge"
+SCENE_STATE_BADGE = "rh_scene_state_badge"
+RESOLUTION_META_TEXT = "rh_resolution_meta"
+ACTIVITY_LOG_FIELD = "rh_activity_log"
+ORIGINAL_SET_STATUS = None
+ACTIVITY_LOG_ENTRIES = []
+
 API = None
 DISPLAYED_VALIDATION_RESULTS = []
 
-# RenderHive compact modern theme
-BG = (0.090, 0.102, 0.118)
-PANEL = (0.125, 0.141, 0.161)
-PANEL_ALT = (0.155, 0.174, 0.196)
-PANEL_SOFT = (0.185, 0.202, 0.222)
-ACCENT = (0.000, 0.620, 0.570)
-ACCENT_DARK = (0.000, 0.390, 0.360)
-BLUE = (0.100, 0.340, 0.560)
-SUCCESS = (0.080, 0.350, 0.205)
-WARNING = (0.440, 0.300, 0.075)
-ERROR = (0.430, 0.115, 0.125)
-MUTED = (0.235, 0.250, 0.270)
+# RenderHive final compact theme: graphite + electric mint.
+BG = (0.070, 0.078, 0.092)
+PANEL = (0.105, 0.118, 0.137)
+PANEL_ALT = (0.135, 0.151, 0.174)
+PANEL_SOFT = (0.175, 0.190, 0.214)
+ACCENT = (0.000, 0.720, 0.620)
+ACCENT_DARK = (0.000, 0.430, 0.380)
+BLUE = (0.100, 0.390, 0.650)
+SUCCESS = (0.070, 0.390, 0.220)
+WARNING = (0.520, 0.335, 0.060)
+ERROR = (0.500, 0.100, 0.125)
+MUTED = (0.210, 0.225, 0.250)
+TEXT_SOFT = (0.690, 0.720, 0.760)
 
-WINDOW_WIDTH = 680
-WINDOW_HEIGHT = 710
+WINDOW_WIDTH = 640
+WINDOW_HEIGHT = 700
 
 
+
+
+def append_activity_log(message):
+    """Append a timestamped message to the compact Activity Log."""
+    if not message:
+        return
+
+    clean_message = str(message).replace("\r", " ").replace("\n", " ").strip()
+
+    if clean_message.lower().startswith("status:"):
+        clean_message = clean_message.split(":", 1)[1].strip()
+
+    timestamp = time.strftime("%H:%M:%S")
+    line = "{}  {}".format(timestamp, clean_message)
+
+    ACTIVITY_LOG_ENTRIES.append(line)
+
+    # Keep the log compact during long Maya sessions.
+    del ACTIVITY_LOG_ENTRIES[:-200]
+
+    if cmds.scrollField(ACTIVITY_LOG_FIELD, exists=True):
+        cmds.scrollField(
+            ACTIVITY_LOG_FIELD,
+            edit=True,
+            text="\n".join(ACTIVITY_LOG_ENTRIES)
+        )
+
+
+def set_status_with_activity(message):
+    """Preserve the original status behavior and mirror it to Activity Log."""
+    if ORIGINAL_SET_STATUS is not None:
+        ORIGINAL_SET_STATUS(message)
+
+    append_activity_log(message)
+
+
+def submit_job(*args):
+    """
+    Temporary submission bridge.
+
+    For now this calls the existing local-worker submission flow.
+    Replace this single function with the backend API call later.
+    """
+    if API is None:
+        return
+
+    append_activity_log("Submitting job...")
+
+    try:
+        API.run_local_worker()
+    except Exception as error:
+        append_activity_log("Submit failed: {}".format(error))
+        raise
+
+
+def initialize_activity_log():
+    if not ACTIVITY_LOG_ENTRIES:
+        append_activity_log("RenderHive is ready.")
 
 def get_option_var(name, default=None):
     full_name = UI_SETTING_PREFIX + name
@@ -117,11 +188,28 @@ def save_ui_preferences(*args):
             VALIDATION_CATEGORY_FILTER,
             "All"
         ),
+        "validation_search": (
+            cmds.textField(
+                VALIDATION_SEARCH_FIELD,
+                query=True,
+                text=True
+            )
+            if cmds.textField(VALIDATION_SEARCH_FIELD, exists=True)
+            else ""
+        ),
+        "active_tab": (
+            cmds.tabLayout(
+                MAIN_TABS_NAME,
+                query=True,
+                selectTabIndex=True
+            )
+            if cmds.tabLayout(MAIN_TABS_NAME, exists=True)
+            else 1
+        ),
     }
 
     for name, value in values.items():
         set_option_var(name, value)
-
 
 def load_ui_preferences():
     if API is None:
@@ -155,10 +243,230 @@ def load_ui_preferences():
         get_option_var("validation_severity", "All")
     )
 
+    if cmds.textField(VALIDATION_SEARCH_FIELD, exists=True):
+        cmds.textField(
+            VALIDATION_SEARCH_FIELD,
+            edit=True,
+            text=get_option_var("validation_search", "")
+        )
+
+    active_tab = get_option_var("active_tab", 1)
+
+    try:
+        active_tab = int(active_tab)
+    except Exception:
+        active_tab = 1
+
+    if cmds.tabLayout(MAIN_TABS_NAME, exists=True):
+        active_tab = max(1, min(active_tab, 4))
+        cmds.tabLayout(
+            MAIN_TABS_NAME,
+            edit=True,
+            selectTabIndex=active_tab
+        )
 
 def on_submitter_close(*args):
     save_ui_preferences()
 
+
+def save_active_tab(*args):
+    if cmds.tabLayout(MAIN_TABS_NAME, exists=True):
+        set_option_var(
+            "active_tab",
+            cmds.tabLayout(
+                MAIN_TABS_NAME,
+                query=True,
+                selectTabIndex=True
+            )
+        )
+
+
+def calculate_aspect_ratio(width, height):
+    try:
+        width = int(width)
+        height = int(height)
+    except Exception:
+        return ""
+
+    if width <= 0 or height <= 0:
+        return ""
+
+    import math
+    divisor = math.gcd(width, height)
+
+    if divisor <= 0:
+        return ""
+
+    return "{}:{}".format(
+        int(width / divisor),
+        int(height / divisor)
+    )
+
+
+def update_resolution_meta(*args):
+    if API is None:
+        return
+
+    if not cmds.text(RESOLUTION_META_TEXT, exists=True):
+        return
+
+    width = API.get_int("rh_width", 0)
+    height = API.get_int("rh_height", 0)
+    ratio = calculate_aspect_ratio(width, height)
+
+    label = "{} x {}".format(width, height)
+
+    if ratio:
+        label += "   /   {}".format(ratio)
+
+    cmds.text(
+        RESOLUTION_META_TEXT,
+        edit=True,
+        label=label
+    )
+
+
+def get_selected_validation_detail_text(result):
+    if not result:
+        return ""
+
+    severity = result.get("severity", "INFO")
+    category = result.get("category", "General")
+    code = result.get("code", "")
+    node = result.get("node", "")
+    message = result.get("message", "")
+
+    lines = [
+        "{} / {}".format(severity, category)
+    ]
+
+    if code:
+        lines.append("Code: {}".format(code))
+
+    if node:
+        lines.append("Node: {}".format(node))
+
+    lines.append("")
+    lines.append(message)
+
+    return "\n".join(lines)
+
+
+def update_validation_detail(*args):
+    result = get_selected_validation_result()
+
+    if not cmds.text(VALIDATION_DETAIL_TITLE, exists=True):
+        return
+
+    if not result:
+        cmds.text(
+            VALIDATION_DETAIL_TITLE,
+            edit=True,
+            label="RESULT DETAILS"
+        )
+
+        if cmds.scrollField(VALIDATION_DETAIL_BODY, exists=True):
+            cmds.scrollField(
+                VALIDATION_DETAIL_BODY,
+                edit=True,
+                text="Select a validation result to inspect it."
+            )
+        return
+
+    severity = result.get("severity", "INFO")
+    category = result.get("category", "General")
+
+    cmds.text(
+        VALIDATION_DETAIL_TITLE,
+        edit=True,
+        label="{}  /  {}".format(severity, category)
+    )
+
+    if cmds.scrollField(VALIDATION_DETAIL_BODY, exists=True):
+        cmds.scrollField(
+            VALIDATION_DETAIL_BODY,
+            edit=True,
+            text=get_selected_validation_detail_text(result)
+        )
+
+
+def copy_selected_validation_details(*args):
+    result = get_selected_validation_result()
+
+    if not result:
+        if API is not None:
+            API.set_status("Select a validation result first.")
+        return
+
+    text = get_selected_validation_detail_text(result)
+
+    try:
+        from PySide2 import QtWidgets
+        app = QtWidgets.QApplication.instance()
+
+        if app is None:
+            raise RuntimeError("Qt application is unavailable.")
+
+        app.clipboard().setText(text)
+
+        if API is not None:
+            API.set_status("Validation details copied.")
+
+    except Exception as error:
+        if API is not None:
+            API.set_status(
+                "Could not copy validation details: {}".format(error)
+            )
+
+
+def set_validation_health(error_count=0, warning_count=0, checked=False):
+    if not cmds.text(VALIDATION_HEALTH_BADGE, exists=True):
+        return
+
+    if not checked:
+        label = "NOT CHECKED"
+        color = MUTED
+    elif error_count:
+        label = "BLOCKED  {}".format(error_count)
+        color = ERROR
+    elif warning_count:
+        label = "REVIEW  {}".format(warning_count)
+        color = WARNING
+    else:
+        label = "READY"
+        color = SUCCESS
+
+    cmds.text(
+        VALIDATION_HEALTH_BADGE,
+        edit=True,
+        label=label,
+        backgroundColor=color
+    )
+
+
+def reset_ui_preferences(*args):
+    option_names = [
+        "project_name",
+        "priority",
+        "image_format",
+        "frame_padding",
+        "validation_severity",
+        "validation_category",
+        "validation_search",
+        "active_tab",
+    ]
+
+    for name in option_names:
+        full_name = UI_SETTING_PREFIX + name
+
+        try:
+            if cmds.optionVar(exists=full_name):
+                cmds.optionVar(remove=full_name)
+        except Exception:
+            pass
+
+    if API is not None:
+        API.set_status("Saved UI preferences were reset.")
 
 def create_section_title(parent, label, description=""):
     block = cmds.columnLayout(
@@ -169,26 +477,34 @@ def create_section_title(parent, label, description=""):
 
     title_row = cmds.rowLayout(
         parent=block,
-        numberOfColumns=2,
+        numberOfColumns=3,
         adjustableColumn=2,
-        columnWidth2=(6, 590)
+        columnWidth3=(5, 500, 78)
     )
 
     cmds.text(
         parent=title_row,
         label="",
-        width=6,
+        width=5,
         height=28,
         backgroundColor=ACCENT
     )
 
     cmds.text(
         parent=title_row,
-        label="  " + label,
+        label="  " + label.upper(),
         align="left",
         font="boldLabelFont",
         height=28,
         backgroundColor=PANEL_ALT
+    )
+
+    cmds.text(
+        parent=title_row,
+        label="RH / {}".format(UI_VERSION),
+        align="center",
+        height=28,
+        backgroundColor=PANEL
     )
 
     if description:
@@ -269,6 +585,7 @@ def apply_render_preset(*args):
         settings["format"]
     )
 
+    update_resolution_meta()
     save_ui_preferences()
 
     API.set_status(
@@ -279,7 +596,6 @@ def apply_render_preset(*args):
             settings["format"].upper()
         )
     )
-
 
 def load_validation_engine_class():
     if API is None:
@@ -482,13 +798,36 @@ def refresh_filtered_validation_results(*args):
     if API is None:
         return
 
-    DISPLAYED_VALIDATION_RESULTS = [
-        result
-        for result in API.VALIDATION_RESULTS
-        if validation_result_matches_filters(
-            result
-        )
-    ]
+    search_text = ""
+
+    if cmds.textField(VALIDATION_SEARCH_FIELD, exists=True):
+        search_text = cmds.textField(
+            VALIDATION_SEARCH_FIELD,
+            query=True,
+            text=True
+        ).strip().lower()
+
+    filtered = []
+
+    for result in API.VALIDATION_RESULTS:
+        if not validation_result_matches_filters(result):
+            continue
+
+        if search_text:
+            haystack = " ".join([
+                str(result.get("severity", "")),
+                str(result.get("category", "")),
+                str(result.get("code", "")),
+                str(result.get("node", "")),
+                str(result.get("message", "")),
+            ]).lower()
+
+            if search_text not in haystack:
+                continue
+
+        filtered.append(result)
+
+    DISPLAYED_VALIDATION_RESULTS = filtered
 
     if not cmds.textScrollList(
         API.VALIDATION_LIST_NAME,
@@ -506,24 +845,17 @@ def refresh_filtered_validation_results(*args):
         cmds.textScrollList(
             API.VALIDATION_LIST_NAME,
             edit=True,
-            append=API.format_validation_result(
-                result
-            )
+            append=API.format_validation_result(result)
         )
 
-    if (
-        API.VALIDATION_RESULTS
-        and not DISPLAYED_VALIDATION_RESULTS
-    ):
+    if API.VALIDATION_RESULTS and not DISPLAYED_VALIDATION_RESULTS:
         cmds.textScrollList(
             API.VALIDATION_LIST_NAME,
             edit=True,
-            append=(
-                "No validation results match "
-                "the current filters."
-            )
+            append="No results match the current filters."
         )
 
+    update_validation_detail()
 
 def update_validation_ui(report):
     if API is None:
@@ -536,8 +868,8 @@ def update_validation_ui(report):
     refresh_filtered_validation_results()
 
     summary_label = (
-        "Errors: {ERROR}    Warnings: {WARNING}    "
-        "Info: {INFO}    Passed: {PASSED}    Total: {total}"
+        "Errors {ERROR}   /   Warnings {WARNING}   /   "
+        "Info {INFO}   /   Passed {PASSED}   /   Total {total}"
     ).format(
         ERROR=summary.get("ERROR", 0),
         WARNING=summary.get("WARNING", 0),
@@ -546,10 +878,7 @@ def update_validation_ui(report):
         total=summary.get("total", 0)
     )
 
-    if cmds.text(
-        API.VALIDATION_SUMMARY_NAME,
-        exists=True
-    ):
+    if cmds.text(API.VALIDATION_SUMMARY_NAME, exists=True):
         cmds.text(
             API.VALIDATION_SUMMARY_NAME,
             edit=True,
@@ -557,21 +886,11 @@ def update_validation_ui(report):
         )
 
     counter_values = {
-        VALIDATION_ERROR_COUNT: "ERROR\n{}".format(
-            summary.get("ERROR", 0)
-        ),
-        VALIDATION_WARNING_COUNT: "WARNING\n{}".format(
-            summary.get("WARNING", 0)
-        ),
-        VALIDATION_INFO_COUNT: "INFO\n{}".format(
-            summary.get("INFO", 0)
-        ),
-        VALIDATION_PASSED_COUNT: "PASSED\n{}".format(
-            summary.get("PASSED", 0)
-        ),
-        VALIDATION_TOTAL_COUNT: "TOTAL\n{}".format(
-            summary.get("total", 0)
-        ),
+        VALIDATION_ERROR_COUNT: "ERR  {}".format(summary.get("ERROR", 0)),
+        VALIDATION_WARNING_COUNT: "WARN  {}".format(summary.get("WARNING", 0)),
+        VALIDATION_INFO_COUNT: "INFO  {}".format(summary.get("INFO", 0)),
+        VALIDATION_PASSED_COUNT: "PASS  {}".format(summary.get("PASSED", 0)),
+        VALIDATION_TOTAL_COUNT: "ALL  {}".format(summary.get("total", 0)),
     }
 
     for control_name, label in counter_values.items():
@@ -582,6 +901,11 @@ def update_validation_ui(report):
                 label=label
             )
 
+    set_validation_health(
+        error_count=summary.get("ERROR", 0),
+        warning_count=summary.get("WARNING", 0),
+        checked=True
+    )
 
 def get_selected_validation_result():
     if API is None:
@@ -625,50 +949,36 @@ def clear_validation_results(*args):
     API.VALIDATION_REPORT = {}
     DISPLAYED_VALIDATION_RESULTS = []
 
-    if cmds.textScrollList(
-        API.VALIDATION_LIST_NAME,
-        exists=True
-    ):
+    if cmds.textScrollList(API.VALIDATION_LIST_NAME, exists=True):
         cmds.textScrollList(
             API.VALIDATION_LIST_NAME,
             edit=True,
             removeAll=True
         )
 
-    if cmds.text(
-        API.VALIDATION_SUMMARY_NAME,
-        exists=True
-    ):
+    if cmds.text(API.VALIDATION_SUMMARY_NAME, exists=True):
         cmds.text(
             API.VALIDATION_SUMMARY_NAME,
             edit=True,
-            label=(
-                "Errors: 0    Warnings: 0    "
-                "Info: 0    Passed: 0    Total: 0"
-            )
+            label="No validation has been run."
         )
 
     counter_values = {
-        VALIDATION_ERROR_COUNT: "ERROR\n0",
-        VALIDATION_WARNING_COUNT: "WARNING\n0",
-        VALIDATION_INFO_COUNT: "INFO\n0",
-        VALIDATION_PASSED_COUNT: "PASSED\n0",
-        VALIDATION_TOTAL_COUNT: "TOTAL\n0",
+        VALIDATION_ERROR_COUNT: "ERR  0",
+        VALIDATION_WARNING_COUNT: "WARN  0",
+        VALIDATION_INFO_COUNT: "INFO  0",
+        VALIDATION_PASSED_COUNT: "PASS  0",
+        VALIDATION_TOTAL_COUNT: "ALL  0",
     }
 
     for control_name, label in counter_values.items():
         if cmds.text(control_name, exists=True):
-            cmds.text(
-                control_name,
-                edit=True,
-                label=label
-            )
+            cmds.text(control_name, edit=True, label=label)
 
     rebuild_validation_category_filter([])
-    API.set_status(
-        "Validation results cleared."
-    )
-
+    set_validation_health(checked=False)
+    update_validation_detail()
+    API.set_status("Validation results cleared.")
 
 def open_validation_reports_folder(*args):
     if API is not None:
@@ -677,20 +987,19 @@ def open_validation_reports_folder(*args):
         )
 
 
-def install_runtime_overrides(api):
-    api.load_validation_engine_class = (
-        load_validation_engine_class
-    )
-    api.update_validation_ui = (
-        update_validation_ui
-    )
-    api.get_selected_validation_result = (
-        get_selected_validation_result
-    )
-    api.clear_validation_results = (
-        clear_validation_results
-    )
 
+def install_runtime_overrides(api):
+    global ORIGINAL_SET_STATUS
+
+    api.load_validation_engine_class = load_validation_engine_class
+    api.update_validation_ui = update_validation_ui
+    api.get_selected_validation_result = get_selected_validation_result
+    api.clear_validation_results = clear_validation_results
+
+    if ORIGINAL_SET_STATUS is None:
+        ORIGINAL_SET_STATUS = api.set_status
+
+    api.set_status = set_status_with_activity
 
 def build_job_tab(api, tabs, scene_name, project_path):
     tab = cmds.scrollLayout(
@@ -707,7 +1016,7 @@ def build_job_tab(api, tabs, scene_name, project_path):
     create_section_title(
         column,
         "Job",
-        "Name the task and confirm the scene locations."
+        "The essentials first. Technical paths stay tucked away."
     )
 
     project_name = (
@@ -718,7 +1027,7 @@ def build_job_tab(api, tabs, scene_name, project_path):
 
     identity = cmds.frameLayout(
         parent=column,
-        label="Identity",
+        label="JOB IDENTITY",
         collapsable=False,
         marginWidth=10,
         marginHeight=8,
@@ -728,16 +1037,26 @@ def build_job_tab(api, tabs, scene_name, project_path):
     grid = cmds.rowColumnLayout(
         parent=identity,
         numberOfColumns=2,
-        columnWidth=[(1, 130), (2, 470)],
+        columnWidth=[(1, 118), (2, 440)],
         columnSpacing=[(1, 8), (2, 8)],
-        rowSpacing=[(1, 6), (2, 6)]
+        rowSpacing=[(1, 7), (2, 7)]
     )
 
     cmds.text(parent=grid, label="Project", align="left")
-    cmds.textField("rh_project_name", parent=grid, text=project_name)
+    cmds.textField(
+        "rh_project_name",
+        parent=grid,
+        text=project_name,
+        annotation="Project label stored in the RenderHive task."
+    )
 
     cmds.text(parent=grid, label="Job", align="left")
-    cmds.textField("rh_job_name", parent=grid, text=scene_name)
+    cmds.textField(
+        "rh_job_name",
+        parent=grid,
+        text=scene_name,
+        annotation="Unique job name shown in the queue."
+    )
 
     cmds.text(parent=grid, label="Priority", align="left")
     cmds.intField(
@@ -745,81 +1064,101 @@ def build_job_tab(api, tabs, scene_name, project_path):
         parent=grid,
         value=50,
         minValue=0,
-        maxValue=100
+        maxValue=100,
+        annotation="Higher values can be prioritized by the backend later."
     )
 
-    paths = cmds.frameLayout(
+    output_frame = cmds.frameLayout(
         parent=column,
-        label="Paths",
+        label="OUTPUT LOCATION",
         collapsable=False,
         marginWidth=10,
         marginHeight=8,
         backgroundColor=PANEL
     )
 
-    paths_column = cmds.columnLayout(
-        parent=paths,
+    output_column = cmds.columnLayout(
+        parent=output_frame,
         adjustableColumn=True,
-        rowSpacing=5
+        rowSpacing=6
     )
-
-    cmds.text(parent=paths_column, label="Scene", align="left")
-    cmds.textField(
-        "rh_scene_path",
-        parent=paths_column,
-        text=api.get_scene_path()
-    )
-
-    cmds.text(parent=paths_column, label="Project Root", align="left")
-    cmds.textField(
-        "rh_project_path",
-        parent=paths_column,
-        text=project_path
-    )
-
-    cmds.text(parent=paths_column, label="Output", align="left")
 
     output_row = cmds.rowLayout(
-        parent=paths_column,
+        parent=output_column,
         numberOfColumns=2,
         adjustableColumn=1,
-        columnWidth2=(500, 100)
+        columnWidth2=(460, 98)
     )
 
     cmds.textField(
         "rh_output_path",
         parent=output_row,
-        text=api.get_default_output_path()
+        text=api.get_default_output_path(),
+        annotation="Folder that receives rendered frames."
     )
 
     cmds.button(
         parent=output_row,
-        label="Browse",
-        width=100,
+        label="BROWSE",
+        width=98,
+        height=28,
+        backgroundColor=PANEL_ALT,
         command=api.browse_output_path
     )
 
     quick_row = cmds.rowLayout(
-        parent=paths_column,
+        parent=output_column,
         numberOfColumns=2,
         adjustableColumn=2,
-        columnWidth2=(300, 300)
+        columnWidth2=(279, 279)
     )
 
     cmds.button(
         parent=quick_row,
-        label="Open Output",
+        label="OPEN OUTPUT",
         height=30,
         backgroundColor=PANEL_ALT,
+        annotation="Open the current render output folder.",
         command=api.open_output_folder
     )
 
     cmds.button(
         parent=quick_row,
-        label="Sync From Scene",
+        label="SYNC FROM SCENE",
         height=30,
-        backgroundColor=PANEL_ALT,
+        backgroundColor=ACCENT_DARK,
+        annotation="Refresh camera, frame range, resolution and paths.",
         command=api.refresh_from_scene
+    )
+
+    context = cmds.frameLayout(
+        parent=column,
+        label="SCENE CONTEXT",
+        collapsable=True,
+        collapse=True,
+        marginWidth=10,
+        marginHeight=8,
+        backgroundColor=PANEL
+    )
+
+    context_column = cmds.columnLayout(
+        parent=context,
+        adjustableColumn=True,
+        rowSpacing=5
+    )
+
+    cmds.text(parent=context_column, label="Scene File", align="left")
+    cmds.textField(
+        "rh_scene_path",
+        parent=context_column,
+        text=api.get_scene_path()
+    )
+
+    cmds.text(parent=context_column, label="Project Root", align="left")
+    cmds.textField(
+        "rh_project_path",
+        parent=context_column,
+        text=project_path
     )
 
     return tab
@@ -839,12 +1178,12 @@ def build_render_tab(api, tabs, scene_name, start, end, width, height):
     create_section_title(
         column,
         "Render",
-        "A compact task-level view of the render settings."
+        "Compact farm settings with a live resolution readout."
     )
 
     preset_frame = cmds.frameLayout(
         parent=column,
-        label="Quick Preset",
+        label="QUICK PRESET",
         collapsable=False,
         marginWidth=10,
         marginHeight=8,
@@ -855,7 +1194,7 @@ def build_render_tab(api, tabs, scene_name, start, end, width, height):
         parent=preset_frame,
         numberOfColumns=3,
         adjustableColumn=2,
-        columnWidth3=(120, 360, 120)
+        columnWidth3=(110, 338, 110)
     )
 
     cmds.text(parent=preset_row, label="Preset", align="left")
@@ -866,15 +1205,16 @@ def build_render_tab(api, tabs, scene_name, start, end, width, height):
 
     cmds.button(
         parent=preset_row,
-        label="Apply",
-        width=120,
+        label="APPLY",
+        width=110,
+        height=28,
         backgroundColor=ACCENT_DARK,
         command=apply_render_preset
     )
 
     setup_frame = cmds.frameLayout(
         parent=column,
-        label="Setup",
+        label="FRAME SETUP",
         collapsable=False,
         marginWidth=10,
         marginHeight=8,
@@ -884,9 +1224,9 @@ def build_render_tab(api, tabs, scene_name, start, end, width, height):
     grid = cmds.rowColumnLayout(
         parent=setup_frame,
         numberOfColumns=4,
-        columnWidth=[(1, 105), (2, 190), (3, 105), (4, 190)],
-        columnSpacing=[(1, 6), (2, 10), (3, 6), (4, 6)],
-        rowSpacing=[(1, 6), (2, 6), (3, 6), (4, 6)]
+        columnWidth=[(1, 92), (2, 180), (3, 92), (4, 194)],
+        columnSpacing=[(1, 6), (2, 8), (3, 6), (4, 6)],
+        rowSpacing=[(1, 7), (2, 7), (3, 7), (4, 7)]
     )
 
     cmds.text(parent=grid, label="Start", align="left")
@@ -897,10 +1237,12 @@ def build_render_tab(api, tabs, scene_name, start, end, width, height):
 
     cmds.text(parent=grid, label="Renderer", align="left")
     renderer_menu = cmds.optionMenu("rh_renderer", parent=grid)
+
     for label in ["arnold", "sw", "mayaHardware2"]:
         cmds.menuItem(parent=renderer_menu, label=label)
 
     current_renderer = api.get_current_renderer()
+
     if current_renderer in ["arnold", "sw", "mayaHardware2"]:
         cmds.optionMenu("rh_renderer", edit=True, value=current_renderer)
 
@@ -910,7 +1252,7 @@ def build_render_tab(api, tabs, scene_name, start, end, width, height):
 
     output_frame = cmds.frameLayout(
         parent=column,
-        label="Output",
+        label="IMAGE OUTPUT",
         collapsable=False,
         marginWidth=10,
         marginHeight=8,
@@ -920,16 +1262,17 @@ def build_render_tab(api, tabs, scene_name, start, end, width, height):
     output_grid = cmds.rowColumnLayout(
         parent=output_frame,
         numberOfColumns=4,
-        columnWidth=[(1, 105), (2, 190), (3, 105), (4, 190)],
-        columnSpacing=[(1, 6), (2, 10), (3, 6), (4, 6)],
-        rowSpacing=[(1, 6), (2, 6), (3, 6), (4, 6)]
+        columnWidth=[(1, 92), (2, 180), (3, 92), (4, 194)],
+        columnSpacing=[(1, 6), (2, 8), (3, 6), (4, 6)],
+        rowSpacing=[(1, 7), (2, 7), (3, 7), (4, 7)]
     )
 
-    cmds.text(parent=output_grid, label="Image Name", align="left")
+    cmds.text(parent=output_grid, label="Name", align="left")
     cmds.textField("rh_image_name", parent=output_grid, text=scene_name)
 
     cmds.text(parent=output_grid, label="Format", align="left")
     format_menu = cmds.optionMenu("rh_image_format", parent=output_grid)
+
     for label in ["png", "jpg", "exr", "tif"]:
         cmds.menuItem(parent=format_menu, label=label)
 
@@ -943,13 +1286,32 @@ def build_render_tab(api, tabs, scene_name, start, end, width, height):
     )
 
     cmds.text(parent=output_grid, label="Width", align="left")
-    cmds.intField("rh_width", parent=output_grid, value=width, minValue=1)
+    cmds.intField(
+        "rh_width",
+        parent=output_grid,
+        value=width,
+        minValue=1,
+        changeCommand=update_resolution_meta
+    )
 
     cmds.text(parent=output_grid, label="Height", align="left")
-    cmds.intField("rh_height", parent=output_grid, value=height, minValue=1)
+    cmds.intField(
+        "rh_height",
+        parent=output_grid,
+        value=height,
+        minValue=1,
+        changeCommand=update_resolution_meta
+    )
 
-    cmds.text(parent=output_grid, label="", align="left")
-    cmds.text(parent=output_grid, label="Stored in task JSON", align="left")
+    cmds.text(parent=output_grid, label="Resolution", align="left")
+    cmds.text(
+        RESOLUTION_META_TEXT,
+        parent=output_grid,
+        label="{} x {}".format(width, height),
+        align="left",
+        height=22,
+        backgroundColor=PANEL_ALT
+    )
 
     return tab
 
@@ -957,20 +1319,20 @@ def build_validation_tab(api, tabs):
     tab = cmds.columnLayout(
         parent=tabs,
         adjustableColumn=True,
-        rowSpacing=7
+        rowSpacing=6
     )
 
     create_section_title(
         tab,
         "Checks",
-        "Errors block submission; warnings remain visible for review."
+        "Filter, inspect and copy precise preflight results."
     )
 
     counters = cmds.rowLayout(
         parent=tab,
         numberOfColumns=5,
         adjustableColumn=5,
-        columnWidth5=(118, 118, 118, 118, 118)
+        columnWidth5=(112, 112, 112, 112, 112)
     )
 
     create_counter_card(counters, VALIDATION_ERROR_COUNT, "ERR", ERROR)
@@ -983,7 +1345,7 @@ def build_validation_tab(api, tabs):
         parent=tab,
         numberOfColumns=4,
         adjustableColumn=4,
-        columnWidth4=(70, 180, 70, 275)
+        columnWidth4=(58, 170, 58, 274)
     )
 
     cmds.text(parent=filters, label="Level", align="left")
@@ -992,6 +1354,7 @@ def build_validation_tab(api, tabs):
         parent=filters,
         changeCommand=refresh_filtered_validation_results
     )
+
     for label in ["All", "ERROR", "WARNING", "INFO", "PASSED"]:
         cmds.menuItem(parent=severity_menu, label=label)
 
@@ -1003,10 +1366,26 @@ def build_validation_tab(api, tabs):
     )
     cmds.menuItem(parent=category_menu, label="All")
 
+    search_row = cmds.rowLayout(
+        parent=tab,
+        numberOfColumns=2,
+        adjustableColumn=2,
+        columnWidth2=(58, 502)
+    )
+
+    cmds.text(parent=search_row, label="Find", align="left")
+    cmds.textField(
+        VALIDATION_SEARCH_FIELD,
+        parent=search_row,
+        placeholderText="message, node, code or category",
+        changeCommand=refresh_filtered_validation_results,
+        annotation="Press Enter or leave the field to apply the search."
+    )
+
     cmds.text(
         api.VALIDATION_SUMMARY_NAME,
         parent=tab,
-        label="Errors: 0    Warnings: 0    Info: 0    Passed: 0    Total: 0",
+        label="No validation has been run.",
         align="left",
         height=22,
         backgroundColor=PANEL
@@ -1015,31 +1394,89 @@ def build_validation_tab(api, tabs):
     cmds.textScrollList(
         api.VALIDATION_LIST_NAME,
         parent=tab,
-        numberOfRows=14,
+        numberOfRows=9,
         allowMultiSelection=False,
+        selectCommand=update_validation_detail,
         doubleClickCommand=api.select_validation_node,
-        height=270
+        height=176
+    )
+
+    detail_frame = cmds.frameLayout(
+        parent=tab,
+        label="RESULT INSPECTOR",
+        collapsable=False,
+        marginWidth=8,
+        marginHeight=6,
+        backgroundColor=PANEL
+    )
+
+    detail_column = cmds.columnLayout(
+        parent=detail_frame,
+        adjustableColumn=True,
+        rowSpacing=4
+    )
+
+    cmds.text(
+        VALIDATION_DETAIL_TITLE,
+        parent=detail_column,
+        label="RESULT DETAILS",
+        align="left",
+        font="boldLabelFont",
+        height=20
+    )
+
+    cmds.scrollField(
+        VALIDATION_DETAIL_BODY,
+        parent=detail_column,
+        text="Select a validation result to inspect it.",
+        editable=False,
+        wordWrap=True,
+        height=70,
+        backgroundColor=BG
     )
 
     buttons = cmds.rowLayout(
         parent=tab,
-        numberOfColumns=4,
-        adjustableColumn=4,
-        columnWidth4=(148, 148, 148, 148)
+        numberOfColumns=5,
+        adjustableColumn=5,
+        columnWidth5=(112, 112, 112, 112, 112)
     )
 
     cmds.button(
         parent=buttons,
-        label="Run Checks",
-        height=34,
+        label="RUN CHECKS",
+        height=32,
         backgroundColor=BLUE,
+        annotation="Run every installed validation module.",
         command=api.validate_scene_from_ui
     )
-    cmds.button(parent=buttons, label="Select", height=34, command=api.select_validation_node)
-    cmds.button(parent=buttons, label="Export", height=34, command=api.export_validation_report)
-    cmds.button(parent=buttons, label="Clear", height=34, command=clear_validation_results)
+    cmds.button(
+        parent=buttons,
+        label="SELECT",
+        height=32,
+        command=api.select_validation_node
+    )
+    cmds.button(
+        parent=buttons,
+        label="COPY",
+        height=32,
+        command=copy_selected_validation_details
+    )
+    cmds.button(
+        parent=buttons,
+        label="EXPORT",
+        height=32,
+        command=api.export_validation_report
+    )
+    cmds.button(
+        parent=buttons,
+        label="CLEAR",
+        height=32,
+        command=clear_validation_results
+    )
 
     return tab
+
 
 def build_tools_tab(api, tabs):
     tab = cmds.scrollLayout(
@@ -1055,65 +1492,46 @@ def build_tools_tab(api, tabs):
 
     create_section_title(
         column,
-        "More",
-        "Task files, diagnostics and low-frequency maintenance actions."
+        "Tools",
+        "Submission activity and maintenance."
     )
 
-    task_frame = cmds.frameLayout(
+    activity_frame = cmds.frameLayout(
         parent=column,
-        label="Task Files",
+        label="ACTIVITY LOG",
         collapsable=False,
         marginWidth=10,
         marginHeight=8,
         backgroundColor=PANEL
     )
 
-    task_column = cmds.columnLayout(
-        parent=task_frame,
+    activity_column = cmds.columnLayout(
+        parent=activity_frame,
         adjustableColumn=True,
-        rowSpacing=6
+        rowSpacing=5
     )
 
-    task_row = cmds.rowLayout(
-        parent=task_column,
-        numberOfColumns=2,
-        adjustableColumn=2,
-        columnWidth2=(300, 300)
-    )
-
-    cmds.button(parent=task_row, label="Save As...", height=32, command=api.save_task_json_as)
-    cmds.button(parent=task_row, label="Auto Save", height=32, command=api.save_task_json_auto)
-    cmds.button(parent=task_column, label="Open Tasks Folder", height=30, command=api.open_tasks_folder)
-
-    diagnostics_frame = cmds.frameLayout(
-        parent=column,
-        label="Diagnostics",
-        collapsable=False,
-        marginWidth=10,
-        marginHeight=8,
+    cmds.text(
+        parent=activity_column,
+        label="Recent RenderHive actions and status messages.",
+        align="left",
+        height=20,
         backgroundColor=PANEL
     )
 
-    diagnostics_column = cmds.columnLayout(
-        parent=diagnostics_frame,
-        adjustableColumn=True,
-        rowSpacing=6
+    cmds.scrollField(
+        ACTIVITY_LOG_FIELD,
+        parent=activity_column,
+        text="\n".join(ACTIVITY_LOG_ENTRIES),
+        editable=False,
+        wordWrap=False,
+        height=330,
+        backgroundColor=BG
     )
-
-    diagnostics_row = cmds.rowLayout(
-        parent=diagnostics_column,
-        numberOfColumns=2,
-        adjustableColumn=2,
-        columnWidth2=(300, 300)
-    )
-
-    cmds.button(parent=diagnostics_row, label="Generate Log", height=32, command=api.generate_diagnostics_log)
-    cmds.button(parent=diagnostics_row, label="Open Logs", height=32, command=api.open_diagnostics_folder)
-    cmds.button(parent=diagnostics_column, label="Open Validation Reports", height=30, command=open_validation_reports_folder)
 
     maintenance = cmds.frameLayout(
         parent=column,
-        label="Maintenance",
+        label="MAINTENANCE",
         collapsable=True,
         collapse=True,
         marginWidth=10,
@@ -1129,69 +1547,75 @@ def build_tools_tab(api, tabs):
 
     cmds.text(
         parent=maintenance_column,
-        label="Advanced profile maintenance. Normally you do not need this section.",
+        label="This section is normally not needed.",
         align="left",
-        height=24
+        height=21
     )
 
     cmds.button(
         parent=maintenance_column,
-        label="Remove RenderHive from this Maya profile",
-        height=28,
+        label="Uninstall RenderHive",
+        height=27,
         backgroundColor=MUTED,
+        annotation="Remove RenderHive from the current Maya profile.",
         command=api.uninstall_renderhive_from_maya
     )
 
     return tab
 
+
 def build_action_bar(api, root):
     action_bar = cmds.columnLayout(
         parent=root,
         adjustableColumn=True,
-        rowSpacing=4,
-        height=84,
+        rowSpacing=3,
+        height=82,
         backgroundColor=BG
     )
 
-    cmds.separator(parent=action_bar, height=6, style="in")
+    cmds.separator(
+        parent=action_bar,
+        height=5,
+        style="in"
+    )
 
-    row = cmds.rowLayout(
+    centered_row = cmds.rowLayout(
         parent=action_bar,
         numberOfColumns=3,
-        adjustableColumn=3,
-        columnWidth3=(135, 165, 330)
+        adjustableColumn=2,
+        columnWidth3=(135, 340, 135)
+    )
+
+    cmds.text(
+        parent=centered_row,
+        label="",
+        height=38
     )
 
     cmds.button(
-        parent=row,
-        label="Sync",
-        height=36,
-        backgroundColor=PANEL_ALT,
-        command=api.refresh_from_scene
-    )
-
-    cmds.button(
-        parent=row,
-        label="Validate",
-        height=36,
-        backgroundColor=BLUE,
-        command=api.validate_scene_from_ui
-    )
-
-    cmds.button(
-        parent=row,
-        label="Run Local Worker",
-        height=36,
+        parent=centered_row,
+        label="SUBMIT JOB",
+        height=40,
         backgroundColor=ACCENT_DARK,
-        command=api.run_local_worker
+        annotation=(
+            "Submit the current job. This button is the single integration "
+            "point for the backend API."
+        ),
+        command=submit_job
+    )
+
+    cmds.text(
+        parent=centered_row,
+        label="",
+        height=38
     )
 
     cmds.text(
         api.STATUS_TEXT_NAME,
         parent=action_bar,
         label="  READY",
-        align="left",
-        height=24,
+        align="center",
+        height=23,
         backgroundColor=PANEL_ALT
     )
 
@@ -1213,10 +1637,11 @@ def show_submitter(api):
     start, end = api.get_frame_range()
     width, height = api.get_resolution()
     project_path = api.get_project_path()
+    scene_path = api.get_scene_path()
 
     window = cmds.window(
         api.WINDOW_NAME,
-        title="RenderHive  |  Submitter v{}".format(UI_VERSION),
+        title="RenderHive  /  Submitter {}".format(UI_VERSION),
         widthHeight=(WINDOW_WIDTH, WINDOW_HEIGHT),
         sizeable=True,
         closeCommand=on_submitter_close,
@@ -1227,10 +1652,10 @@ def show_submitter(api):
 
     header = cmds.rowLayout(
         parent=root,
-        numberOfColumns=2,
+        numberOfColumns=3,
         adjustableColumn=2,
-        columnWidth2=(58, 570),
-        height=66,
+        columnWidth3=(52, 430, 120),
+        height=64,
         backgroundColor=BG
     )
 
@@ -1239,8 +1664,8 @@ def show_submitter(api):
         label="RH",
         align="center",
         font="boldLabelFont",
-        width=52,
-        height=52,
+        width=46,
+        height=46,
         backgroundColor=ACCENT_DARK
     )
 
@@ -1256,25 +1681,66 @@ def show_submitter(api):
         label="RenderHive",
         font="boldLabelFont",
         align="left",
-        height=28
+        height=27
     )
 
     cmds.text(
         parent=header_info,
-        label="{}  |  Maya {}".format(scene_name, cmds.about(version=True)),
+        label="{}   /   Maya {}".format(
+            scene_name,
+            cmds.about(version=True)
+        ),
         align="left",
         height=20,
         backgroundColor=PANEL
     )
 
+    badges = cmds.columnLayout(
+        parent=header,
+        adjustableColumn=True,
+        rowSpacing=4,
+        backgroundColor=BG
+    )
+
+    cmds.text(
+        VALIDATION_HEALTH_BADGE,
+        parent=badges,
+        label="NOT CHECKED",
+        align="center",
+        height=22,
+        backgroundColor=MUTED
+    )
+
+    scene_label = "SAVED" if scene_path else "UNSAVED"
+    scene_color = SUCCESS if scene_path else WARNING
+
+    cmds.text(
+        SCENE_STATE_BADGE,
+        parent=badges,
+        label=scene_label,
+        align="center",
+        height=22,
+        backgroundColor=scene_color
+    )
+
     tabs = cmds.tabLayout(
+        MAIN_TABS_NAME,
         parent=root,
         innerMarginWidth=8,
-        innerMarginHeight=8
+        innerMarginHeight=8,
+        changeCommand=save_active_tab
     )
 
     job_tab = build_job_tab(api, tabs, scene_name, project_path)
-    render_tab = build_render_tab(api, tabs, scene_name, start, end, width, height)
+    render_tab = build_render_tab(
+        api,
+        tabs,
+        scene_name,
+        start,
+        end,
+        width,
+        height
+    )
     validation_tab = build_validation_tab(api, tabs)
     tools_tab = build_tools_tab(api, tabs)
 
@@ -1285,7 +1751,7 @@ def show_submitter(api):
             (job_tab, "JOB"),
             (render_tab, "RENDER"),
             (validation_tab, "CHECKS"),
-            (tools_tab, "MORE"),
+            (tools_tab, "TOOLS"),
         ]
     )
 
@@ -1305,22 +1771,28 @@ def show_submitter(api):
             (action_bar, "bottom", 8),
         ],
         attachControl=[
-            (tabs, "top", 4, header),
-            (tabs, "bottom", 4, action_bar),
+            (tabs, "top", 3, header),
+            (tabs, "bottom", 3, action_bar),
         ]
     )
 
     cmds.showWindow(window)
 
     try:
-        cmds.window(window, edit=True, widthHeight=(WINDOW_WIDTH, WINDOW_HEIGHT))
+        cmds.window(
+            window,
+            edit=True,
+            widthHeight=(WINDOW_WIDTH, WINDOW_HEIGHT)
+        )
     except Exception:
         pass
 
     api.rebuild_camera_menu()
     load_ui_preferences()
+    update_resolution_meta()
     refresh_filtered_validation_results()
+    set_validation_health(checked=False)
+    initialize_activity_log()
     api.set_status("Ready")
 
     return window
-
