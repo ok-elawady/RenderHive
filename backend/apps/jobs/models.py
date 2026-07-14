@@ -116,7 +116,11 @@ class Job(models.Model):
     
     max_frames_per_worker = PositiveIntegerField(
         default=1,
-        verbose_name='max concurrent frames per worker'
+        verbose_name='max concurrent frames per worker',
+        help_text=(
+            'Limits how many frames from this job a single machine can run at once. '
+            'Used to prevent a single job from monopolizing nodes with high core counts.'
+        )
     )
     
     log_directory = CharField(max_length=2048)
@@ -193,7 +197,11 @@ class Layer(models.Model):
     frame_range = CharField(max_length=1024)
     chunk_size  = PositiveIntegerField(
         default=1,
-        verbose_name='frames per chunk'
+        verbose_name='frames per chunk',
+        help_text=(
+            'Groups this many consecutive frames into a single worker task. High values '
+            'reduce startup overhead for fast-rendering frames (e.g. comp, playblasts).'
+        )
     )
     
     min_cores   = PositiveIntegerField(
@@ -274,7 +282,11 @@ class Frame(models.Model):
     
     name    = CharField(max_length=256)
     number  = IntegerField(db_index=True)
-    dispatch_order = IntegerField(default=0, db_index=True)
+    dispatch_order = IntegerField(
+        default=0, 
+        db_index=True,
+        help_text='Scheduler priority within the layer. Lower numbers are dispatched first.'
+    )
     
     state       = CharField(max_length=16, choices=FrameState.choices,
                             default=FrameState.WAITING, db_index=True)
@@ -287,9 +299,18 @@ class Frame(models.Model):
     
     retries     = PositiveIntegerField(default=0)
     max_retries = PositiveIntegerField(default=3)
-    checkpoint_count = PositiveIntegerField(default=0)
+    checkpoint_count = PositiveIntegerField(
+        default=0,
+        help_text=(
+            'How many times the worker has reported saving intermediate progress '
+            '(useful for resuming aborted frames).'
+        )
+    )
     
-    exit_status = IntegerField(default=-1)
+    exit_status = IntegerField(
+        default=-1,
+        help_text='Raw process exit code returned by the worker. -1 means the frame has not completed.'
+    )
     
     max_memory_used_mb = PositiveIntegerField(
         default=0,
@@ -340,17 +361,41 @@ class Dependency(models.Model):
     id   = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     type = CharField(max_length=24, choices=DependencyType.choices, db_index=True)
     
-    dep_job   = ForeignKey(Job,   on_delete=CASCADE, related_name='blocked_dependencies')
-    dep_layer = ForeignKey(Layer, on_delete=CASCADE, null=True, blank=True,
-                           related_name='blocked_dependencies')
-    dep_frame = ForeignKey(Frame, on_delete=CASCADE, null=True, blank=True,
-                           related_name='blocked_dependencies')
-                           
-    parent_job   = ForeignKey(Job,   on_delete=CASCADE, related_name='blocking_dependencies')
-    parent_layer = ForeignKey(Layer, on_delete=CASCADE, null=True, blank=True,
-                              related_name='blocking_dependencies')
-    parent_frame = ForeignKey(Frame, on_delete=CASCADE, null=True, blank=True,
-                              related_name='blocking_dependencies')
+    dep_job   = ForeignKey(
+        Job, on_delete=CASCADE, related_name='blocked_dependencies',
+        verbose_name='blocked job',
+        help_text='The job that is WAITING. It cannot start until the blocking (parent) entity completes.'
+    )
+    dep_layer = ForeignKey(
+        Layer, on_delete=CASCADE, null=True, blank=True,
+        related_name='blocked_dependencies',
+        verbose_name='blocked layer',
+        help_text='The specific layer that is WAITING (required for LAYER_ON_LAYER dependencies).'
+    )
+    dep_frame = ForeignKey(
+        Frame, on_delete=CASCADE, null=True, blank=True,
+        related_name='blocked_dependencies',
+        verbose_name='blocked frame',
+        help_text='The specific frame that is WAITING (required for FRAME_ON_FRAME dependencies).'
+    )
+
+    parent_job   = ForeignKey(
+        Job, on_delete=CASCADE, related_name='blocking_dependencies',
+        verbose_name='blocking job',
+        help_text='The job that must complete FIRST before the blocked entity is released.'
+    )
+    parent_layer = ForeignKey(
+        Layer, on_delete=CASCADE, null=True, blank=True,
+        related_name='blocking_dependencies',
+        verbose_name='blocking layer',
+        help_text='The specific layer that must complete FIRST (required for LAYER_ON_LAYER dependencies).'
+    )
+    parent_frame = ForeignKey(
+        Frame, on_delete=CASCADE, null=True, blank=True,
+        related_name='blocking_dependencies',
+        verbose_name='blocking frame',
+        help_text='The specific frame that must complete FIRST (required for FRAME_ON_FRAME dependencies).'
+    )
                               
     is_satisfied = BooleanField(default=False, db_index=True)
     created_at   = DateTimeField(auto_now_add=True)
