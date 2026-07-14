@@ -9,7 +9,8 @@ ViewSets follow the serializer split pattern:
 """
 
 import django_filters
-from django.db.models import F
+from django.db import transaction
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -88,6 +89,13 @@ class JobViewSet(viewsets.ModelViewSet):
     filterset_class = JobFilter
     ordering_fields = ["priority", "created_at", "updated_at", "state"]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        """Return the base queryset, optimized with prefetches for retrieve."""
+        qs = super().get_queryset()
+        if self.action == "retrieve":
+            qs = qs.prefetch_related("layers")
+        return qs
 
     def get_serializer_class(self):
         """Return the appropriate serializer based on the action.
@@ -254,6 +262,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         return [IsAuthenticated()]
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def start(self, request, pk=None, **kwargs):
         """Mark a frame as RUNNING when a Worker begins execution.
 
@@ -268,7 +277,9 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             ``200 OK`` on success.
             ``409 Conflict`` if the frame is not in READY state.
         """
-        frame = self.get_object()
+        queryset = self.filter_queryset(self.get_queryset())
+        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, frame)
         if frame.state != FrameState.READY:
             return Response(
                 {"detail": f"Cannot start a frame in state '{frame.state}'."},
@@ -280,10 +291,11 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         frame.state = FrameState.RUNNING
         frame.worker_name = serializer.validated_data["worker_name"]
         frame.started_at = timezone.now()
-        frame.save(update_fields=["state", "worker_name", "started_at"])
+        frame.save(update_fields=["state", "worker_name", "started_at", "updated_at"])
         return Response({"status": "running"})
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def succeed(self, request, pk=None, **kwargs):
         """Mark a frame as SUCCEEDED and record telemetry.
 
@@ -299,7 +311,9 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             ``200 OK`` on success.
             ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
         """
-        frame = self.get_object()
+        queryset = self.filter_queryset(self.get_queryset())
+        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, frame)
         if frame.state not in (FrameState.RUNNING, FrameState.CHECKPOINT):
             return Response(
                 {"detail": f"Cannot succeed a frame in state '{frame.state}'."},
@@ -319,6 +333,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         return Response({"status": "succeeded"})
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def fail(self, request, pk=None, **kwargs):
         """Mark a frame as FAILED or retry it based on the retry budget.
 
@@ -334,7 +349,9 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             ``200 OK`` with the resulting state (``failed`` or ``retrying``).
             ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
         """
-        frame = self.get_object()
+        queryset = self.filter_queryset(self.get_queryset())
+        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, frame)
         if frame.state not in (FrameState.RUNNING, FrameState.CHECKPOINT):
             return Response(
                 {"detail": f"Cannot fail a frame in state '{frame.state}'."},
@@ -344,22 +361,20 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         serializer.is_valid(raise_exception=True)
 
         frame.exit_status = serializer.validated_data["exit_status"]
-        frame.retries = F("retries") + 1
+        frame.retries += 1
         frame.stopped_at = timezone.now()
 
-        frame.refresh_from_db(fields=["retries"])
-        new_retries = frame.retries + 1  # optimistic before save
-
-        if new_retries >= frame.max_retries:
+        if frame.retries >= frame.max_retries:
             frame.state = FrameState.FAILED
             frame.save()
             return Response({"status": "failed"})
         else:
             frame.state = FrameState.READY
             frame.save()
-            return Response({"status": "retrying", "retries": new_retries})
+            return Response({"status": "retrying", "retries": frame.retries})
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def skip(self, request, pk=None, **kwargs):
         """Dismiss a failed frame, allowing its dependents to proceed.
 
@@ -380,7 +395,9 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
                 {"detail": "Only staff users can skip frames."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        frame = self.get_object()
+        queryset = self.filter_queryset(self.get_queryset())
+        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, frame)
         if frame.state != FrameState.FAILED:
             return Response(
                 {"detail": f"Only FAILED frames can be skipped (current state: '{frame.state}')."},
@@ -391,6 +408,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         return Response({"status": "skipped"})
 
     @action(detail=True, methods=["post"])
+    @transaction.atomic
     def checkpoint(self, request, pk=None, **kwargs):
         """Increment the checkpoint counter for a frame in progress.
 
@@ -406,15 +424,16 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             ``200 OK`` with the new checkpoint count.
             ``409 Conflict`` if the frame is not in RUNNING state.
         """
-        frame = self.get_object()
-        if frame.state != FrameState.RUNNING:
+        queryset = self.filter_queryset(self.get_queryset())
+        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, frame)
+        if frame.state not in (FrameState.RUNNING, FrameState.CHECKPOINT):
             return Response(
                 {"detail": f"Cannot checkpoint a frame in state '{frame.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
-        Frame.objects.filter(pk=frame.pk).update(
-            checkpoint_count=F("checkpoint_count") + 1,
-            state=FrameState.CHECKPOINT,
-        )
-        frame.refresh_from_db(fields=["checkpoint_count"])
+
+        frame.checkpoint_count += 1
+        frame.state = FrameState.CHECKPOINT
+        frame.save(update_fields=["checkpoint_count", "state", "updated_at"])
         return Response({"status": "checkpointed", "checkpoint_count": frame.checkpoint_count})

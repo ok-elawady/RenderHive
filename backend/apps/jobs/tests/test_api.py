@@ -355,3 +355,17 @@ class TestFrameActions:
         assert resp.data["checkpoint_count"] == 1
         frame.refresh_from_db()
         assert frame.state == FrameState.CHECKPOINT
+
+    def test_farm_agent_can_checkpoint_from_checkpoint_state(self, farm_client):
+        """Farm agent can re-checkpoint a frame already in CHECKPOINT state.
+
+        Long renders (e.g. V-Ray) save intermediate resume files multiple times
+        during a single frame execution. Each call must succeed, not 409.
+        """
+        frame = FrameFactory(state=FrameState.CHECKPOINT, checkpoint_count=1)
+        resp = farm_client.post(f"/api/frames/{frame.pk}/checkpoint/")
+        assert resp.status_code == 200
+        assert resp.data["checkpoint_count"] == 2
+        frame.refresh_from_db()
+        assert frame.state == FrameState.CHECKPOINT
+

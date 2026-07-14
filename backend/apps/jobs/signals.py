@@ -67,28 +67,41 @@ def frame_pre_save(sender, instance, **kwargs):
         old_instance = Frame.objects.get(id=instance.id)
     except Frame.DoesNotExist:
         # Initial creation - increment the new state counter
+        state_field = (
+            "running_frames"
+            if instance.state == FrameState.CHECKPOINT
+            else f"{instance.state.lower()}_frames"
+        )
         Layer.objects.filter(id=instance.layer_id).update(
-            **{f"{instance.state.lower()}_frames": F(f"{instance.state.lower()}_frames") + 1},
+            **{state_field: F(state_field) + 1},
             total_frames=F("total_frames") + 1,
         )
         Job.objects.filter(id=instance.job_id).update(
-            **{f"{instance.state.lower()}_frames": F(f"{instance.state.lower()}_frames") + 1},
+            **{state_field: F(state_field) + 1},
             total_frames=F("total_frames") + 1,
         )
         return
 
     if old_instance.state != instance.state:
         # State changed. Update parent counters atomically using F() expressions
-        old_state_field = f"{old_instance.state.lower()}_frames"
-        new_state_field = f"{instance.state.lower()}_frames"
+        old_state_field = (
+            "running_frames"
+            if old_instance.state == FrameState.CHECKPOINT
+            else f"{old_instance.state.lower()}_frames"
+        )
+        new_state_field = (
+            "running_frames"
+            if instance.state == FrameState.CHECKPOINT
+            else f"{instance.state.lower()}_frames"
+        )
 
-        # We perform updates safely using F() to avoid race conditions
-        Layer.objects.filter(id=instance.layer_id).update(
-            **{old_state_field: F(old_state_field) - 1, new_state_field: F(new_state_field) + 1}
-        )
-        Job.objects.filter(id=instance.job_id).update(
-            **{old_state_field: F(old_state_field) - 1, new_state_field: F(new_state_field) + 1}
-        )
+        if old_state_field != new_state_field:
+            Layer.objects.filter(id=instance.layer_id).update(
+                **{old_state_field: F(old_state_field) - 1, new_state_field: F(new_state_field) + 1}
+            )
+            Job.objects.filter(id=instance.job_id).update(
+                **{old_state_field: F(old_state_field) - 1, new_state_field: F(new_state_field) + 1}
+            )
 
         # If transitioning to SUCCEEDED or SKIPPED, satisfy dependencies blocking other frames
         if instance.state in (FrameState.SUCCEEDED, FrameState.SKIPPED):

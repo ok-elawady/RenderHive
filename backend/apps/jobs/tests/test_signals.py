@@ -1,6 +1,6 @@
 import pytest
 
-from apps.jobs.models import FrameState
+from apps.jobs.models import FrameState, Job, Layer
 
 from .factories import DependencyFactory, FrameFactory, LayerFactory
 
@@ -60,6 +60,34 @@ class TestFrameSignals:
         dep_frame.refresh_from_db()
         assert dep_frame.depend_count == 0
         assert dep_frame.state == FrameState.READY
+
+    def test_checkpoint_counter_lifecycle(self):
+        """RUNNING → CHECKPOINT → SUCCEEDED keeps running_frames correct throughout.
+
+        Verifies that the CHECKPOINT state is correctly mapped to running_frames
+        in the signal, so transitioning through it doesn't corrupt the counters.
+        """
+        frame = FrameFactory(state=FrameState.RUNNING)
+        Layer.objects.filter(pk=frame.layer.pk).update(running_frames=1, total_frames=1)
+        Job.objects.filter(pk=frame.job.pk).update(running_frames=1, total_frames=1)
+
+        # RUNNING → CHECKPOINT: running_frames must stay at 1 (worker is still active)
+        frame.state = FrameState.CHECKPOINT
+        frame.save()
+        frame.layer.refresh_from_db()
+        frame.job.refresh_from_db()
+        assert frame.layer.running_frames == 1
+        assert frame.job.running_frames == 1
+
+        # CHECKPOINT → SUCCEEDED: running_frames drops, succeeded_frames rises
+        frame.state = FrameState.SUCCEEDED
+        frame.save()
+        frame.layer.refresh_from_db()
+        frame.job.refresh_from_db()
+        assert frame.layer.running_frames == 0
+        assert frame.layer.succeeded_frames == 1
+        assert frame.job.running_frames == 0
+        assert frame.job.succeeded_frames == 1
 
 
 class TestDependencySignals:
