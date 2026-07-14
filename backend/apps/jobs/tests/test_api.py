@@ -452,8 +452,6 @@ class TestJobSubmissionMultiLayer:
         resp = user_client.post("/api/jobs/", payload, format="json")
         assert resp.status_code == 201
         job = Job.objects.get()
-        assert job.total_frames == 8   # 5 (beauty) + 3 (shadow)
+        assert job.total_frames == 8  # 5 (beauty) + 3 (shadow)
         assert job.waiting_frames == 8
         assert Frame.objects.count() == 8
-
-
