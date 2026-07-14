@@ -79,9 +79,7 @@ def frame_pre_save(sender, instance, update_fields=None, **kwargs):
         # direct .save() call (e.g., from FrameFactory in tests or a management
         # command). Do NOT also update counters elsewhere for that code path.
         state_field = (
-            "running_frames"
-            if instance.state == FrameState.CHECKPOINT
-            else f"{instance.state.lower()}_frames"
+            "running_frames" if instance.state == FrameState.CHECKPOINT else f"{instance.state.lower()}_frames"
         )
         Layer.objects.filter(id=instance.layer_id).update(
             **{state_field: F(state_field) + 1},
@@ -96,14 +94,10 @@ def frame_pre_save(sender, instance, update_fields=None, **kwargs):
     if old_instance.state != instance.state:
         # State changed. Update parent counters atomically using F() expressions
         old_state_field = (
-            "running_frames"
-            if old_instance.state == FrameState.CHECKPOINT
-            else f"{old_instance.state.lower()}_frames"
+            "running_frames" if old_instance.state == FrameState.CHECKPOINT else f"{old_instance.state.lower()}_frames"
         )
         new_state_field = (
-            "running_frames"
-            if instance.state == FrameState.CHECKPOINT
-            else f"{instance.state.lower()}_frames"
+            "running_frames" if instance.state == FrameState.CHECKPOINT else f"{instance.state.lower()}_frames"
         )
 
         if old_state_field != new_state_field:

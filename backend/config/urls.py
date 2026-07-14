@@ -34,6 +34,8 @@ urlpatterns = [
     # OpenAPI schema and Swagger UI
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    # allauth headless
+    path("_allauth/", include("allauth.headless.urls")),
 ]
 
 if settings.DEBUG:

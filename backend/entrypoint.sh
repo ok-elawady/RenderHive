@@ -59,6 +59,9 @@ if [ -n "$DJANGO_SUPERUSER_USERNAME" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; t
         2>/dev/null || echo "Superuser already exists, skipping."
 fi
 
+echo "Setting up farm service account..."
+python manage.py create_farm_token
+
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 

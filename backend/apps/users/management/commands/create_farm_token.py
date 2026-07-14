@@ -10,6 +10,8 @@ the shared network config directory. Worker daemons and DCC plugins read this
 file at startup and attach the token to every API request.
 """
 
+import os
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.management.base import BaseCommand
@@ -75,7 +77,16 @@ class Command(BaseCommand):
 
         # Create or retrieve the DRF auth token
         token, token_created = Token.objects.get_or_create(user=user)
-        if token_created:
+
+        env_token = os.environ.get("FARM_AGENT_TOKEN")
+        if env_token:
+            if token.key != env_token:
+                Token.objects.filter(user=user).update(key=env_token)
+                token.key = env_token
+                self.stdout.write(self.style.SUCCESS("Updated API token from FARM_AGENT_TOKEN environment variable."))
+            else:
+                self.stdout.write("Existing token matches FARM_AGENT_TOKEN.")
+        elif token_created:
             self.stdout.write(self.style.SUCCESS("Generated new API token."))
         else:
             self.stdout.write("Existing token retrieved.")
