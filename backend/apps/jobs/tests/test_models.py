@@ -1,7 +1,9 @@
 import pytest
 from django.core.exceptions import ValidationError
-from apps.jobs.models import JobState, DependencyType, Dependency
-from .factories import JobFactory, LayerFactory, FrameFactory
+
+from apps.jobs.models import Dependency, DependencyType, JobState
+
+from .factories import FrameFactory, JobFactory, LayerFactory
 
 pytestmark = pytest.mark.django_db
 

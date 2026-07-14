@@ -1,3 +1,227 @@
+"""
+Django Admin registration for the jobs app.
+
+Provides list views, search, filtering, and read-only protection on
+auto-managed fields (counter caches, timestamps, UUIDs) for all four
+jobs models: Job, Layer, Frame, and Dependency.
+"""
+
 from django.contrib import admin
 
-# Register your models here.
+from .models import Dependency, Frame, Job, Layer
+
+
+class LayerInline(admin.TabularInline):
+    """Inline display of Layers within the Job detail page.
+
+    Shows key fields without requiring a separate Layer admin page visit.
+    All fields are read-only to prevent accidental edits from the job view.
+
+    Attributes:
+        model: The Layer model.
+        extra: No blank rows shown by default.
+        show_change_link: Allows navigating to the full Layer admin page.
+    """
+
+    model = Layer
+    extra = 0
+    show_change_link = True
+    readonly_fields = (
+        'id', 'name', 'layer_type', 'state', 'frame_range', 'chunk_size',
+        'total_frames', 'waiting_frames', 'ready_frames', 'running_frames',
+        'succeeded_frames', 'failed_frames', 'skipped_frames',
+    )
+    fields = readonly_fields
+    can_delete = False
+
+
+@admin.register(Job)
+class JobAdmin(admin.ModelAdmin):
+    """Admin view for the Job model.
+
+    Counter cache fields and timestamps are read-only — they are managed
+    atomically by signals and must not be edited manually.
+    """
+
+    list_display = (
+        'name',
+        'visible_name',
+        'project',
+        'department',
+        'user',
+        'state',
+        'priority',
+        'is_paused',
+        'total_frames',
+        'running_frames',
+        'failed_frames',
+        'created_at',
+    )
+    list_filter = ('state', 'is_paused', 'project', 'department')
+    search_fields = ('name', 'visible_name', 'project', 'user')
+    ordering = ('-priority', 'created_at')
+    readonly_fields = (
+        'id', 'name',
+        'submitted_by',
+        'total_frames', 'waiting_frames', 'ready_frames', 'running_frames',
+        'succeeded_frames', 'failed_frames', 'skipped_frames', 'depend_frames',
+        'created_at', 'updated_at', 'stopped_at',
+    )
+    inlines = [LayerInline]
+
+    fieldsets = (
+        ('Identity', {
+            'fields': ('id', 'name', 'visible_name'),
+        }),
+        ('Ownership', {
+            'fields': ('project', 'department', 'user', 'submitted_by'),
+        }),
+        ('State', {
+            'fields': ('state', 'is_paused', 'priority', 'max_frames_per_worker'),
+        }),
+        ('Paths', {
+            'fields': ('log_directory',),
+        }),
+        ('Progress Counters (read-only)', {
+            'fields': (
+                'total_frames', 'waiting_frames', 'ready_frames', 'running_frames',
+                'succeeded_frames', 'failed_frames', 'skipped_frames', 'depend_frames',
+            ),
+            'classes': ('collapse',),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at', 'stopped_at'),
+        }),
+    )
+
+
+@admin.register(Layer)
+class LayerAdmin(admin.ModelAdmin):
+    """Admin view for the Layer model.
+
+    Counter cache fields and state are read-only — they are managed
+    atomically by signals and must not be edited manually.
+    """
+
+    list_display = (
+        'name',
+        'job',
+        'layer_type',
+        'state',
+        'frame_range',
+        'chunk_size',
+        'total_frames',
+        'running_frames',
+        'failed_frames',
+    )
+    list_filter = ('state', 'layer_type')
+    search_fields = ('name', 'job__name', 'job__visible_name')
+    ordering = ('job', 'name')
+    readonly_fields = (
+        'id', 'state',
+        'total_frames', 'waiting_frames', 'ready_frames', 'running_frames',
+        'succeeded_frames', 'failed_frames', 'skipped_frames', 'depend_frames',
+    )
+
+    fieldsets = (
+        ('Identity', {
+            'fields': ('id', 'job', 'name', 'layer_type'),
+        }),
+        ('Execution', {
+            'fields': ('command', 'frame_range', 'chunk_size'),
+        }),
+        ('Resource Requirements', {
+            'fields': ('min_cores', 'min_memory_mb', 'min_gpus', 'tags'),
+        }),
+        ('Scene', {
+            'fields': ('scene_path', 'scene_info'),
+        }),
+        ('Environment', {
+            'fields': ('env',),
+        }),
+        ('Reliability', {
+            'fields': ('max_retries', 'timeout_seconds'),
+        }),
+        ('State & Progress (read-only)', {
+            'fields': (
+                'state',
+                'total_frames', 'waiting_frames', 'ready_frames', 'running_frames',
+                'succeeded_frames', 'failed_frames', 'skipped_frames', 'depend_frames',
+            ),
+        }),
+    )
+
+
+@admin.register(Frame)
+class FrameAdmin(admin.ModelAdmin):
+    """Admin view for the Frame model.
+
+    The ``depend_count`` field is read-only — it is managed atomically
+    by signals and must not be edited manually.
+    """
+
+    list_display = (
+        'name',
+        'job',
+        'layer',
+        'number',
+        'state',
+        'depend_count',
+        'retries',
+        'worker_name',
+        'exit_status',
+        'started_at',
+        'stopped_at',
+    )
+    list_filter = ('state',)
+    search_fields = ('name', 'worker_name', 'job__name', 'layer__name')
+    ordering = ('job', 'layer', 'dispatch_order')
+    readonly_fields = (
+        'id', 'job', 'layer',
+        'depend_count',
+        'updated_at',
+    )
+
+    fieldsets = (
+        ('Identity', {
+            'fields': ('id', 'job', 'layer', 'name', 'number', 'dispatch_order'),
+        }),
+        ('State', {
+            'fields': ('state', 'depend_count'),
+        }),
+        ('Retry Logic', {
+            'fields': ('retries', 'max_retries', 'checkpoint_count'),
+        }),
+        ('Execution Telemetry', {
+            'fields': ('exit_status', 'max_memory_used_mb', 'cores_used', 'worker_name'),
+        }),
+        ('Timestamps', {
+            'fields': ('started_at', 'stopped_at', 'updated_at'),
+        }),
+    )
+
+
+@admin.register(Dependency)
+class DependencyAdmin(admin.ModelAdmin):
+    """Admin view for the Dependency model.
+
+    Provides visibility into the dependency graph. All fields are
+    effectively read-only in practice — dependencies should only be
+    created and satisfied via the API or signals.
+    """
+
+    list_display = (
+        'id',
+        'type',
+        'dep_job',
+        'dep_frame',
+        'parent_job',
+        'parent_frame',
+        'is_satisfied',
+        'created_at',
+        'satisfied_at',
+    )
+    list_filter = ('type', 'is_satisfied')
+    search_fields = ('dep_job__name', 'parent_job__name')
+    ordering = ('-created_at',)
+    readonly_fields = ('id', 'created_at', 'satisfied_at')

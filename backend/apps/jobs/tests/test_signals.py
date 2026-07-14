@@ -1,6 +1,8 @@
 import pytest
-from apps.jobs.models import FrameState, JobState, Frame, Layer, Job
-from .factories import JobFactory, LayerFactory, FrameFactory, DependencyFactory
+
+from apps.jobs.models import FrameState
+
+from .factories import DependencyFactory, FrameFactory, LayerFactory
 
 pytestmark = pytest.mark.django_db
 

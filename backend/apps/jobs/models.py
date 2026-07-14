@@ -6,9 +6,19 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import (
-    CASCADE, SET_NULL, BooleanField, CharField, DateTimeField, ForeignKey,
-    Index, IntegerField, JSONField, PositiveIntegerField, TextChoices,
-    TextField, UUIDField
+    CASCADE,
+    SET_NULL,
+    BooleanField,
+    CharField,
+    DateTimeField,
+    ForeignKey,
+    Index,
+    IntegerField,
+    JSONField,
+    PositiveIntegerField,
+    TextChoices,
+    TextField,
+    UUIDField,
 )
 
 
@@ -82,7 +92,10 @@ class Job(models.Model):
     user         = CharField(
         max_length=64, 
         db_index=True,
-        help_text="The submitter's display name. Defaults to the OS username in the DCC plugin but is manually editable. Matches Deadline's UserName field."
+        help_text=(
+            "The submitter's display name. Defaults to the OS username in the DCC "
+            "plugin but is manually editable. Matches Deadline's UserName field."
+        )
     )
     
     submitted_by = ForeignKey(
