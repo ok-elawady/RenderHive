@@ -47,6 +47,18 @@ fi
 echo "Running migrations..."
 python manage.py migrate --noinput
 
+# Auto-create a superuser for local/dev environments.
+# Reads DJANGO_SUPERUSER_USERNAME, DJANGO_SUPERUSER_EMAIL, DJANGO_SUPERUSER_PASSWORD
+# from environment variables. Skips silently if the user already exists.
+if [ -n "$DJANGO_SUPERUSER_USERNAME" ] && [ -n "$DJANGO_SUPERUSER_PASSWORD" ]; then
+    echo "Creating superuser if not exists..."
+    python manage.py createsuperuser \
+        --noinput \
+        --username "$DJANGO_SUPERUSER_USERNAME" \
+        --email "${DJANGO_SUPERUSER_EMAIL:-admin@renderhive.local}" \
+        2>/dev/null || echo "Superuser already exists, skipping."
+fi
+
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
