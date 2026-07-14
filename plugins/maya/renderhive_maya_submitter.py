@@ -1609,3 +1609,29 @@ def show_submitter():
     return renderhive_submitter_window.show_submitter(
         sys.modules[__name__]
     )
+
+
+
+# RENDERHIVE_QT_UI_PHASE1_FIXED
+def show_submitter():
+    import importlib
+    import os
+    import sys
+
+    package_root = os.path.dirname(os.path.abspath(__file__))
+
+    if package_root in sys.path:
+        sys.path.remove(package_root)
+
+    sys.path.insert(0, package_root)
+    importlib.invalidate_caches()
+
+    import ui.qt_theme as qt_theme
+    import ui.qt_submitter_window as qt_submitter_window
+
+    importlib.reload(qt_theme)
+    importlib.reload(qt_submitter_window)
+
+    return qt_submitter_window.show_submitter(
+        sys.modules[__name__]
+    )

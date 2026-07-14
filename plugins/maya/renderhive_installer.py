@@ -50,7 +50,7 @@ def create_basic_icon(install_dir):
     if not os.path.exists(icons_dir):
         os.makedirs(icons_dir)
 
-    icon_path = os.path.join(icons_dir, "renderhive_icon.xpm")
+    icon_path = os.path.join(icons_dir, "renderhive_icon.png")
 
     xpm_data = [
         "32 32 5 1",
@@ -215,6 +215,7 @@ def install_from_drag_drop(source_dir):
         icon="information"
     )
 
+
 def get_installed_package_dir():
     user_scripts_dir = cmds.internalVar(userScriptDir=True)
     return os.path.join(user_scripts_dir, "RenderHive")
@@ -240,7 +241,8 @@ def remove_renderhive_shelf_button():
             for child in children:
                 try:
                     label = cmds.shelfButton(child, query=True, label=True)
-                    annotation = cmds.shelfButton(child, query=True, annotation=True)
+                    annotation = cmds.shelfButton(
+                        child, query=True, annotation=True)
 
                     if label == BUTTON_LABEL or "RenderHive" in annotation:
                         cmds.deleteUI(child)

@@ -18,3 +18,10 @@ global proc renderHiveDragInstall()
 }
 
 renderHiveDragInstall();
+
+
+// RENDERHIVE_BRANDING_FIX_V2_1
+python("import os, sys, maya.cmds as cmds; p=os.path.join(cmds.internalVar(userScriptDir=True), 'RenderHive'); p=p.replace('\\\\','/'); sys.path.insert(0,p) if p not in sys.path else None; import renderhive_branding; renderhive_branding.apply_shelf_icon()");
+
+// RENDERHIVE_BRANDING_V1
+python("import os, sys, maya.cmds as cmds; p=os.path.join(cmds.internalVar(userScriptDir=True), 'RenderHive'); p=p.replace('\\\\','/'); sys.path.insert(0,p) if p not in sys.path else None; import importlib, renderhive_branding; importlib.reload(renderhive_branding); renderhive_branding.apply_shelf_icon()");
