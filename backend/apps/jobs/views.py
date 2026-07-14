@@ -328,7 +328,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         frame.max_memory_used_mb = data["max_memory_used_mb"]
         if data.get("cores_used") is not None:
             frame.cores_used = data["cores_used"]
-        frame.stopped_at = timezone.now()
+        # stopped_at is set by the frame_pre_save signal on SUCCEEDED/SKIPPED transitions.
         frame.save()
         return Response({"status": "succeeded"})
 
@@ -362,13 +362,15 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
 
         frame.exit_status = serializer.validated_data["exit_status"]
         frame.retries += 1
-        frame.stopped_at = timezone.now()
 
         if frame.retries >= frame.max_retries:
             frame.state = FrameState.FAILED
+            frame.stopped_at = timezone.now()
             frame.save()
             return Response({"status": "failed"})
         else:
+            # Frame will be re-dispatched; stopped_at is intentionally not set
+            # so it doesn't show a misleading end timestamp for a frame still in flight.
             frame.state = FrameState.READY
             frame.save()
             return Response({"status": "retrying", "retries": frame.retries})
@@ -422,7 +424,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
 
         Returns:
             ``200 OK`` with the new checkpoint count.
-            ``409 Conflict`` if the frame is not in RUNNING state.
+            ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
         """
         queryset = self.filter_queryset(self.get_queryset())
         frame = get_object_or_404(queryset.select_for_update(), pk=pk)

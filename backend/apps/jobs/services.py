@@ -10,6 +10,7 @@ import re
 import time
 
 from django.db import transaction
+from django.db.models import F
 
 
 def generate_job_name(project: str, user: str, visible_name: str) -> str:
@@ -168,8 +169,8 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
             waiting_frames=frame_count,
         )
         Job.objects.filter(pk=job.pk).update(
-            total_frames=Job.objects.filter(pk=job.pk).values_list("total_frames", flat=True)[0] + frame_count,
-            waiting_frames=Job.objects.filter(pk=job.pk).values_list("waiting_frames", flat=True)[0] + frame_count,
+            total_frames=F("total_frames") + frame_count,
+            waiting_frames=F("waiting_frames") + frame_count,
         )
 
     job.refresh_from_db()

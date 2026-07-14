@@ -369,3 +369,91 @@ class TestFrameActions:
         frame.refresh_from_db()
         assert frame.state == FrameState.CHECKPOINT
 
+    def test_farm_agent_can_succeed_from_checkpoint_state(self, farm_client):
+        """Farm agent can mark a CHECKPOINT frame as SUCCEEDED."""
+        frame = FrameFactory(state=FrameState.CHECKPOINT)
+        resp = farm_client.post(
+            f"/api/frames/{frame.pk}/succeed/",
+            {"exit_status": 0, "max_memory_used_mb": 2048},
+            format="json",
+        )
+        assert resp.status_code == 200
+        frame.refresh_from_db()
+        assert frame.state == FrameState.SUCCEEDED
+        assert frame.stopped_at is not None
+
+    def test_farm_agent_can_fail_from_checkpoint_state(self, farm_client):
+        """Farm agent can report failure on a CHECKPOINT frame (retry path)."""
+        frame = FrameFactory(state=FrameState.CHECKPOINT, retries=0, max_retries=3)
+        resp = farm_client.post(f"/api/frames/{frame.pk}/fail/", {"exit_status": 1}, format="json")
+        assert resp.status_code == 200
+        frame.refresh_from_db()
+        assert frame.state == FrameState.READY
+
+    def test_skip_non_failed_frame_returns_409(self, staff_client):
+        """Trying to skip a frame that is not FAILED returns 409 Conflict."""
+        frame = FrameFactory(state=FrameState.RUNNING)
+        resp = staff_client.post(f"/api/frames/{frame.pk}/skip/")
+        assert resp.status_code == 409
+
+    def test_unauthenticated_cannot_call_start(self, anon_client):
+        """Unauthenticated requests to worker-only actions are rejected."""
+        frame = FrameFactory(state=FrameState.READY)
+        resp = anon_client.post(f"/api/frames/{frame.pk}/start/", {"worker_name": "node-01"}, format="json")
+        assert resp.status_code in (401, 403)
+
+    def test_fail_within_retry_budget_does_not_set_stopped_at(self, farm_client):
+        """A frame that will be retried (back to READY) must not have stopped_at set.
+
+        stopped_at represents permanent termination. A retried frame is still in
+        flight and should not carry a misleading end timestamp.
+        """
+        frame = FrameFactory(state=FrameState.RUNNING, retries=0, max_retries=3)
+        farm_client.post(f"/api/frames/{frame.pk}/fail/", {"exit_status": 1}, format="json")
+        frame.refresh_from_db()
+        assert frame.state == FrameState.READY
+        assert frame.stopped_at is None
+
+
+# ── Multi-layer Counter Accumulation ─────────────────────────────────────────
+
+
+class TestJobSubmissionMultiLayer:
+    """Verify that job-level frame counters accumulate correctly across layers.
+
+    This exercises the F()-expression fix in services.py. A non-atomic
+    read-then-write would silently drop the second layer's count under
+    concurrent submissions.
+    """
+
+    def test_multi_layer_job_counter_accumulation(self, user_client):
+        """Job total_frames sums frame counts across all layers."""
+        payload = {
+            "visible_name": "Multi-layer Job",
+            "project": "proj_x",
+            "department": "Lighting",
+            "user": "artist",
+            "log_directory": "/proj/logs/",
+            "layers": [
+                {
+                    "name": "beauty",
+                    "layer_type": "RENDER",
+                    "command": "render scene.ma",
+                    "frame_range": "1-5",
+                },
+                {
+                    "name": "shadow",
+                    "layer_type": "RENDER",
+                    "command": "render scene.ma",
+                    "frame_range": "1-3",
+                },
+            ],
+        }
+        resp = user_client.post("/api/jobs/", payload, format="json")
+        assert resp.status_code == 201
+        job = Job.objects.get()
+        assert job.total_frames == 8   # 5 (beauty) + 3 (shadow)
+        assert job.waiting_frames == 8
+        assert Frame.objects.count() == 8
+
+

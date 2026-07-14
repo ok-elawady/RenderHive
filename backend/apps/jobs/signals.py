@@ -33,7 +33,7 @@ def dependency_pre_save(sender, instance, **kwargs):
                         frame.depend_count -= 1
                         if frame.depend_count == 0 and frame.state == FrameState.WAITING:
                             frame.state = FrameState.READY
-                        frame.save(update_fields=["depend_count", "state"])
+                        frame.save(update_fields=["depend_count", "state", "updated_at"])
         except Dependency.DoesNotExist:
             pass
 
@@ -51,22 +51,33 @@ def dependency_pre_delete(sender, instance, **kwargs):
                 frame.depend_count -= 1
                 if frame.depend_count == 0 and frame.state == FrameState.WAITING:
                     frame.state = FrameState.READY
-                frame.save(update_fields=["depend_count", "state"])
+                frame.save(update_fields=["depend_count", "state", "updated_at"])
             except Frame.DoesNotExist:
                 pass
 
 
 @receiver(pre_save, sender=Frame)
-def frame_pre_save(sender, instance, **kwargs):
+def frame_pre_save(sender, instance, update_fields=None, **kwargs):
     """
     Handle Frame state transitions:
     1. Update parent Job and Layer counter caches.
     2. Resolve dependencies if frame SUCCEEDED or SKIPPED.
     """
+    # Fast-exit: if update_fields is specified and "state" is not in it, there
+    # is no state transition to process. Skips the DB round-trip for saves that
+    # only touch depend_count, checkpoint_count, or other non-state fields.
+    if update_fields is not None and "state" not in update_fields:
+        return
+
     try:
         old_instance = Frame.objects.get(id=instance.id)
     except Frame.DoesNotExist:
-        # Initial creation - increment the new state counter
+        # NOTE: In the standard job submission flow, frames are created via
+        # Frame.objects.bulk_create(), which bypasses signals entirely. The
+        # counter updates for that path are handled manually in services.py.
+        # This block only fires when a Frame is created via .create() or a
+        # direct .save() call (e.g., from FrameFactory in tests or a management
+        # command). Do NOT also update counters elsewhere for that code path.
         state_field = (
             "running_frames"
             if instance.state == FrameState.CHECKPOINT

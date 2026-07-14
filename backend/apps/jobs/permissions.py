@@ -73,6 +73,13 @@ class IsJobOwnerOrStaff(BasePermission):
 
         Returns:
             True if the user is the job submitter or a staff user.
+
+        Note:
+            Jobs submitted via the DCC plugin have ``submitted_by=None`` because
+            the plugin authenticates as the shared ``farm_service`` account rather
+            than an individual web user. This means no non-staff artist can mutate
+            (PATCH, DELETE, pause, resume) a plugin-submitted job. Staff users are
+            always permitted and can act as a proxy for the original submitter.
         """
         if request.user.is_staff:
             return True
