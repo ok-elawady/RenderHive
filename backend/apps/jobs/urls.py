@@ -18,15 +18,15 @@ from .views import FrameViewSet, JobViewSet, LayerViewSet
 
 # ── Top-level router ──────────────────────────────────────────────────────────
 router = routers.DefaultRouter()
-router.register(r'jobs', JobViewSet, basename='job')
-router.register(r'frames', FrameViewSet, basename='frame')
+router.register(r"jobs", JobViewSet, basename="job")
+router.register(r"frames", FrameViewSet, basename="frame")
 
 # ── Nested: jobs → layers ─────────────────────────────────────────────────────
-jobs_router = routers.NestedDefaultRouter(router, r'jobs', lookup='job')
-jobs_router.register(r'layers', LayerViewSet, basename='job-layer')
+jobs_router = routers.NestedDefaultRouter(router, r"jobs", lookup="job")
+jobs_router.register(r"layers", LayerViewSet, basename="job-layer")
 
 # ── Nested: layers → frames ───────────────────────────────────────────────────
-layers_router = routers.NestedDefaultRouter(jobs_router, r'layers', lookup='layer')
-layers_router.register(r'frames', FrameViewSet, basename='layer-frame')
+layers_router = routers.NestedDefaultRouter(jobs_router, r"layers", lookup="layer")
+layers_router.register(r"frames", FrameViewSet, basename="layer-frame")
 
 urlpatterns = router.urls + jobs_router.urls + layers_router.urls

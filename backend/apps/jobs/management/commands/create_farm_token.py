@@ -17,8 +17,8 @@ from rest_framework.authtoken.models import Token
 
 User = get_user_model()
 
-FARM_USERNAME = 'farm_service'
-FARM_GROUP = 'farm_agents'
+FARM_USERNAME = "farm_service"
+FARM_GROUP = "farm_agents"
 
 
 class Command(BaseCommand):
@@ -57,11 +57,11 @@ class Command(BaseCommand):
         user, user_created = User.objects.get_or_create(
             username=FARM_USERNAME,
             defaults={
-                'is_active': True,
-                'is_staff': False,
-                'is_superuser': False,
-                'email': 'farm_service@renderhive.internal',
-            }
+                "is_active": True,
+                "is_staff": False,
+                "is_superuser": False,
+                "email": "farm_service@renderhive.internal",
+            },
         )
         if user_created:
             user.set_unusable_password()
@@ -88,6 +88,5 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING("═" * 60))
         self.stdout.write("")
         self.stdout.write(
-            "  Workers and DCC plugins must include this token in every request:\n"
-            "  Authorization: Token <token>"
+            "  Workers and DCC plugins must include this token in every request:\n  Authorization: Token <token>"
         )

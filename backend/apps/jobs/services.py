@@ -6,10 +6,10 @@ views or request objects. Serializers and views call these functions to keep
 themselves thin.
 """
 
-import time
 import re
+import time
+
 from django.db import transaction
-from django.utils import timezone
 
 
 def generate_job_name(project: str, user: str, visible_name: str) -> str:
@@ -28,9 +28,10 @@ def generate_job_name(project: str, user: str, visible_name: str) -> str:
         A unique, filesystem-safe job name string.
     """
     epoch_ms = int(time.time() * 1000)
+
     # Sanitize each part: lowercase, replace non-alphanumeric with underscore
     def sanitize(s: str) -> str:
-        return re.sub(r'[^a-z0-9]+', '_', s.lower()).strip('_')
+        return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
 
     return f"{sanitize(project)}-{sanitize(user)}-{sanitize(visible_name)}-{epoch_ms}"
 
@@ -59,16 +60,16 @@ def expand_frame_range(frame_range: str, chunk_size: int = 1) -> list[int]:
         ValueError: If the frame range string contains an invalid segment.
     """
     frames = []
-    segments = frame_range.split(',')
+    segments = frame_range.split(",")
 
     for segment in segments:
         segment = segment.strip()
         if not segment:
             continue
 
-        step_match = re.match(r'^(-?\d+)-(-?\d+)x(\d+)$', segment)
-        range_match = re.match(r'^(-?\d+)-(-?\d+)$', segment)
-        single_match = re.match(r'^-?\d+$', segment)
+        step_match = re.match(r"^(-?\d+)-(-?\d+)x(\d+)$", segment)
+        range_match = re.match(r"^(-?\d+)-(-?\d+)$", segment)
+        single_match = re.match(r"^-?\d+$", segment)
 
         if step_match:
             start, end, step = int(step_match.group(1)), int(step_match.group(2)), int(step_match.group(3))
@@ -118,24 +119,24 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
     Raises:
         ValueError: If any layer's ``frame_range`` is invalid.
     """
-    from apps.jobs.models import Job, Layer, Frame, FrameState
+    from apps.jobs.models import Frame, FrameState, Job, Layer
 
-    layers_data = validated_data.pop('layers')
+    layers_data = validated_data.pop("layers")
 
     # Generate a stable system name if not provided
-    if not validated_data.get('name'):
-        validated_data['name'] = generate_job_name(
-            project=validated_data.get('project', 'unknown'),
-            user=validated_data.get('user', 'unknown'),
-            visible_name=validated_data.get('visible_name', 'job'),
+    if not validated_data.get("name"):
+        validated_data["name"] = generate_job_name(
+            project=validated_data.get("project", "unknown"),
+            user=validated_data.get("user", "unknown"),
+            visible_name=validated_data.get("visible_name", "job"),
         )
 
     job = Job.objects.create(submitted_by=submitted_by, **validated_data)
 
     for layer_data in layers_data:
-        frame_range = layer_data['frame_range']
-        chunk_size = layer_data.get('chunk_size', 1)
-        max_retries = layer_data.get('max_retries', 3)
+        frame_range = layer_data["frame_range"]
+        chunk_size = layer_data.get("chunk_size", 1)
+        max_retries = layer_data.get("max_retries", 3)
 
         frame_starts = expand_frame_range(frame_range, chunk_size)
 
@@ -145,15 +146,17 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
         frames = []
         for i, start_number in enumerate(frame_starts):
             padded = str(start_number).zfill(4)
-            frames.append(Frame(
-                layer=layer,
-                job=job,
-                name=f"{layer.name}_{padded}",
-                number=start_number,
-                dispatch_order=i,
-                state=FrameState.WAITING,
-                max_retries=max_retries,
-            ))
+            frames.append(
+                Frame(
+                    layer=layer,
+                    job=job,
+                    name=f"{layer.name}_{padded}",
+                    number=start_number,
+                    dispatch_order=i,
+                    state=FrameState.WAITING,
+                    max_retries=max_retries,
+                )
+            )
 
         Frame.objects.bulk_create(frames)
 
@@ -165,8 +168,8 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
             waiting_frames=frame_count,
         )
         Job.objects.filter(pk=job.pk).update(
-            total_frames=Job.objects.filter(pk=job.pk).values_list('total_frames', flat=True)[0] + frame_count,
-            waiting_frames=Job.objects.filter(pk=job.pk).values_list('waiting_frames', flat=True)[0] + frame_count,
+            total_frames=Job.objects.filter(pk=job.pk).values_list("total_frames", flat=True)[0] + frame_count,
+            waiting_frames=Job.objects.filter(pk=job.pk).values_list("waiting_frames", flat=True)[0] + frame_count,
         )
 
     job.refresh_from_db()

@@ -12,6 +12,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from apps.jobs.models import Frame, FrameState, Job, JobState, Layer
+
 from .factories import FrameFactory, JobFactory, LayerFactory
 
 User = get_user_model()
@@ -21,23 +22,24 @@ pytestmark = pytest.mark.django_db
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def user(db):
     """A standard authenticated human user (artist)."""
-    return User.objects.create_user(username='artist', password='pass')
+    return User.objects.create_user(username="artist", password="pass")
 
 
 @pytest.fixture
 def staff_user(db):
     """A staff user (supervisor)."""
-    return User.objects.create_user(username='supervisor', password='pass', is_staff=True)
+    return User.objects.create_user(username="supervisor", password="pass", is_staff=True)
 
 
 @pytest.fixture
 def farm_agent_user(db):
     """A farm_service user in the farm_agents group (Worker / DCC plugin)."""
-    group, _ = Group.objects.get_or_create(name='farm_agents')
-    agent = User.objects.create_user(username='farm_service', password='!')
+    group, _ = Group.objects.get_or_create(name="farm_agents")
+    agent = User.objects.create_user(username="farm_service", password="!")
     agent.groups.add(group)
     return agent
 
@@ -47,7 +49,7 @@ def user_client(user):
     """API client authenticated as a regular artist."""
     client = APIClient()
     token = Token.objects.create(user=user)
-    client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+    client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
     return client
 
 
@@ -56,7 +58,7 @@ def staff_client(staff_user):
     """API client authenticated as a staff supervisor."""
     client = APIClient()
     token = Token.objects.create(user=staff_user)
-    client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+    client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
     return client
 
 
@@ -65,7 +67,7 @@ def farm_client(farm_agent_user):
     """API client authenticated as the farm_service agent."""
     client = APIClient()
     token = Token.objects.create(user=farm_agent_user)
-    client.credentials(HTTP_AUTHORIZATION=f'Token {token.key}')
+    client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
     return client
 
 
@@ -77,30 +79,31 @@ def anon_client():
 
 # ── Job Submission (POST /api/jobs/) ──────────────────────────────────────────
 
+
 class TestJobSubmission:
     JOB_PAYLOAD = {
-        'visible_name': 'Beauty Pass v3',
-        'project': 'proj_x_ep03',
-        'department': 'Lighting',
-        'user': 'artist',
-        'priority': 75,
-        'log_directory': '/proj/logs/',
-        'layers': [
+        "visible_name": "Beauty Pass v3",
+        "project": "proj_x_ep03",
+        "department": "Lighting",
+        "user": "artist",
+        "priority": 75,
+        "log_directory": "/proj/logs/",
+        "layers": [
             {
-                'name': 'beauty',
-                'layer_type': 'RENDER',
-                'command': 'render -s {frame} -e {frame} scene.ma',
-                'frame_range': '1-10',
-                'chunk_size': 1,
-                'min_cores': 4,
-                'min_memory_mb': 8192,
+                "name": "beauty",
+                "layer_type": "RENDER",
+                "command": "render -s {frame} -e {frame} scene.ma",
+                "frame_range": "1-10",
+                "chunk_size": 1,
+                "min_cores": 4,
+                "min_memory_mb": 8192,
             }
-        ]
+        ],
     }
 
     def test_authenticated_user_can_submit_job(self, user_client):
         """A regular authenticated user can submit a job."""
-        resp = user_client.post('/api/jobs/', self.JOB_PAYLOAD, format='json')
+        resp = user_client.post("/api/jobs/", self.JOB_PAYLOAD, format="json")
         assert resp.status_code == 201
         assert Job.objects.count() == 1
         assert Layer.objects.count() == 1
@@ -108,7 +111,7 @@ class TestJobSubmission:
 
     def test_job_creation_populates_frame_counters(self, user_client):
         """Job and Layer frame counter caches are populated on submission."""
-        user_client.post('/api/jobs/', self.JOB_PAYLOAD, format='json')
+        user_client.post("/api/jobs/", self.JOB_PAYLOAD, format="json")
         job = Job.objects.get()
         assert job.total_frames == 10
         assert job.waiting_frames == 10
@@ -119,93 +122,105 @@ class TestJobSubmission:
 
     def test_submitted_by_populated_for_web_submission(self, user_client, user):
         """submitted_by is set to the session user for web submissions."""
-        user_client.post('/api/jobs/', self.JOB_PAYLOAD, format='json')
+        user_client.post("/api/jobs/", self.JOB_PAYLOAD, format="json")
         job = Job.objects.get()
         assert job.submitted_by == user
 
     def test_farm_agent_can_submit_job(self, farm_client):
         """DCC plugin (farm agent) can submit a job."""
-        resp = farm_client.post('/api/jobs/', self.JOB_PAYLOAD, format='json')
+        resp = farm_client.post("/api/jobs/", self.JOB_PAYLOAD, format="json")
         assert resp.status_code == 201
 
     def test_unauthenticated_cannot_submit_job(self, anon_client):
         """Unauthenticated clients are rejected (401 or 403 depending on auth scheme)."""
-        resp = anon_client.post('/api/jobs/', self.JOB_PAYLOAD, format='json')
+        resp = anon_client.post("/api/jobs/", self.JOB_PAYLOAD, format="json")
         assert resp.status_code in (401, 403)
 
     def test_job_without_layers_is_rejected(self, user_client):
         """A job payload with an empty layers list is rejected with 400."""
-        payload = {**self.JOB_PAYLOAD, 'layers': []}
-        resp = user_client.post('/api/jobs/', payload, format='json')
+        payload = {**self.JOB_PAYLOAD, "layers": []}
+        resp = user_client.post("/api/jobs/", payload, format="json")
         assert resp.status_code == 400
 
     def test_invalid_frame_range_is_rejected(self, user_client):
         """An unparseable frame range returns a 400."""
-        payload = {**self.JOB_PAYLOAD, 'layers': [{
-            **self.JOB_PAYLOAD['layers'][0],
-            'frame_range': 'not-valid',
-        }]}
-        resp = user_client.post('/api/jobs/', payload, format='json')
+        payload = {
+            **self.JOB_PAYLOAD,
+            "layers": [
+                {
+                    **self.JOB_PAYLOAD["layers"][0],
+                    "frame_range": "not-valid",
+                }
+            ],
+        }
+        resp = user_client.post("/api/jobs/", payload, format="json")
         assert resp.status_code == 400
 
     def test_chunked_frame_range_creates_correct_frame_count(self, user_client):
         """A 1-10 range with chunk_size=5 creates 2 Frame rows."""
-        payload = {**self.JOB_PAYLOAD, 'layers': [{
-            **self.JOB_PAYLOAD['layers'][0],
-            'frame_range': '1-10',
-            'chunk_size': 5,
-        }]}
-        user_client.post('/api/jobs/', payload, format='json')
+        payload = {
+            **self.JOB_PAYLOAD,
+            "layers": [
+                {
+                    **self.JOB_PAYLOAD["layers"][0],
+                    "frame_range": "1-10",
+                    "chunk_size": 5,
+                }
+            ],
+        }
+        user_client.post("/api/jobs/", payload, format="json")
         assert Frame.objects.count() == 2
 
 
 # ── Job List & Detail (GET /api/jobs/) ────────────────────────────────────────
 
+
 class TestJobListAndDetail:
     def test_list_returns_all_jobs(self, user_client):
         """GET /api/jobs/ returns all jobs."""
         JobFactory.create_batch(3)
-        resp = user_client.get('/api/jobs/')
+        resp = user_client.get("/api/jobs/")
         assert resp.status_code == 200
-        assert len(resp.data['results']) == 3
+        assert len(resp.data["results"]) == 3
 
     def test_filter_by_state(self, user_client):
         """?state= filter returns only matching jobs."""
         JobFactory(state=JobState.RUNNING)
         JobFactory(state=JobState.PENDING)
-        resp = user_client.get('/api/jobs/?state=RUNNING')
+        resp = user_client.get("/api/jobs/?state=RUNNING")
         assert resp.status_code == 200
-        assert len(resp.data['results']) == 1
-        assert resp.data['results'][0]['state'] == 'RUNNING'
+        assert len(resp.data["results"]) == 1
+        assert resp.data["results"][0]["state"] == "RUNNING"
 
     def test_filter_by_project(self, user_client):
         """?project= filter returns only matching jobs."""
-        JobFactory(project='proj_a')
-        JobFactory(project='proj_b')
-        resp = user_client.get('/api/jobs/?project=proj_a')
+        JobFactory(project="proj_a")
+        JobFactory(project="proj_b")
+        resp = user_client.get("/api/jobs/?project=proj_a")
         assert resp.status_code == 200
-        assert len(resp.data['results']) == 1
+        assert len(resp.data["results"]) == 1
 
     def test_retrieve_includes_nested_layers(self, user_client):
         """GET /api/jobs/{id}/ includes nested layers array."""
         layer = LayerFactory()
-        resp = user_client.get(f'/api/jobs/{layer.job.pk}/')
+        resp = user_client.get(f"/api/jobs/{layer.job.pk}/")
         assert resp.status_code == 200
-        assert len(resp.data['layers']) == 1
+        assert len(resp.data["layers"]) == 1
 
     def test_unauthenticated_cannot_list(self, anon_client):
         """Unauthenticated requests to list endpoint are rejected (401 or 403)."""
-        resp = anon_client.get('/api/jobs/')
+        resp = anon_client.get("/api/jobs/")
         assert resp.status_code in (401, 403)
 
 
 # ── Job Patch & Permissions ───────────────────────────────────────────────────
 
+
 class TestJobMutations:
     def test_owner_can_patch_priority(self, user_client, user):
         """Job submitter can update priority."""
         job = JobFactory(submitted_by=user)
-        resp = user_client.patch(f'/api/jobs/{job.pk}/', {'priority': 90}, format='json')
+        resp = user_client.patch(f"/api/jobs/{job.pk}/", {"priority": 90}, format="json")
         assert resp.status_code == 200
         job.refresh_from_db()
         assert job.priority == 90
@@ -213,19 +228,19 @@ class TestJobMutations:
     def test_non_owner_cannot_patch(self, user_client):
         """A different user cannot patch another user's job."""
         job = JobFactory()  # no submitted_by set
-        resp = user_client.patch(f'/api/jobs/{job.pk}/', {'priority': 99}, format='json')
+        resp = user_client.patch(f"/api/jobs/{job.pk}/", {"priority": 99}, format="json")
         assert resp.status_code == 403
 
     def test_staff_can_patch_any_job(self, staff_client):
         """Staff users can patch any job."""
         job = JobFactory()
-        resp = staff_client.patch(f'/api/jobs/{job.pk}/', {'priority': 10}, format='json')
+        resp = staff_client.patch(f"/api/jobs/{job.pk}/", {"priority": 10}, format="json")
         assert resp.status_code == 200
 
     def test_state_is_not_patchable(self, user_client, user):
         """State cannot be changed via PATCH (not in JobPatchSerializer)."""
         job = JobFactory(submitted_by=user, state=JobState.PENDING)
-        resp = user_client.patch(f'/api/jobs/{job.pk}/', {'state': 'RUNNING'}, format='json')
+        resp = user_client.patch(f"/api/jobs/{job.pk}/", {"state": "RUNNING"}, format="json")
         # Request succeeds but state is unchanged
         assert resp.status_code == 200
         job.refresh_from_db()
@@ -234,16 +249,17 @@ class TestJobMutations:
 
 # ── Job Pause / Resume ────────────────────────────────────────────────────────
 
+
 class TestJobPauseResume:
     def test_owner_can_pause_and_resume(self, user_client, user):
         """Job submitter can pause and resume their job."""
         job = JobFactory(submitted_by=user)
-        resp = user_client.post(f'/api/jobs/{job.pk}/pause/')
+        resp = user_client.post(f"/api/jobs/{job.pk}/pause/")
         assert resp.status_code == 200
         job.refresh_from_db()
         assert job.is_paused is True
 
-        resp = user_client.post(f'/api/jobs/{job.pk}/resume/')
+        resp = user_client.post(f"/api/jobs/{job.pk}/resume/")
         assert resp.status_code == 200
         job.refresh_from_db()
         assert job.is_paused is False
@@ -251,37 +267,30 @@ class TestJobPauseResume:
 
 # ── Frame State Transitions ───────────────────────────────────────────────────
 
+
 class TestFrameActions:
     def test_farm_agent_can_start_ready_frame(self, farm_client):
         """Farm agent can mark a READY frame as RUNNING."""
         frame = FrameFactory(state=FrameState.READY)
-        resp = farm_client.post(
-            f'/api/frames/{frame.pk}/start/',
-            {'worker_name': 'render-node-01'},
-            format='json'
-        )
+        resp = farm_client.post(f"/api/frames/{frame.pk}/start/", {"worker_name": "render-node-01"}, format="json")
         assert resp.status_code == 200
         frame.refresh_from_db()
         assert frame.state == FrameState.RUNNING
-        assert frame.worker_name == 'render-node-01'
+        assert frame.worker_name == "render-node-01"
 
     def test_start_non_ready_frame_returns_409(self, farm_client):
         """Starting a frame that is not READY returns 409 Conflict."""
         frame = FrameFactory(state=FrameState.WAITING)
-        resp = farm_client.post(
-            f'/api/frames/{frame.pk}/start/',
-            {'worker_name': 'render-node-01'},
-            format='json'
-        )
+        resp = farm_client.post(f"/api/frames/{frame.pk}/start/", {"worker_name": "render-node-01"}, format="json")
         assert resp.status_code == 409
 
     def test_farm_agent_can_succeed_running_frame(self, farm_client):
         """Farm agent can mark a RUNNING frame as SUCCEEDED with telemetry."""
         frame = FrameFactory(state=FrameState.RUNNING)
         resp = farm_client.post(
-            f'/api/frames/{frame.pk}/succeed/',
-            {'exit_status': 0, 'max_memory_used_mb': 4096, 'cores_used': 4},
-            format='json'
+            f"/api/frames/{frame.pk}/succeed/",
+            {"exit_status": 0, "max_memory_used_mb": 4096, "cores_used": 4},
+            format="json",
         )
         assert resp.status_code == 200
         frame.refresh_from_db()
@@ -294,11 +303,7 @@ class TestFrameActions:
         Layer.objects.filter(pk=frame.layer.pk).update(running_frames=1, total_frames=1)
         Job.objects.filter(pk=frame.job.pk).update(running_frames=1, total_frames=1)
 
-        farm_client.post(
-            f'/api/frames/{frame.pk}/succeed/',
-            {'exit_status': 0, 'max_memory_used_mb': 0},
-            format='json'
-        )
+        farm_client.post(f"/api/frames/{frame.pk}/succeed/", {"exit_status": 0, "max_memory_used_mb": 0}, format="json")
         frame.layer.refresh_from_db()
         frame.job.refresh_from_db()
         assert frame.layer.running_frames == 0
@@ -309,11 +314,7 @@ class TestFrameActions:
     def test_farm_agent_can_fail_frame_within_retry_budget(self, farm_client):
         """Failing a frame within retry budget sets it back to READY."""
         frame = FrameFactory(state=FrameState.RUNNING, retries=0, max_retries=3)
-        resp = farm_client.post(
-            f'/api/frames/{frame.pk}/fail/',
-            {'exit_status': 1},
-            format='json'
-        )
+        resp = farm_client.post(f"/api/frames/{frame.pk}/fail/", {"exit_status": 1}, format="json")
         assert resp.status_code == 200
         frame.refresh_from_db()
         assert frame.state == FrameState.READY
@@ -321,11 +322,7 @@ class TestFrameActions:
     def test_frame_exceeding_retry_budget_becomes_failed(self, farm_client):
         """Failing a frame that has exhausted retries transitions to FAILED."""
         frame = FrameFactory(state=FrameState.RUNNING, retries=2, max_retries=3)
-        resp = farm_client.post(
-            f'/api/frames/{frame.pk}/fail/',
-            {'exit_status': 1},
-            format='json'
-        )
+        resp = farm_client.post(f"/api/frames/{frame.pk}/fail/", {"exit_status": 1}, format="json")
         assert resp.status_code == 200
         frame.refresh_from_db()
         assert frame.state == FrameState.FAILED
@@ -333,7 +330,7 @@ class TestFrameActions:
     def test_staff_can_skip_failed_frame(self, staff_client):
         """Staff user can skip a FAILED frame."""
         frame = FrameFactory(state=FrameState.FAILED)
-        resp = staff_client.post(f'/api/frames/{frame.pk}/skip/')
+        resp = staff_client.post(f"/api/frames/{frame.pk}/skip/")
         assert resp.status_code == 200
         frame.refresh_from_db()
         assert frame.state == FrameState.SKIPPED
@@ -341,24 +338,20 @@ class TestFrameActions:
     def test_non_staff_cannot_skip_frame(self, user_client):
         """Regular users cannot skip frames."""
         frame = FrameFactory(state=FrameState.FAILED)
-        resp = user_client.post(f'/api/frames/{frame.pk}/skip/')
+        resp = user_client.post(f"/api/frames/{frame.pk}/skip/")
         assert resp.status_code == 403
 
     def test_regular_user_cannot_call_start(self, user_client):
         """Regular user cannot call the Worker-only start action."""
         frame = FrameFactory(state=FrameState.READY)
-        resp = user_client.post(
-            f'/api/frames/{frame.pk}/start/',
-            {'worker_name': 'render-node-01'},
-            format='json'
-        )
+        resp = user_client.post(f"/api/frames/{frame.pk}/start/", {"worker_name": "render-node-01"}, format="json")
         assert resp.status_code == 403
 
     def test_farm_agent_can_checkpoint_running_frame(self, farm_client):
         """Farm agent can increment the checkpoint counter on a RUNNING frame."""
         frame = FrameFactory(state=FrameState.RUNNING)
-        resp = farm_client.post(f'/api/frames/{frame.pk}/checkpoint/')
+        resp = farm_client.post(f"/api/frames/{frame.pk}/checkpoint/")
         assert resp.status_code == 200
-        assert resp.data['checkpoint_count'] == 1
+        assert resp.data["checkpoint_count"] == 1
         frame.refresh_from_db()
         assert frame.state == FrameState.CHECKPOINT

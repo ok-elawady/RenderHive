@@ -46,7 +46,7 @@ class FrameFactory(DjangoModelFactory):
         model = Frame
 
     layer = factory.SubFactory(LayerFactory)
-    job = factory.SelfAttribute('layer.job')
+    job = factory.SelfAttribute("layer.job")
     name = factory.Sequence(lambda n: f"frame_{n}")
     number = factory.Sequence(lambda n: n)
     state = FrameState.WAITING
@@ -57,9 +57,9 @@ class DependencyFactory(DjangoModelFactory):
         model = Dependency
 
     type = DependencyType.FRAME_ON_FRAME
-    dep_job = factory.SelfAttribute('dep_frame.job')
-    dep_layer = factory.SelfAttribute('dep_frame.layer')
+    dep_job = factory.SelfAttribute("dep_frame.job")
+    dep_layer = factory.SelfAttribute("dep_frame.layer")
     dep_frame = factory.SubFactory(FrameFactory)
-    parent_job = factory.SelfAttribute('parent_frame.job')
-    parent_layer = factory.SelfAttribute('parent_frame.layer')
+    parent_job = factory.SelfAttribute("parent_frame.job")
+    parent_layer = factory.SelfAttribute("parent_frame.layer")
     parent_frame = factory.SubFactory(FrameFactory)

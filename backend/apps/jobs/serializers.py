@@ -9,14 +9,13 @@ Serializers are split by usage pattern:
 - Action serializers: write-only, used for frame state transition endpoints.
 """
 
-from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Dependency, DependencyType, Frame, FrameState, Job, JobState, Layer
+from .models import Frame, Job, Layer
 from .services import create_job_with_layers
 
-
 # ── Frame Serializers ─────────────────────────────────────────────────────────
+
 
 class FrameListSerializer(serializers.ModelSerializer):
     """Slim read-only frame representation for list views.
@@ -37,9 +36,16 @@ class FrameListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Frame
         fields = [
-            'id', 'name', 'number', 'state', 'depend_count',
-            'retries', 'worker_name', 'exit_status',
-            'started_at', 'stopped_at',
+            "id",
+            "name",
+            "number",
+            "state",
+            "depend_count",
+            "retries",
+            "worker_name",
+            "exit_status",
+            "started_at",
+            "stopped_at",
         ]
         read_only_fields = fields
 
@@ -58,12 +64,16 @@ class FrameDetailSerializer(FrameListSerializer):
 
     class Meta(FrameListSerializer.Meta):
         fields = FrameListSerializer.Meta.fields + [
-            'max_memory_used_mb', 'cores_used', 'checkpoint_count', 'dispatch_order',
+            "max_memory_used_mb",
+            "cores_used",
+            "checkpoint_count",
+            "dispatch_order",
         ]
         read_only_fields = fields
 
 
 # ── Layer Serializers ─────────────────────────────────────────────────────────
+
 
 class LayerListSerializer(serializers.ModelSerializer):
     """Slim read-only layer representation for list views.
@@ -87,9 +97,19 @@ class LayerListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Layer
         fields = [
-            'id', 'name', 'layer_type', 'state', 'frame_range',
-            'total_frames', 'waiting_frames', 'ready_frames', 'running_frames',
-            'succeeded_frames', 'failed_frames', 'skipped_frames', 'depend_frames',
+            "id",
+            "name",
+            "layer_type",
+            "state",
+            "frame_range",
+            "total_frames",
+            "waiting_frames",
+            "ready_frames",
+            "running_frames",
+            "succeeded_frames",
+            "failed_frames",
+            "skipped_frames",
+            "depend_frames",
         ]
         read_only_fields = fields
 
@@ -115,10 +135,17 @@ class LayerDetailSerializer(LayerListSerializer):
 
     class Meta(LayerListSerializer.Meta):
         fields = LayerListSerializer.Meta.fields + [
-            'command', 'chunk_size',
-            'min_cores', 'min_memory_mb', 'min_gpus', 'tags',
-            'scene_path', 'scene_info', 'env',
-            'max_retries', 'timeout_seconds',
+            "command",
+            "chunk_size",
+            "min_cores",
+            "min_memory_mb",
+            "min_gpus",
+            "tags",
+            "scene_path",
+            "scene_info",
+            "env",
+            "max_retries",
+            "timeout_seconds",
         ]
         read_only_fields = fields
 
@@ -148,9 +175,19 @@ class LayerCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Layer
-        exclude = ['id', 'job', 'state',
-                   'total_frames', 'waiting_frames', 'ready_frames', 'running_frames',
-                   'succeeded_frames', 'failed_frames', 'skipped_frames', 'depend_frames']
+        exclude = [
+            "id",
+            "job",
+            "state",
+            "total_frames",
+            "waiting_frames",
+            "ready_frames",
+            "running_frames",
+            "succeeded_frames",
+            "failed_frames",
+            "skipped_frames",
+            "depend_frames",
+        ]
 
     def validate_frame_range(self, value: str) -> str:
         """Validate that the frame range string is parseable.
@@ -165,6 +202,7 @@ class LayerCreateSerializer(serializers.ModelSerializer):
             serializers.ValidationError: If the frame range is invalid.
         """
         from .services import expand_frame_range
+
         try:
             frames = expand_frame_range(value)
             if not frames:
@@ -175,6 +213,7 @@ class LayerCreateSerializer(serializers.ModelSerializer):
 
 
 # ── Job Serializers ───────────────────────────────────────────────────────────
+
 
 class JobListSerializer(serializers.ModelSerializer):
     """Slim read-only job representation for list views.
@@ -204,11 +243,25 @@ class JobListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'id', 'name', 'visible_name', 'project', 'department', 'user',
-            'state', 'priority', 'is_paused',
-            'total_frames', 'waiting_frames', 'ready_frames', 'running_frames',
-            'succeeded_frames', 'failed_frames', 'skipped_frames', 'depend_frames',
-            'created_at', 'updated_at',
+            "id",
+            "name",
+            "visible_name",
+            "project",
+            "department",
+            "user",
+            "state",
+            "priority",
+            "is_paused",
+            "total_frames",
+            "waiting_frames",
+            "ready_frames",
+            "running_frames",
+            "succeeded_frames",
+            "failed_frames",
+            "skipped_frames",
+            "depend_frames",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = fields
 
@@ -230,7 +283,10 @@ class JobDetailSerializer(JobListSerializer):
 
     class Meta(JobListSerializer.Meta):
         fields = JobListSerializer.Meta.fields + [
-            'layers', 'log_directory', 'max_frames_per_worker', 'stopped_at',
+            "layers",
+            "log_directory",
+            "max_frames_per_worker",
+            "stopped_at",
         ]
         read_only_fields = fields
 
@@ -258,9 +314,14 @@ class JobCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         fields = [
-            'visible_name', 'project', 'department', 'user',
-            'priority', 'log_directory', 'max_frames_per_worker',
-            'layers',
+            "visible_name",
+            "project",
+            "department",
+            "user",
+            "priority",
+            "log_directory",
+            "max_frames_per_worker",
+            "layers",
         ]
 
     def validate_layers(self, value: list) -> list:
@@ -288,7 +349,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
         Returns:
             The newly created :class:`Job` instance.
         """
-        request = self.context.get('request')
+        request = self.context.get("request")
         submitted_by = request.user if request and request.user.is_authenticated else None
         return create_job_with_layers(validated_data, submitted_by=submitted_by)
 
@@ -307,10 +368,11 @@ class JobPatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Job
-        fields = ['visible_name', 'priority', 'max_frames_per_worker']
+        fields = ["visible_name", "priority", "max_frames_per_worker"]
 
 
 # ── Frame Action Serializers ──────────────────────────────────────────────────
+
 
 class FrameStartSerializer(serializers.Serializer):
     """Validates payload when a Worker marks a frame as RUNNING.
@@ -319,10 +381,7 @@ class FrameStartSerializer(serializers.Serializer):
         worker_name: Hostname of the Worker claiming this frame.
     """
 
-    worker_name = serializers.CharField(
-        max_length=256,
-        help_text="Hostname of the Worker claiming this frame."
-    )
+    worker_name = serializers.CharField(max_length=256, help_text="Hostname of the Worker claiming this frame.")
 
 
 class FrameSucceedSerializer(serializers.Serializer):
@@ -334,17 +393,15 @@ class FrameSucceedSerializer(serializers.Serializer):
         cores_used: Actual CPU cores used.
     """
 
-    exit_status = serializers.IntegerField(
-        default=0,
-        help_text="Process exit code. Should be 0 on success."
-    )
+    exit_status = serializers.IntegerField(default=0, help_text="Process exit code. Should be 0 on success.")
     max_memory_used_mb = serializers.IntegerField(
-        default=0, min_value=0,
-        help_text="Peak RSS memory used by the render process, in MB."
+        default=0, min_value=0, help_text="Peak RSS memory used by the render process, in MB."
     )
     cores_used = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1,
-        help_text="Actual CPU cores reserved by the Worker at dispatch time."
+        required=False,
+        allow_null=True,
+        min_value=1,
+        help_text="Actual CPU cores reserved by the Worker at dispatch time.",
     )
 
 
@@ -355,6 +412,4 @@ class FrameFailSerializer(serializers.Serializer):
         exit_status: Non-zero process exit code.
     """
 
-    exit_status = serializers.IntegerField(
-        help_text="Non-zero process exit code from the render process."
-    )
+    exit_status = serializers.IntegerField(help_text="Non-zero process exit code from the render process.")

@@ -7,7 +7,7 @@ Three permission tiers exist across the API:
 3. Staff / supervisor (Django ``is_staff`` flag).
 """
 
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.permissions import BasePermission
 
 
 class IsFarmAgent(BasePermission):
@@ -38,9 +38,7 @@ class IsFarmAgent(BasePermission):
             True if the user is authenticated and in the 'farm_agents' group.
         """
         return (
-            request.user
-            and request.user.is_authenticated
-            and request.user.groups.filter(name='farm_agents').exists()
+            request.user and request.user.is_authenticated and request.user.groups.filter(name="farm_agents").exists()
         )
 
 

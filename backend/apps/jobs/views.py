@@ -16,7 +16,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Frame, FrameState, Job, JobState, Layer
+from .models import Frame, FrameState, Job, Layer
 from .permissions import IsFarmAgent, IsJobOwnerOrStaff
 from .serializers import (
     FrameDetailSerializer,
@@ -32,8 +32,8 @@ from .serializers import (
     LayerListSerializer,
 )
 
-
 # ── Filters ───────────────────────────────────────────────────────────────────
+
 
 class JobFilter(django_filters.FilterSet):
     """FilterSet for the Job list endpoint.
@@ -50,7 +50,7 @@ class JobFilter(django_filters.FilterSet):
 
     class Meta:
         model = Job
-        fields = ['state', 'project', 'department', 'user']
+        fields = ["state", "project", "department", "user"]
 
 
 class FrameFilter(django_filters.FilterSet):
@@ -65,10 +65,11 @@ class FrameFilter(django_filters.FilterSet):
 
     class Meta:
         model = Frame
-        fields = ['state']
+        fields = ["state"]
 
 
 # ── Job ViewSet ───────────────────────────────────────────────────────────────
+
 
 class JobViewSet(viewsets.ModelViewSet):
     """ViewSet for listing, submitting, updating, and deleting jobs.
@@ -83,10 +84,10 @@ class JobViewSet(viewsets.ModelViewSet):
         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
     """
 
-    queryset = Job.objects.all().order_by('-priority', 'created_at')
+    queryset = Job.objects.all().order_by("-priority", "created_at")
     filterset_class = JobFilter
-    ordering_fields = ['priority', 'created_at', 'updated_at', 'state']
-    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
+    ordering_fields = ["priority", "created_at", "updated_at", "state"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_serializer_class(self):
         """Return the appropriate serializer based on the action.
@@ -94,11 +95,11 @@ class JobViewSet(viewsets.ModelViewSet):
         Returns:
             A serializer class matched to the current action.
         """
-        if self.action == 'list':
+        if self.action == "list":
             return JobListSerializer
-        if self.action == 'create':
+        if self.action == "create":
             return JobCreateSerializer
-        if self.action == 'partial_update':
+        if self.action == "partial_update":
             return JobPatchSerializer
         return JobDetailSerializer
 
@@ -108,11 +109,11 @@ class JobViewSet(viewsets.ModelViewSet):
         Returns:
             A list of instantiated permission objects for the current action.
         """
-        if self.action in ('partial_update', 'destroy', 'pause', 'resume'):
+        if self.action in ("partial_update", "destroy", "pause", "resume"):
             return [IsAuthenticated(), IsJobOwnerOrStaff()]
         return [IsAuthenticated()]
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def pause(self, request, pk=None):
         """Pause a job, preventing new frames from being dispatched.
 
@@ -128,10 +129,10 @@ class JobViewSet(viewsets.ModelViewSet):
         """
         job = self.get_object()
         job.is_paused = True
-        job.save(update_fields=['is_paused', 'updated_at'])
-        return Response({'status': 'paused', 'is_paused': True})
+        job.save(update_fields=["is_paused", "updated_at"])
+        return Response({"status": "paused", "is_paused": True})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def resume(self, request, pk=None):
         """Resume a paused job, allowing frames to be dispatched again.
 
@@ -146,15 +147,14 @@ class JobViewSet(viewsets.ModelViewSet):
         """
         job = self.get_object()
         job.is_paused = False
-        job.save(update_fields=['is_paused', 'updated_at'])
-        return Response({'status': 'resumed', 'is_paused': False})
+        job.save(update_fields=["is_paused", "updated_at"])
+        return Response({"status": "resumed", "is_paused": False})
 
 
 # ── Layer ViewSet ─────────────────────────────────────────────────────────────
 
-class LayerViewSet(mixins.ListModelMixin,
-                   mixins.RetrieveModelMixin,
-                   viewsets.GenericViewSet):
+
+class LayerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """Read-only ViewSet for listing and retrieving layers scoped to a job.
 
     Endpoints (nested under /api/jobs/{job_pk}/):
@@ -173,7 +173,7 @@ class LayerViewSet(mixins.ListModelMixin,
         Returns:
             A queryset of Layer objects for the job specified by ``job_pk``.
         """
-        return Layer.objects.filter(job_id=self.kwargs['job_pk'])
+        return Layer.objects.filter(job_id=self.kwargs["job_pk"])
 
     def get_serializer_class(self):
         """Return slim serializer for list, full serializer for detail.
@@ -181,16 +181,15 @@ class LayerViewSet(mixins.ListModelMixin,
         Returns:
             A serializer class matched to the current action.
         """
-        if self.action == 'list':
+        if self.action == "list":
             return LayerListSerializer
         return LayerDetailSerializer
 
 
 # ── Frame ViewSet ─────────────────────────────────────────────────────────────
 
-class FrameViewSet(mixins.ListModelMixin,
-                   mixins.RetrieveModelMixin,
-                   viewsets.GenericViewSet):
+
+class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """ViewSet for listing frames and handling Worker state transition actions.
 
     List/retrieve endpoints are nested under a layer:
@@ -218,7 +217,7 @@ class FrameViewSet(mixins.ListModelMixin,
         Returns:
             A queryset of Frame objects.
         """
-        layer_pk = self.kwargs.get('layer_pk')
+        layer_pk = self.kwargs.get("layer_pk")
         if layer_pk:
             return Frame.objects.filter(layer_id=layer_pk)
         return Frame.objects.all()
@@ -229,13 +228,13 @@ class FrameViewSet(mixins.ListModelMixin,
         Returns:
             A serializer class matched to the current action.
         """
-        if self.action == 'list':
+        if self.action == "list":
             return FrameListSerializer
-        if self.action == 'start':
+        if self.action == "start":
             return FrameStartSerializer
-        if self.action == 'succeed':
+        if self.action == "succeed":
             return FrameSucceedSerializer
-        if self.action == 'fail':
+        if self.action == "fail":
             return FrameFailSerializer
         return FrameDetailSerializer
 
@@ -248,13 +247,13 @@ class FrameViewSet(mixins.ListModelMixin,
         Returns:
             A list of instantiated permission objects for the current action.
         """
-        if self.action in ('start', 'succeed', 'fail', 'checkpoint'):
+        if self.action in ("start", "succeed", "fail", "checkpoint"):
             return [IsFarmAgent()]
-        if self.action == 'skip':
+        if self.action == "skip":
             return [IsAuthenticated()]  # View enforces is_staff internally
         return [IsAuthenticated()]
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def start(self, request, pk=None, **kwargs):
         """Mark a frame as RUNNING when a Worker begins execution.
 
@@ -272,19 +271,19 @@ class FrameViewSet(mixins.ListModelMixin,
         frame = self.get_object()
         if frame.state != FrameState.READY:
             return Response(
-                {'detail': f"Cannot start a frame in state '{frame.state}'."},
+                {"detail": f"Cannot start a frame in state '{frame.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
         serializer = FrameStartSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         frame.state = FrameState.RUNNING
-        frame.worker_name = serializer.validated_data['worker_name']
+        frame.worker_name = serializer.validated_data["worker_name"]
         frame.started_at = timezone.now()
-        frame.save(update_fields=['state', 'worker_name', 'started_at'])
-        return Response({'status': 'running'})
+        frame.save(update_fields=["state", "worker_name", "started_at"])
+        return Response({"status": "running"})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def succeed(self, request, pk=None, **kwargs):
         """Mark a frame as SUCCEEDED and record telemetry.
 
@@ -303,7 +302,7 @@ class FrameViewSet(mixins.ListModelMixin,
         frame = self.get_object()
         if frame.state not in (FrameState.RUNNING, FrameState.CHECKPOINT):
             return Response(
-                {'detail': f"Cannot succeed a frame in state '{frame.state}'."},
+                {"detail": f"Cannot succeed a frame in state '{frame.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
         serializer = FrameSucceedSerializer(data=request.data)
@@ -311,15 +310,15 @@ class FrameViewSet(mixins.ListModelMixin,
         data = serializer.validated_data
 
         frame.state = FrameState.SUCCEEDED
-        frame.exit_status = data['exit_status']
-        frame.max_memory_used_mb = data['max_memory_used_mb']
-        if data.get('cores_used') is not None:
-            frame.cores_used = data['cores_used']
+        frame.exit_status = data["exit_status"]
+        frame.max_memory_used_mb = data["max_memory_used_mb"]
+        if data.get("cores_used") is not None:
+            frame.cores_used = data["cores_used"]
         frame.stopped_at = timezone.now()
         frame.save()
-        return Response({'status': 'succeeded'})
+        return Response({"status": "succeeded"})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def fail(self, request, pk=None, **kwargs):
         """Mark a frame as FAILED or retry it based on the retry budget.
 
@@ -338,29 +337,29 @@ class FrameViewSet(mixins.ListModelMixin,
         frame = self.get_object()
         if frame.state not in (FrameState.RUNNING, FrameState.CHECKPOINT):
             return Response(
-                {'detail': f"Cannot fail a frame in state '{frame.state}'."},
+                {"detail": f"Cannot fail a frame in state '{frame.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
         serializer = FrameFailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        frame.exit_status = serializer.validated_data['exit_status']
-        frame.retries = F('retries') + 1
+        frame.exit_status = serializer.validated_data["exit_status"]
+        frame.retries = F("retries") + 1
         frame.stopped_at = timezone.now()
 
-        frame.refresh_from_db(fields=['retries'])
+        frame.refresh_from_db(fields=["retries"])
         new_retries = frame.retries + 1  # optimistic before save
 
         if new_retries >= frame.max_retries:
             frame.state = FrameState.FAILED
             frame.save()
-            return Response({'status': 'failed'})
+            return Response({"status": "failed"})
         else:
             frame.state = FrameState.READY
             frame.save()
-            return Response({'status': 'retrying', 'retries': new_retries})
+            return Response({"status": "retrying", "retries": new_retries})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def skip(self, request, pk=None, **kwargs):
         """Dismiss a failed frame, allowing its dependents to proceed.
 
@@ -378,20 +377,20 @@ class FrameViewSet(mixins.ListModelMixin,
         """
         if not request.user.is_staff:
             return Response(
-                {'detail': "Only staff users can skip frames."},
+                {"detail": "Only staff users can skip frames."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         frame = self.get_object()
         if frame.state != FrameState.FAILED:
             return Response(
-                {'detail': f"Only FAILED frames can be skipped (current state: '{frame.state}')."},
+                {"detail": f"Only FAILED frames can be skipped (current state: '{frame.state}')."},
                 status=status.HTTP_409_CONFLICT,
             )
         frame.state = FrameState.SKIPPED
         frame.save()
-        return Response({'status': 'skipped'})
+        return Response({"status": "skipped"})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def checkpoint(self, request, pk=None, **kwargs):
         """Increment the checkpoint counter for a frame in progress.
 
@@ -410,12 +409,12 @@ class FrameViewSet(mixins.ListModelMixin,
         frame = self.get_object()
         if frame.state != FrameState.RUNNING:
             return Response(
-                {'detail': f"Cannot checkpoint a frame in state '{frame.state}'."},
+                {"detail": f"Cannot checkpoint a frame in state '{frame.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
         Frame.objects.filter(pk=frame.pk).update(
-            checkpoint_count=F('checkpoint_count') + 1,
+            checkpoint_count=F("checkpoint_count") + 1,
             state=FrameState.CHECKPOINT,
         )
-        frame.refresh_from_db(fields=['checkpoint_count'])
-        return Response({'status': 'checkpointed', 'checkpoint_count': frame.checkpoint_count})
+        frame.refresh_from_db(fields=["checkpoint_count"])
+        return Response({"status": "checkpointed", "checkpoint_count": frame.checkpoint_count})
