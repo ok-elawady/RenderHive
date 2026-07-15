@@ -1,7 +1,9 @@
 import pytest
 from django.core.exceptions import ValidationError
-from apps.jobs.models import JobState, DependencyType, Dependency
-from .factories import JobFactory, LayerFactory, FrameFactory
+
+from apps.jobs.models import Dependency, DependencyType, JobState
+
+from .factories import FrameFactory, JobFactory, LayerFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -25,7 +27,7 @@ class TestDependencyModel:
             dep_job=dep_frame.job,
             parent_job=parent_frame.job,
             dep_frame=dep_frame,
-            parent_frame=parent_frame
+            parent_frame=parent_frame,
         )
         dependency.clean()  # Should not raise
 
@@ -47,7 +49,7 @@ class TestDependencyModel:
             dep_job=frame.job,
             parent_job=frame.job,
             dep_frame=frame,
-            parent_frame=frame
+            parent_frame=frame,
         )
         with pytest.raises(ValidationError, match="A frame cannot depend on itself"):
             dependency.clean()

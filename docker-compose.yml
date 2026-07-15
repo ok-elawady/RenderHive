@@ -43,6 +43,11 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/renderhive}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
       CORS_ALLOW_ALL_ORIGINS: ${CORS_ALLOW_ALL_ORIGINS:-True}
+      # Dev superuser — auto-created on first container start.
+      # Override in your .env file. Leave blank to skip creation.
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-admin@renderhive.local}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-admin}
     depends_on:
       postgres:
         condition: service_healthy

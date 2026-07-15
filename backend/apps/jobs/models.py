@@ -6,42 +6,52 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import (
-    CASCADE, SET_NULL, BooleanField, CharField, DateTimeField, ForeignKey,
-    Index, IntegerField, JSONField, PositiveIntegerField, TextChoices,
-    TextField, UUIDField
+    CASCADE,
+    SET_NULL,
+    BooleanField,
+    CharField,
+    DateTimeField,
+    ForeignKey,
+    Index,
+    IntegerField,
+    JSONField,
+    PositiveIntegerField,
+    TextChoices,
+    TextField,
+    UUIDField,
 )
 
 
 class JobState(TextChoices):
-    PENDING   = 'PENDING',  'Pending'   # Queued, not yet dispatching
-    RUNNING   = 'RUNNING',  'Running'   # At least one frame is active
-    FINISHED  = 'FINISHED', 'Finished'  # All frames succeeded
-    FAILED    = 'FAILED',   'Failed'    # One or more frames failed beyond retries
-    PAUSED    = 'PAUSED',   'Paused'    # Operator-suspended
+    PENDING = "PENDING", "Pending"  # Queued, not yet dispatching
+    RUNNING = "RUNNING", "Running"  # At least one frame is active
+    FINISHED = "FINISHED", "Finished"  # All frames succeeded
+    FAILED = "FAILED", "Failed"  # One or more frames failed beyond retries
+    PAUSED = "PAUSED", "Paused"  # Operator-suspended
 
 
 class LayerType(TextChoices):
-    RENDER    = 'RENDER', 'Render'      # Standard render pass (beauty, shadow, AO, etc.)
-    UTIL      = 'UTIL',   'Utility'     # Pre/post processing script (file move, convert, etc.)
-    POST      = 'POST',   'Post'        # Composite or delivery step (Nuke, FFmpeg, etc.)
+    RENDER = "RENDER", "Render"  # Standard render pass (beauty, shadow, AO, etc.)
+    UTIL = "UTIL", "Utility"  # Pre/post processing script (file move, convert, etc.)
+    POST = "POST", "Post"  # Composite or delivery step (Nuke, FFmpeg, etc.)
 
 
 class FrameState(TextChoices):
-    WAITING     = 'WAITING',     'Waiting'       # Blocked by unresolved dependencies
-    READY       = 'READY',       'Ready'         # Unblocked, awaiting a free Worker
-    RUNNING     = 'RUNNING',     'Running'       # Actively executing on a Worker
-    CHECKPOINT  = 'CHECKPOINT',  'Checkpointing' # Saving intermediate progress (e.g. V-Ray resume)
-    SUCCEEDED   = 'SUCCEEDED',   'Succeeded'     # Completed with exit code 0
-    FAILED      = 'FAILED',      'Failed'        # Terminated with non-zero exit status
-    SKIPPED     = 'SKIPPED',     'Skipped'       # Failed but dismissed by a supervisor; unblocks dependents
+    WAITING = "WAITING", "Waiting"  # Blocked by unresolved dependencies
+    READY = "READY", "Ready"  # Unblocked, awaiting a free Worker
+    RUNNING = "RUNNING", "Running"  # Actively executing on a Worker
+    CHECKPOINT = "CHECKPOINT", "Checkpointing"  # Saving intermediate progress (e.g. V-Ray resume)
+    SUCCEEDED = "SUCCEEDED", "Succeeded"  # Completed with exit code 0
+    FAILED = "FAILED", "Failed"  # Terminated with non-zero exit status
+    SKIPPED = "SKIPPED", "Skipped"  # Failed but dismissed by a supervisor; unblocks dependents
     # SKIPPED: supervisor acknowledges the failure and removes the frame from retry.
     # The job can reach FINISHED even with skipped frames.
 
 
 class DependencyType(TextChoices):
-    JOB_ON_JOB       = 'JOB_ON_JOB',       'Job on Job'       
-    LAYER_ON_LAYER   = 'LAYER_ON_LAYER',   'Layer on Layer'   
-    FRAME_ON_FRAME   = 'FRAME_ON_FRAME',   'Frame on Frame'   
+    JOB_ON_JOB = "JOB_ON_JOB", "Job on Job"
+    LAYER_ON_LAYER = "LAYER_ON_LAYER", "Layer on Layer"
+    FRAME_ON_FRAME = "FRAME_ON_FRAME", "Frame on Frame"
 
 
 class Job(models.Model):
@@ -72,63 +82,69 @@ class Job(models.Model):
         updated_at: Timestamp.
         stopped_at: Timestamp when state became FINISHED or FAILED.
     """
-    id           = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name         = CharField(max_length=255, unique=True, db_index=True)
+
+    id = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = CharField(max_length=255, unique=True, db_index=True)
     visible_name = CharField(max_length=255, blank=True)
-    
-    project      = CharField(max_length=64, db_index=True)
-    department   = CharField(max_length=64, blank=True, db_index=True)
-    
-    user         = CharField(
-        max_length=64, 
+
+    project = CharField(max_length=64, db_index=True)
+    department = CharField(max_length=64, blank=True, db_index=True)
+
+    user = CharField(
+        max_length=64,
         db_index=True,
-        help_text="The submitter's display name. Defaults to the OS username in the DCC plugin but is manually editable. Matches Deadline's UserName field."
+        help_text=(
+            "The submitter's display name. Defaults to the OS username in the DCC "
+            "plugin but is manually editable. Matches Deadline's UserName field."
+        ),
     )
-    
+
     submitted_by = ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=SET_NULL, null=True, blank=True,
-        related_name='submitted_jobs',
-        help_text="Populated ONLY when submitted via the web frontend. NULL for DCC plugin submissions."
+        on_delete=SET_NULL,
+        null=True,
+        blank=True,
+        related_name="submitted_jobs",
+        help_text="Populated ONLY when submitted via the web frontend. NULL for DCC plugin submissions.",
     )
-    
-    state        = CharField(max_length=16, choices=JobState.choices,
-                             default=JobState.PENDING, db_index=True)
-    is_paused    = BooleanField(default=False)
-    
-    priority     = IntegerField(
-                       default=50, db_index=True,
-                       validators=[MinValueValidator(1), MaxValueValidator(100)]
-                   )
-    
+
+    state = CharField(max_length=16, choices=JobState.choices, default=JobState.PENDING, db_index=True)
+    is_paused = BooleanField(default=False)
+
+    priority = IntegerField(default=50, db_index=True, validators=[MinValueValidator(1), MaxValueValidator(100)])
+
     max_frames_per_worker = PositiveIntegerField(
         default=1,
-        verbose_name='max concurrent frames per worker'
+        verbose_name="max concurrent frames per worker",
+        help_text=(
+            "Limits how many frames from this job a single machine can run at once. "
+            "Used to prevent a single job from monopolizing nodes with high core counts."
+        ),
     )
-    
+
     log_directory = CharField(max_length=2048)
-    
-    total_frames     = IntegerField(default=0)
-    waiting_frames   = IntegerField(default=0)
-    ready_frames     = IntegerField(default=0)
-    running_frames   = IntegerField(default=0)
+
+    total_frames = IntegerField(default=0)
+    waiting_frames = IntegerField(default=0)
+    ready_frames = IntegerField(default=0)
+    running_frames = IntegerField(default=0)
     succeeded_frames = IntegerField(default=0)
-    failed_frames    = IntegerField(default=0)
-    skipped_frames   = IntegerField(default=0)
-    depend_frames    = IntegerField(default=0)
-    
-    created_at   = DateTimeField(auto_now_add=True)
-    updated_at   = DateTimeField(auto_now=True)
-    stopped_at   = DateTimeField(null=True, blank=True)
+    failed_frames = IntegerField(default=0)
+    skipped_frames = IntegerField(default=0)
+    depend_frames = IntegerField(default=0)
+
+    created_at = DateTimeField(auto_now_add=True)
+    updated_at = DateTimeField(auto_now=True)
+    stopped_at = DateTimeField(null=True, blank=True)
 
     class Meta:
-        verbose_name        = 'job'
-        verbose_name_plural = 'jobs'
-        ordering = ['-priority', 'created_at']
+        verbose_name = "job"
+        verbose_name_plural = "jobs"
+        ordering = ["-priority", "created_at"]
         indexes = [
-            Index(fields=['state', 'priority']),
-            Index(fields=['project', 'state']), 
-            Index(fields=['user', 'state']),    
+            Index(fields=["state", "priority"]),
+            Index(fields=["project", "state"]),
+            Index(fields=["user", "state"]),
         ]
 
     def __str__(self):
@@ -165,67 +181,55 @@ class Layer(models.Model):
         skipped_frames: Counter cache.
         depend_frames: Counter cache.
     """
-    id          = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    job         = ForeignKey(Job, on_delete=CASCADE, related_name='layers')
-    name        = CharField(max_length=256)
-    
-    layer_type  = CharField(
-        max_length=8,
-        choices=LayerType.choices,
-        default=LayerType.RENDER,
-        verbose_name='render pass type'
+
+    id = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job = ForeignKey(Job, on_delete=CASCADE, related_name="layers")
+    name = CharField(max_length=256)
+
+    layer_type = CharField(
+        max_length=8, choices=LayerType.choices, default=LayerType.RENDER, verbose_name="render pass type"
     )
-    
-    command     = TextField()
+
+    command = TextField()
     frame_range = CharField(max_length=1024)
-    chunk_size  = PositiveIntegerField(
+    chunk_size = PositiveIntegerField(
         default=1,
-        verbose_name='frames per chunk'
+        verbose_name="frames per chunk",
+        help_text=(
+            "Groups this many consecutive frames into a single worker task. High values "
+            "reduce startup overhead for fast-rendering frames (e.g. comp, playblasts)."
+        ),
     )
-    
-    min_cores   = PositiveIntegerField(
-        default=1,
-        verbose_name='minimum CPU cores'
-    )
-    min_memory_mb = PositiveIntegerField(
-        default=4096,
-        verbose_name='minimum memory (MB)'
-    )
-    min_gpus    = PositiveIntegerField(
-        default=0,
-        verbose_name='minimum GPUs'
-    )
-    tags        = ArrayField(models.CharField(max_length=64), default=list, blank=True)
-    
-    scene_path  = CharField(max_length=2048, blank=True)
-    scene_info  = JSONField(
-        default=dict,
-        blank=True,
-        verbose_name='scene metadata'
-    )
-    env         = JSONField(default=dict, blank=True)
-    
+
+    min_cores = PositiveIntegerField(default=1, verbose_name="minimum CPU cores")
+    min_memory_mb = PositiveIntegerField(default=4096, verbose_name="minimum memory (MB)")
+    min_gpus = PositiveIntegerField(default=0, verbose_name="minimum GPUs")
+    tags = ArrayField(models.CharField(max_length=64), default=list, blank=True)
+
+    scene_path = CharField(max_length=2048, blank=True)
+    scene_info = JSONField(default=dict, blank=True, verbose_name="scene metadata")
+    env = JSONField(default=dict, blank=True)
+
     max_retries = PositiveIntegerField(default=3)
     timeout_seconds = PositiveIntegerField(null=True, blank=True)
-    
-    state            = CharField(max_length=16, choices=JobState.choices,
-                                 default=JobState.PENDING, db_index=True)
-    
-    total_frames     = IntegerField(default=0)
-    waiting_frames   = IntegerField(default=0)
-    ready_frames     = IntegerField(default=0)
-    running_frames   = IntegerField(default=0)
+
+    state = CharField(max_length=16, choices=JobState.choices, default=JobState.PENDING, db_index=True)
+
+    total_frames = IntegerField(default=0)
+    waiting_frames = IntegerField(default=0)
+    ready_frames = IntegerField(default=0)
+    running_frames = IntegerField(default=0)
     succeeded_frames = IntegerField(default=0)
-    failed_frames    = IntegerField(default=0)
-    skipped_frames   = IntegerField(default=0)
-    depend_frames    = IntegerField(default=0)
+    failed_frames = IntegerField(default=0)
+    skipped_frames = IntegerField(default=0)
+    depend_frames = IntegerField(default=0)
 
     class Meta:
-        verbose_name        = 'layer'
-        verbose_name_plural = 'layers'
-        unique_together = ('job', 'name')
+        verbose_name = "layer"
+        verbose_name_plural = "layers"
+        unique_together = ("job", "name")
         indexes = [
-            Index(fields=['job', 'state']),
+            Index(fields=["job", "state"]),
         ]
 
     def __str__(self):
@@ -255,53 +259,50 @@ class Frame(models.Model):
         stopped_at: Timestamp when execution ended.
         updated_at: Last modification timestamp.
     """
-    id      = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    layer   = ForeignKey(Layer, on_delete=CASCADE, related_name='frames')
-    job     = ForeignKey(Job, on_delete=CASCADE, related_name='frames')
-    
-    name    = CharField(max_length=256)
-    number  = IntegerField(db_index=True)
-    dispatch_order = IntegerField(default=0, db_index=True)
-    
-    state       = CharField(max_length=16, choices=FrameState.choices,
-                            default=FrameState.WAITING, db_index=True)
-    
-    depend_count = IntegerField(
-        default=0,
-        db_index=True,
-        verbose_name='dependency count'
+
+    id = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    layer = ForeignKey(Layer, on_delete=CASCADE, related_name="frames")
+    job = ForeignKey(Job, on_delete=CASCADE, related_name="frames")
+
+    name = CharField(max_length=256)
+    number = IntegerField(db_index=True)
+    dispatch_order = IntegerField(
+        default=0, db_index=True, help_text="Scheduler priority within the layer. Lower numbers are dispatched first."
     )
-    
-    retries     = PositiveIntegerField(default=0)
+
+    state = CharField(max_length=16, choices=FrameState.choices, default=FrameState.WAITING, db_index=True)
+
+    depend_count = IntegerField(default=0, db_index=True, verbose_name="dependency count")
+
+    retries = PositiveIntegerField(default=0)
     max_retries = PositiveIntegerField(default=3)
-    checkpoint_count = PositiveIntegerField(default=0)
-    
-    exit_status = IntegerField(default=-1)
-    
-    max_memory_used_mb = PositiveIntegerField(
+    checkpoint_count = PositiveIntegerField(
         default=0,
-        verbose_name='peak memory used (MB)'
+        help_text=(
+            "How many times the worker has reported saving intermediate progress (useful for resuming aborted frames)."
+        ),
     )
-    cores_used  = PositiveIntegerField(null=True, blank=True)
-    worker_name = CharField(
-        max_length=256,
-        null=True,
-        blank=True,
-        verbose_name='worker hostname'
+
+    exit_status = IntegerField(
+        default=-1, help_text="Raw process exit code returned by the worker. -1 means the frame has not completed."
     )
-    
-    started_at  = DateTimeField(null=True, blank=True)
-    stopped_at  = DateTimeField(null=True, blank=True)
-    updated_at  = DateTimeField(auto_now=True)
+
+    max_memory_used_mb = PositiveIntegerField(default=0, verbose_name="peak memory used (MB)")
+    cores_used = PositiveIntegerField(null=True, blank=True)
+    worker_name = CharField(max_length=256, null=True, blank=True, verbose_name="worker hostname")
+
+    started_at = DateTimeField(null=True, blank=True)
+    stopped_at = DateTimeField(null=True, blank=True)
+    updated_at = DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name        = 'frame'
-        verbose_name_plural = 'frames'
-        unique_together = ('layer', 'number')
+        verbose_name = "frame"
+        verbose_name_plural = "frames"
+        unique_together = ("layer", "number")
         indexes = [
-            Index(fields=['job', 'state']),             
-            Index(fields=['layer', 'state']),           
-            Index(fields=['state', 'depend_count']),    
+            Index(fields=["job", "state"]),
+            Index(fields=["layer", "state"]),
+            Index(fields=["state", "depend_count"]),
         ]
 
     def __str__(self):
@@ -324,55 +325,90 @@ class Dependency(models.Model):
         created_at: Creation timestamp.
         satisfied_at: Satisfaction timestamp.
     """
-    id   = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    id = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     type = CharField(max_length=24, choices=DependencyType.choices, db_index=True)
-    
-    dep_job   = ForeignKey(Job,   on_delete=CASCADE, related_name='blocked_dependencies')
-    dep_layer = ForeignKey(Layer, on_delete=CASCADE, null=True, blank=True,
-                           related_name='blocked_dependencies')
-    dep_frame = ForeignKey(Frame, on_delete=CASCADE, null=True, blank=True,
-                           related_name='blocked_dependencies')
-                           
-    parent_job   = ForeignKey(Job,   on_delete=CASCADE, related_name='blocking_dependencies')
-    parent_layer = ForeignKey(Layer, on_delete=CASCADE, null=True, blank=True,
-                              related_name='blocking_dependencies')
-    parent_frame = ForeignKey(Frame, on_delete=CASCADE, null=True, blank=True,
-                              related_name='blocking_dependencies')
-                              
+
+    dep_job = ForeignKey(
+        Job,
+        on_delete=CASCADE,
+        related_name="blocked_dependencies",
+        verbose_name="blocked job",
+        help_text="The job that is WAITING. It cannot start until the blocking (parent) entity completes.",
+    )
+    dep_layer = ForeignKey(
+        Layer,
+        on_delete=CASCADE,
+        null=True,
+        blank=True,
+        related_name="blocked_dependencies",
+        verbose_name="blocked layer",
+        help_text="The specific layer that is WAITING (required for LAYER_ON_LAYER dependencies).",
+    )
+    dep_frame = ForeignKey(
+        Frame,
+        on_delete=CASCADE,
+        null=True,
+        blank=True,
+        related_name="blocked_dependencies",
+        verbose_name="blocked frame",
+        help_text="The specific frame that is WAITING (required for FRAME_ON_FRAME dependencies).",
+    )
+
+    parent_job = ForeignKey(
+        Job,
+        on_delete=CASCADE,
+        related_name="blocking_dependencies",
+        verbose_name="blocking job",
+        help_text="The job that must complete FIRST before the blocked entity is released.",
+    )
+    parent_layer = ForeignKey(
+        Layer,
+        on_delete=CASCADE,
+        null=True,
+        blank=True,
+        related_name="blocking_dependencies",
+        verbose_name="blocking layer",
+        help_text="The specific layer that must complete FIRST (required for LAYER_ON_LAYER dependencies).",
+    )
+    parent_frame = ForeignKey(
+        Frame,
+        on_delete=CASCADE,
+        null=True,
+        blank=True,
+        related_name="blocking_dependencies",
+        verbose_name="blocking frame",
+        help_text="The specific frame that must complete FIRST (required for FRAME_ON_FRAME dependencies).",
+    )
+
     is_satisfied = BooleanField(default=False, db_index=True)
-    created_at   = DateTimeField(auto_now_add=True)
+    created_at = DateTimeField(auto_now_add=True)
     satisfied_at = DateTimeField(null=True, blank=True)
 
     def clean(self):
         if self.type == DependencyType.FRAME_ON_FRAME:
             if not self.dep_frame_id or not self.parent_frame_id:
-                raise ValidationError(
-                    "FRAME_ON_FRAME dependency requires both dep_frame and parent_frame."
-                )
+                raise ValidationError("FRAME_ON_FRAME dependency requires both dep_frame and parent_frame.")
             if self.dep_frame_id == self.parent_frame_id:
                 raise ValidationError("A frame cannot depend on itself.")
         elif self.type == DependencyType.LAYER_ON_LAYER:
             if not self.dep_layer_id or not self.parent_layer_id:
-                raise ValidationError(
-                    "LAYER_ON_LAYER dependency requires both dep_layer and parent_layer."
-                )
+                raise ValidationError("LAYER_ON_LAYER dependency requires both dep_layer and parent_layer.")
         elif self.type == DependencyType.JOB_ON_JOB:
             if not self.dep_job_id or not self.parent_job_id:
-                raise ValidationError(
-                    "JOB_ON_JOB dependency requires both dep_job and parent_job."
-                )
+                raise ValidationError("JOB_ON_JOB dependency requires both dep_job and parent_job.")
 
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
 
     class Meta:
-        verbose_name        = 'dependency'
-        verbose_name_plural = 'dependencies'  
+        verbose_name = "dependency"
+        verbose_name_plural = "dependencies"
         indexes = [
-            Index(fields=['parent_frame', 'is_satisfied']),  
-            Index(fields=['parent_layer', 'is_satisfied']),  
-            Index(fields=['parent_job',   'is_satisfied']),  
-            Index(fields=['dep_frame',    'is_satisfied']),  
-            Index(fields=['dep_layer',    'is_satisfied']),  
+            Index(fields=["parent_frame", "is_satisfied"]),
+            Index(fields=["parent_layer", "is_satisfied"]),
+            Index(fields=["parent_job", "is_satisfied"]),
+            Index(fields=["dep_frame", "is_satisfied"]),
+            Index(fields=["dep_layer", "is_satisfied"]),
         ]

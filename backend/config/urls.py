@@ -14,31 +14,36 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+
 from django.conf import settings
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 
 def api_root(request):
-    return JsonResponse({
-        "name": "RenderHive API",
-        "version": "0.1.0",
-        "status": "operational"
-    })
+    return JsonResponse({"name": "RenderHive API", "version": "0.1.0", "status": "operational"})
 
 
 urlpatterns = [
-    path('', api_root, name='api-root'),
-    path('admin/', admin.site.urls),
+    path("", api_root, name="api-root"),
+    path("admin/", admin.site.urls),
+    # Jobs API
+    path("api/", include("apps.jobs.urls")),
+    # OpenAPI schema and Swagger UI
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    # allauth headless
+    path("_allauth/", include("allauth.headless.urls")),
 ]
 
 if settings.DEBUG:
     try:
         import debug_toolbar
+
         urlpatterns += [
-            path('__debug__/', include(debug_toolbar.urls)),
+            path("__debug__/", include(debug_toolbar.urls)),
         ]
     except ImportError:
         pass
-
