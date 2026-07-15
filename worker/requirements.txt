@@ -1,0 +1,5 @@
+requests
+psutil
+PySide6
+pyinstaller
+GPUtil

@@ -12,7 +12,7 @@ import django_filters
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import mixins, status, viewsets
+from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -261,7 +261,8 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             return [IsAuthenticated()]  # View enforces is_staff internally
         return [IsAuthenticated()]
 
-    @action(detail=True, methods=["post"])
+
+    @action(detail=True, methods=["post"], serializer_class=FrameStartSerializer)
     @transaction.atomic
     def start(self, request, pk=None, **kwargs):
         """Mark a frame as RUNNING when a Worker begins execution.
@@ -285,7 +286,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
                 {"detail": f"Cannot start a frame in state '{frame.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
-        serializer = FrameStartSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         frame.state = FrameState.RUNNING
@@ -299,17 +300,8 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
     def succeed(self, request, pk=None, **kwargs):
         """Mark a frame as SUCCEEDED and record telemetry.
 
-        Records exit code, peak memory, and core usage. Signals handle
-        updating the parent Layer and Job counters and satisfying any
-        downstream dependencies.
-
-        Args:
-            request: HTTP request containing telemetry data.
-            pk: Frame UUID.
-
-        Returns:
-            ``200 OK`` on success.
-            ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
+        Transitions state, logs exit code and stop timestamp.
+        Returns 409 if the frame isn't currently running/checkpointing.
         """
         queryset = self.filter_queryset(self.get_queryset())
         frame = get_object_or_404(queryset.select_for_update(), pk=pk)
@@ -319,7 +311,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
                 {"detail": f"Cannot succeed a frame in state '{frame.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
-        serializer = FrameSucceedSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
@@ -332,7 +324,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         frame.save()
         return Response({"status": "succeeded"})
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], serializer_class=FrameFailSerializer)
     @transaction.atomic
     def fail(self, request, pk=None, **kwargs):
         """Mark a frame as FAILED or retry it based on the retry budget.
@@ -357,7 +349,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
                 {"detail": f"Cannot fail a frame in state '{frame.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
-        serializer = FrameFailSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         frame.exit_status = serializer.validated_data["exit_status"]
@@ -439,3 +431,53 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         frame.state = FrameState.CHECKPOINT
         frame.save(update_fields=["checkpoint_count", "state", "updated_at"])
         return Response({"status": "checkpointed", "checkpoint_count": frame.checkpoint_count})
+
+
+class FrameDispatchView(generics.GenericAPIView):
+    """Atomically find, lock, and dispatch a READY frame to a worker."""
+    permission_classes = [IsFarmAgent]
+    serializer_class = FrameStartSerializer
+
+    @transaction.atomic
+    def post(self, request, *args, **kwargs):
+        # Validate worker_name using standard DRF serializer workflow
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        worker_name = serializer.validated_data["worker_name"]
+
+        # Find the highest priority READY frame and lock it
+        frame = Frame.objects.select_for_update(skip_locked=True).filter(
+            state=FrameState.READY
+        ).order_by("job__priority", "dispatch_order").first()
+
+        if not frame:
+            return Response({"detail": "No frames available."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Transition frame to RUNNING
+        frame.state = FrameState.RUNNING
+        frame.worker_name = worker_name
+        frame.started_at = timezone.now()
+        frame.save(update_fields=["state", "worker_name", "started_at", "updated_at"])
+
+        # Update worker status to RENDERING
+        try:
+            from apps.workers.models import WorkerNode, WorkerStatus
+            WorkerNode.objects.filter(hostname=worker_name).update(
+                status=WorkerStatus.RENDERING,
+                last_ping=timezone.now()
+            )
+        except Exception:
+            pass  # If worker app is not setup yet, just pass
+
+        # Return consolidated payload
+        return Response({
+            "id": str(frame.id),
+            "name": frame.name,
+            "number": frame.number,
+            "job_id": str(frame.job_id),
+            "layer_id": str(frame.layer_id),
+            "command": frame.layer.command,
+            "scene_path": frame.layer.scene_path,
+            "env": frame.layer.env,
+            "chunk_size": frame.layer.chunk_size,
+        })

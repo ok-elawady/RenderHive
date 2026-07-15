@@ -12,9 +12,10 @@ registered on the top-level ``frames`` router so that Worker daemons can
 reach them with a single UUID, without needing to know the layer/job hierarchy.
 """
 
+from django.urls import path
 from rest_framework_nested import routers
 
-from .views import FrameViewSet, JobViewSet, LayerViewSet
+from .views import FrameViewSet, JobViewSet, LayerViewSet, FrameDispatchView
 
 # ── Top-level router ──────────────────────────────────────────────────────────
 router = routers.DefaultRouter()
@@ -29,4 +30,6 @@ jobs_router.register(r"layers", LayerViewSet, basename="job-layer")
 layers_router = routers.NestedDefaultRouter(jobs_router, r"layers", lookup="layer")
 layers_router.register(r"frames", FrameViewSet, basename="layer-frame")
 
-urlpatterns = router.urls + jobs_router.urls + layers_router.urls
+urlpatterns = [
+    path("frames/dispatch/", FrameDispatchView.as_view(), name="frame-dispatch"),
+] + router.urls + jobs_router.urls + layers_router.urls

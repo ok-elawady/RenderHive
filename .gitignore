@@ -91,3 +91,17 @@ backend/media/
 **/.ruff_cache/
 **/.pytest_cache/
 **/.mypy_cache/
+
+# Worker PyInstaller build files
+worker/build/
+worker/dist/
+worker/*.spec
+worker/RenderHiveWorker.exe
+
+# IDEs
+.vscode/
+.idea/
+.vs/
+
+# Generated OpenAPI schemas
+backend/schema.yml
