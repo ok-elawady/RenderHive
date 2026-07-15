@@ -114,11 +114,11 @@ class TestJobSubmission:
         user_client.post("/api/jobs/", self.JOB_PAYLOAD, format="json")
         job = Job.objects.get()
         assert job.total_frames == 10
-        assert job.waiting_frames == 10
+        assert job.ready_frames == 10
 
         layer = Layer.objects.get()
         assert layer.total_frames == 10
-        assert layer.waiting_frames == 10
+        assert layer.ready_frames == 10
 
     def test_submitted_by_populated_for_web_submission(self, user_client, user):
         """submitted_by is set to the session user for web submissions."""
@@ -453,5 +453,5 @@ class TestJobSubmissionMultiLayer:
         assert resp.status_code == 201
         job = Job.objects.get()
         assert job.total_frames == 8  # 5 (beauty) + 3 (shadow)
-        assert job.waiting_frames == 8
+        assert job.ready_frames == 8
         assert Frame.objects.count() == 8
