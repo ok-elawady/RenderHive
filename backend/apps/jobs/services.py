@@ -147,6 +147,10 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
         frames = []
         for i, start_number in enumerate(frame_starts):
             padded = str(start_number).zfill(4)
+            # Since dependencies are not passed in create_job, depend_count is 0
+            # Initialize to READY immediately so workers can dispatch them
+            initial_state = FrameState.READY
+            
             frames.append(
                 Frame(
                     layer=layer,
@@ -154,7 +158,8 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
                     name=f"{layer.name}_{padded}",
                     number=start_number,
                     dispatch_order=i,
-                    state=FrameState.WAITING,
+                    state=initial_state,
+                    depend_count=0,
                     max_retries=max_retries,
                 )
             )
@@ -166,11 +171,11 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
         frame_count = len(frames)
         Layer.objects.filter(pk=layer.pk).update(
             total_frames=frame_count,
-            waiting_frames=frame_count,
+            ready_frames=frame_count,
         )
         Job.objects.filter(pk=job.pk).update(
             total_frames=F("total_frames") + frame_count,
-            waiting_frames=F("waiting_frames") + frame_count,
+            ready_frames=F("ready_frames") + frame_count,
         )
 
     job.refresh_from_db()
