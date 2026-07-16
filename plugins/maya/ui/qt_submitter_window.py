@@ -19,7 +19,7 @@ from .qt_theme import COLORS, build_stylesheet
 
 
 WINDOW_OBJECT_NAME = "RenderHiveQtSubmitter"
-UI_VERSION = "1.5.0"
+UI_VERSION = "1.6.0"
 _WINDOW = None
 _API = None
 _WIDGETS = {}
@@ -618,11 +618,47 @@ def install_api_bridge(api):
     api.refresh_available_workers = qt_refresh_available_workers
     api.set_available_workers = qt_set_available_workers
 
-    backend_bridge = importlib.import_module(
-        "renderhive_backend.maya_bridge"
+    package_root = os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
     )
-    importlib.reload(backend_bridge)
-    backend_bridge.install(api)
+
+    if package_root in sys.path:
+        sys.path.remove(package_root)
+    sys.path.insert(0, package_root)
+
+    existing_api = sys.modules.get("api")
+    if existing_api is not None:
+        existing_file = getattr(
+            existing_api,
+            "__file__",
+            "",
+        ) or ""
+        existing_file = (
+            os.path.abspath(existing_file)
+            if existing_file
+            else ""
+        )
+
+        if (
+            existing_file
+            and not existing_file.startswith(package_root)
+        ):
+            for module_name in list(sys.modules):
+                if (
+                    module_name == "api"
+                    or module_name.startswith("api.")
+                ):
+                    del sys.modules[module_name]
+
+    importlib.invalidate_caches()
+
+    api_bridge = importlib.import_module(
+        "api.maya_bridge"
+    )
+    importlib.reload(api_bridge)
+    api_bridge.install(api)
 
     if not hasattr(api, "_renderhive_legacy_build_task"):
         api._renderhive_legacy_build_task = api.build_task
@@ -1148,153 +1184,6 @@ class PageHeader(QtWidgets.QWidget):
 # -----------------------------------------------------------------------------
 
 
-class TaskPreviewDialog(QtWidgets.QDialog):
-    def __init__(self, api, task, errors=None, parent=None):
-        super(TaskPreviewDialog, self).__init__(parent)
-        self.api = api
-        self.task = task
-        self.errors = errors or []
-
-        self.setWindowTitle("Review RenderHive Task")
-        self.setObjectName("TaskPreviewDialog")
-        self.resize(680, 620)
-        self.setModal(True)
-
-        self.build_ui()
-
-    def build_ui(self):
-        root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(10)
-
-        title = QtWidgets.QLabel("Review Task")
-        title.setObjectName("PageTitle")
-        root.addWidget(title)
-
-        subtitle = QtWidgets.QLabel(
-            "Confirm the scheduling, worker targeting and output values before saving or submitting."
-        )
-        subtitle.setObjectName("MutedText")
-        subtitle.setWordWrap(True)
-        root.addWidget(subtitle)
-
-        frames = self.task.get("frames", {})
-        farm = self.task.get("farm", {})
-        validation = self.task.get("validation", {})
-
-        summary = QtWidgets.QFrame()
-        summary.setObjectName("Card")
-        grid = QtWidgets.QGridLayout(summary)
-        grid.setContentsMargins(12, 12, 12, 12)
-        grid.setHorizontalSpacing(18)
-        grid.setVerticalSpacing(8)
-
-        rows = [
-            ("Job", self.task.get("job_name", "—")),
-            ("Frames", "{}–{}  step {}".format(
-                frames.get("start", "—"),
-                frames.get("end", "—"),
-                frames.get("step", 1),
-            )),
-            ("Tasks", "{} task(s), chunk {}".format(
-                frames.get("task_count", 0),
-                frames.get("chunk_size", 1),
-            )),
-            ("Pool", "{} ({} selected)".format(
-                farm.get("pool", "All"),
-                len(farm.get("pool_workers", [])),
-            )),
-            ("Machine Limit", str(farm.get("machine_limit", 0) or "Unlimited")),
-            ("Concurrent / Worker", str(farm.get("concurrent_tasks", 1))),
-            ("Submission", self.task.get("submission", {}).get("mode", "Shared Storage")),
-            ("Validation", "{} error(s), {} warning(s)".format(
-                validation.get("errors", 0),
-                validation.get("warnings", 0),
-            )),
-        ]
-
-        for row, (label, value) in enumerate(rows):
-            label_widget = QtWidgets.QLabel(label)
-            label_widget.setObjectName("FieldLabel")
-            value_widget = QtWidgets.QLabel(str(value))
-            value_widget.setObjectName("SecondaryText")
-            value_widget.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-            grid.addWidget(label_widget, row, 0)
-            grid.addWidget(value_widget, row, 1)
-
-        grid.setColumnStretch(1, 1)
-        root.addWidget(summary)
-
-        if self.errors:
-            error_box = QtWidgets.QLabel(
-                "Task validation found:\n• " + "\n• ".join(self.errors)
-            )
-            error_box.setObjectName("PreviewError")
-            error_box.setWordWrap(True)
-            root.addWidget(error_box)
-
-        tabs = QtWidgets.QTabWidget()
-
-        json_view = QtWidgets.QPlainTextEdit()
-        json_view.setObjectName("JsonPreview")
-        json_view.setReadOnly(True)
-        json_view.setPlainText(json.dumps(self.task, indent=4, sort_keys=False))
-        tabs.addTab(json_view, "Task JSON")
-
-        workers_view = QtWidgets.QPlainTextEdit()
-        workers_view.setObjectName("JsonPreview")
-        workers_view.setReadOnly(True)
-        workers_view.setPlainText(
-            "Pool Workers\n{}\n\nAllowed Workers\n{}\n\nDenied Workers\n{}\n\nJob Dependencies\n{}".format(
-                ", ".join(self.task.get("pool_workers", [])) or "All available workers",
-                ", ".join(self.task.get("allowed_workers", [])) or "All workers in selected pool",
-                ", ".join(self.task.get("denied_workers", [])) or "None",
-                ", ".join(self.task.get("job_dependencies", [])) or "None",
-            )
-        )
-        tabs.addTab(workers_view, "Targeting")
-        root.addWidget(tabs, 1)
-
-        buttons = QtWidgets.QHBoxLayout()
-
-        copy_button = QtWidgets.QPushButton("Copy JSON")
-        copy_button.clicked.connect(
-            lambda: QtWidgets.QApplication.clipboard().setText(
-                json.dumps(self.task, indent=4)
-            )
-        )
-
-        save_button = QtWidgets.QPushButton("Save JSON As…")
-        save_button.setObjectName("PrimaryButton")
-        save_button.clicked.connect(self.save_json)
-
-        close_button = QtWidgets.QPushButton("Close")
-        close_button.setObjectName("GhostButton")
-        close_button.clicked.connect(self.accept)
-
-        buttons.addWidget(copy_button)
-        buttons.addWidget(save_button)
-        buttons.addStretch()
-        buttons.addWidget(close_button)
-        root.addLayout(buttons)
-
-    def save_json(self):
-        default_name = "{}_task.json".format(
-            self.api.safe_name(self.task.get("job_name", "maya_job"))
-        )
-
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self,
-            "Save RenderHive Task",
-            os.path.join(self.api.get_worker_tasks_dir(), default_name),
-            "JSON Files (*.json)",
-        )
-
-        if not path:
-            return
-
-        self.api.write_task_json(path, self.task)
-        qt_set_status("Task JSON saved: {}".format(path))
 
 
 # -----------------------------------------------------------------------------
@@ -1311,8 +1200,8 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         self.page_stack = None
         self.available_workers = []
         self.worker_sync_thread = None
-        self.backend_test_thread = None
-        self.backend_submit_thread = None
+        self.api_test_thread = None
+        self.api_submit_thread = None
         self.worker_pools = self.load_worker_pools()
 
         self.setObjectName("RenderHiveWindow")
@@ -1324,7 +1213,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         self.setStyleSheet(build_stylesheet())
 
         self.build_ui()
-        self.load_backend_settings()
+        self.load_api_settings()
         self.restore_ui_state()
         self.sync_from_scene()
         QtCore.QTimer.singleShot(0, self.sync_available_workers)
@@ -1543,7 +1432,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         scheduling = Card(
             "Scheduling & Distribution",
-            "These values are stored now and will be enforced by the backend scheduler later.",
+            "These values are submitted to the RenderHive scheduler.",
         )
         schedule_grid = QtWidgets.QGridLayout()
         schedule_grid.setHorizontalSpacing(10)
@@ -1564,7 +1453,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         concurrent.setValue(1)
 
         start_suspended = register("rh_start_suspended", QtWidgets.QCheckBox("Start job suspended"))
-        start_suspended.setToolTip("The backend can queue this job without starting it immediately.")
+        start_suspended.setToolTip("The RenderHive API can queue this job without starting it immediately.")
 
         schedule_grid.addWidget(LabeledField("Chunk Size", chunk_size), 0, 0)
         schedule_grid.addWidget(LabeledField("Machine Limit", machine_limit), 0, 1)
@@ -1589,7 +1478,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         worker_status = register(
             "worker_sync_status",
             QtWidgets.QLabel(
-                "Worker discovery is waiting for the backend."
+                "The current API does not expose worker discovery yet."
             ),
         )
         worker_status.setObjectName("MutedText")
@@ -2413,19 +2302,19 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         )
 
         backend_card = Card(
-            "Backend Connection",
+            "API Connection",
             "Uses the RenderHive OpenAPI job endpoints and Token authentication.",
         )
 
         backend_url = register(
-            "rh_backend_url",
+            "rh_api_url",
             QtWidgets.QLineEdit(),
         )
         backend_url.setPlaceholderText("http://127.0.0.1:8000")
         backend_url.setClearButtonEnabled(True)
 
         backend_token = register(
-            "rh_backend_token",
+            "rh_api_token",
             QtWidgets.QLineEdit(),
         )
         backend_token.setPlaceholderText("Paste API token")
@@ -2453,39 +2342,39 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         token_widget = QtWidgets.QWidget()
         token_widget.setLayout(token_row)
 
-        backend_enabled = register(
-            "rh_backend_enabled",
-            QtWidgets.QCheckBox("Use Backend API for Submit Job"),
+        api_enabled = register(
+            "rh_api_enabled",
+            QtWidgets.QCheckBox("Use RenderHive API for Submit Job"),
         )
-        backend_enabled.setToolTip(
+        api_enabled.setToolTip(
             "When disabled, Submit Job continues to use the Local Worker flow."
         )
 
         backend_card.layout.addWidget(
-            LabeledField("Backend Base URL", backend_url)
+            LabeledField("API Base URL", backend_url)
         )
         backend_card.layout.addWidget(
             LabeledField("API Token", token_widget)
         )
-        backend_card.layout.addWidget(backend_enabled)
+        backend_card.layout.addWidget(api_enabled)
 
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(7)
 
         save_button = QtWidgets.QPushButton("Save Settings")
         save_button.setObjectName("PrimaryButton")
-        save_button.clicked.connect(self.save_backend_settings)
+        save_button.clicked.connect(self.save_api_settings)
 
         test_button = register(
-            "test_backend_button",
+            "test_api_button",
             QtWidgets.QPushButton("Test Connection"),
         )
         test_button.setObjectName("InfoButton")
-        test_button.clicked.connect(self.test_backend_connection)
+        test_button.clicked.connect(self.test_api_connection)
 
-        open_button = QtWidgets.QPushButton("Open Local Config")
+        open_button = QtWidgets.QPushButton("Open API Config")
         open_button.setObjectName("GhostButton")
-        open_button.clicked.connect(self.open_backend_config)
+        open_button.clicked.connect(self.open_api_config)
 
         buttons.addWidget(save_button)
         buttons.addWidget(test_button)
@@ -2494,8 +2383,8 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         backend_card.layout.addLayout(buttons)
 
         backend_status = register(
-            "backend_connection_status",
-            QtWidgets.QLabel("Backend settings are not loaded yet."),
+            "api_connection_status",
+            QtWidgets.QLabel("API settings are not loaded yet."),
         )
         backend_status.setObjectName("MutedText")
         backend_status.setWordWrap(True)
@@ -2570,7 +2459,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         submit.setMinimumHeight(38)
         submit.setToolTip(
             "Submit the current Maya job. "
-            "This action will be connected to the backend API."
+            "Submit the current validated job to the RenderHive API."
         )
         submit.clicked.connect(self.submit_job)
 
@@ -3045,54 +2934,36 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         self.available_workers = normalized
         self.refresh_pool_combo()
 
-    def preview_task(self):
-        try:
-            task = self.api.build_task()
-            errors = self.api.validate_task(task)
-            dialog = TaskPreviewDialog(
-                self.api,
-                task,
-                errors=errors,
-                parent=self,
-            )
-            dialog.exec_()
-        except Exception as error:
-            self.set_status("Task review failed: {}".format(error), level="error")
-            QtWidgets.QMessageBox.critical(
-                self,
-                "RenderHive",
-                "Could not build the task preview:\n\n{}".format(error),
-            )
 
     def validate_scene(self):
         return self.safe_action("Validating scene", self.api.validate_scene_from_ui)
 
 
-    def backend_enabled(self):
-        widget = _WIDGETS.get("rh_backend_enabled")
+    def api_enabled(self):
+        widget = _WIDGETS.get("rh_api_enabled")
         if isinstance(widget, QtWidgets.QCheckBox):
             return bool(widget.isChecked())
 
         try:
             return bool(
-                self.api.get_backend_config().get("enabled", False)
+                self.api.get_api_config().get("enabled", False)
             )
         except Exception:
             return False
 
-    def load_backend_settings(self):
+    def load_api_settings(self):
         try:
-            config = self.api.get_backend_config()
+            config = self.api.get_api_config()
         except Exception as error:
-            self.set_backend_status(
-                "Could not load backend settings: {}".format(error),
+            self.set_api_status(
+                "Could not load API settings: {}".format(error),
                 level="error",
             )
             return
 
-        url_widget = _WIDGETS.get("rh_backend_url")
-        token_widget = _WIDGETS.get("rh_backend_token")
-        enabled_widget = _WIDGETS.get("rh_backend_enabled")
+        url_widget = _WIDGETS.get("rh_api_url")
+        token_widget = _WIDGETS.get("rh_api_token")
+        enabled_widget = _WIDGETS.get("rh_api_enabled")
 
         if isinstance(url_widget, QtWidgets.QLineEdit):
             url_widget.setText(str(config.get("base_url", "")))
@@ -3107,25 +2978,25 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         has_token = bool(config.get("auth", {}).get("token"))
         if config.get("enabled", False) and has_token:
-            self.set_backend_status(
-                "Backend enabled with Token authentication. Test the connection before submitting.",
+            self.set_api_status(
+                "RenderHive API enabled with Token authentication. Test the connection before submitting.",
                 level="info",
             )
         elif config.get("enabled", False):
-            self.set_backend_status(
-                "Backend enabled, but the API token is empty.",
+            self.set_api_status(
+                "RenderHive API enabled, but the token is empty.",
                 level="warning",
             )
         else:
-            self.set_backend_status(
-                "Backend disabled. Submit Job will use the Local Worker.",
+            self.set_api_status(
+                "RenderHive API is disabled. Enable it before submission.",
                 level="warning",
             )
 
-    def backend_settings_payload(self):
-        url_widget = _WIDGETS.get("rh_backend_url")
-        token_widget = _WIDGETS.get("rh_backend_token")
-        enabled_widget = _WIDGETS.get("rh_backend_enabled")
+    def api_settings_payload(self):
+        url_widget = _WIDGETS.get("rh_api_url")
+        token_widget = _WIDGETS.get("rh_api_token")
+        enabled_widget = _WIDGETS.get("rh_api_enabled")
 
         base_url = (
             url_widget.text().strip()
@@ -3152,32 +3023,32 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             },
         }
 
-    def save_backend_settings(self):
+    def save_api_settings(self):
         try:
-            config = self.api.save_backend_config(
-                self.backend_settings_payload()
+            config = self.api.save_api_config(
+                self.api_settings_payload()
             )
         except Exception as error:
-            self.set_backend_status(
-                "Could not save backend settings: {}".format(error),
+            self.set_api_status(
+                "Could not save API settings: {}".format(error),
                 level="error",
             )
             QtWidgets.QMessageBox.critical(
                 self,
-                "RenderHive Backend",
-                "Could not save backend settings:\n\n{}".format(error),
+                "RenderHive API",
+                "Could not save API settings:\n\n{}".format(error),
             )
             return None
 
-        self.set_backend_status(
+        self.set_api_status(
             "Settings saved: {}".format(config.get("base_url", "")),
             level="success",
         )
-        self.append_activity("Backend settings saved.")
+        self.append_activity("API settings saved.")
         return config
 
-    def set_backend_status(self, message, level="info"):
-        label = _WIDGETS.get("backend_connection_status")
+    def set_api_status(self, message, level="info"):
+        label = _WIDGETS.get("api_connection_status")
         color = {
             "error": COLORS["error"],
             "warning": COLORS["warning"],
@@ -3191,9 +3062,9 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
                 "QLabel { color:%s; }" % color
             )
 
-    def open_backend_config(self):
+    def open_api_config(self):
         try:
-            path = self.api.get_backend_config_path()
+            path = self.api.get_api_config_path()
 
             if hasattr(os, "startfile"):
                 os.startfile(path)
@@ -3203,103 +3074,103 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
                 )
 
             self.append_activity(
-                "Opened backend config: {}".format(path)
+                "Opened API config: {}".format(path)
             )
         except Exception as error:
             QtWidgets.QMessageBox.warning(
                 self,
-                "RenderHive Backend",
-                "Could not open backend config:\n\n{}".format(error),
+                "RenderHive API",
+                "Could not open API config:\n\n{}".format(error),
             )
 
-    def test_backend_connection(self):
+    def test_api_connection(self):
         if (
-            self.backend_test_thread is not None
-            and self.backend_test_thread.isRunning()
+            self.api_test_thread is not None
+            and self.api_test_thread.isRunning()
         ):
             return
 
-        if not self.save_backend_settings():
+        if not self.save_api_settings():
             return
 
-        button = _WIDGETS.get("test_backend_button")
+        button = _WIDGETS.get("test_api_button")
         if isinstance(button, QtWidgets.QPushButton):
             button.setEnabled(False)
             button.setText("Testing…")
 
-        self.set_backend_status(
-            "Testing backend connection…",
+        self.set_api_status(
+            "Testing API connection…",
             level="info",
         )
         self.set_status(
-            "Testing backend connection…",
+            "Testing API connection…",
             level="info",
         )
 
-        self.backend_test_thread = WorkerSyncThread(
-            self.api.backend_health_check,
+        self.api_test_thread = WorkerSyncThread(
+            self.api.test_api_connection,
             parent=self,
         )
-        self.backend_test_thread.succeeded.connect(
-            self.on_backend_test_succeeded
+        self.api_test_thread.succeeded.connect(
+            self.on_api_test_succeeded
         )
-        self.backend_test_thread.failed.connect(
-            self.on_backend_test_failed
+        self.api_test_thread.failed.connect(
+            self.on_api_test_failed
         )
-        self.backend_test_thread.finished.connect(
-            self.on_backend_test_finished
+        self.api_test_thread.finished.connect(
+            self.on_api_test_finished
         )
-        self.backend_test_thread.start()
+        self.api_test_thread.start()
 
-    def on_backend_test_succeeded(self, response):
+    def on_api_test_succeeded(self, response):
         status_code = (
             response.get("status_code", 200)
             if isinstance(response, dict)
             else 200
         )
 
-        self.set_backend_status(
-            "Backend is online. HTTP {}.".format(status_code),
+        self.set_api_status(
+            "RenderHive API is online. HTTP {}.".format(status_code),
             level="success",
         )
         self.set_status(
-            "Backend connection successful.",
+            "API connection successful.",
             level="success",
         )
         self.append_activity(
-            "Backend health check succeeded."
+            "API connection test succeeded."
         )
 
-        if self.backend_enabled():
+        if self.api_enabled():
             QtCore.QTimer.singleShot(
                 0,
                 self.sync_available_workers
             )
 
-    def on_backend_test_failed(self, error):
-        self.set_backend_status(
-            "Backend connection failed: {}".format(error),
+    def on_api_test_failed(self, error):
+        self.set_api_status(
+            "API connection failed: {}".format(error),
             level="error",
         )
         self.set_status(
-            "Backend connection failed.",
+            "API connection failed.",
             level="error",
         )
         self.append_activity(
-            "Backend health check failed: {}".format(error)
+            "API connection test failed: {}".format(error)
         )
 
-    def on_backend_test_finished(self):
-        button = _WIDGETS.get("test_backend_button")
+    def on_api_test_finished(self):
+        button = _WIDGETS.get("test_api_button")
         if isinstance(button, QtWidgets.QPushButton):
             button.setEnabled(True)
             button.setText("Test Connection")
 
-        if self.backend_test_thread is not None:
-            self.backend_test_thread.deleteLater()
-            self.backend_test_thread = None
+        if self.api_test_thread is not None:
+            self.api_test_thread.deleteLater()
+            self.api_test_thread = None
 
-    def prepare_backend_task(self):
+    def prepare_api_task(self):
         ok, message = self.api.save_scene_if_needed()
 
         if not ok:
@@ -3343,22 +3214,31 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         return task
 
     def submit_job(self):
-        if not self.backend_enabled():
-            return self.safe_action(
-                "Starting local worker",
-                self.api.run_local_worker,
+        if not self.api_enabled():
+            self.set_status(
+                "RenderHive API is disabled.",
+                level="warning",
             )
+            QtWidgets.QMessageBox.warning(
+                self,
+                "RenderHive API",
+                (
+                    "Enable 'Use RenderHive API for Submit Job' "
+                    "inside Tools before submitting."
+                ),
+            )
+            return None
 
         if (
-            self.backend_submit_thread is not None
-            and self.backend_submit_thread.isRunning()
+            self.api_submit_thread is not None
+            and self.api_submit_thread.isRunning()
         ):
             return
 
-        if not self.save_backend_settings():
+        if not self.save_api_settings():
             return
 
-        task = self.prepare_backend_task()
+        task = self.prepare_api_task()
         if not task:
             return
 
@@ -3369,31 +3249,31 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         self.set_busy(True)
         self.set_status(
-            "Submitting job to backend…",
+            "Submitting job to API…",
             level="info",
         )
         self.append_activity(
-            "Backend submission started: {}.".format(
+            "API submission started: {}.".format(
                 task.get("task_uid", task.get("job_name", "maya_job"))
             )
         )
 
-        self.backend_submit_thread = WorkerSyncThread(
-            lambda: self.api.submit_job_to_backend(task),
+        self.api_submit_thread = WorkerSyncThread(
+            lambda: self.api.submit_job_to_api(task),
             parent=self,
         )
-        self.backend_submit_thread.succeeded.connect(
-            self.on_backend_submit_succeeded
+        self.api_submit_thread.succeeded.connect(
+            self.on_api_submit_succeeded
         )
-        self.backend_submit_thread.failed.connect(
-            self.on_backend_submit_failed
+        self.api_submit_thread.failed.connect(
+            self.on_api_submit_failed
         )
-        self.backend_submit_thread.finished.connect(
-            self.on_backend_submit_finished
+        self.api_submit_thread.finished.connect(
+            self.on_api_submit_finished
         )
-        self.backend_submit_thread.start()
+        self.api_submit_thread.start()
 
-    def on_backend_submit_succeeded(self, response):
+    def on_api_submit_succeeded(self, response):
         response = (
             response
             if isinstance(response, dict)
@@ -3428,12 +3308,12 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             "Job submitted: {} ({})".format(job_id, status),
             level="success",
         )
-        self.set_backend_status(
+        self.set_api_status(
             "Last submission: {} — {}".format(job_id, status),
             level="success",
         )
         self.append_activity(
-            "Backend accepted job {} with status {}.".format(
+            "API accepted job {} with status {}.".format(
                 job_id,
                 status,
             )
@@ -3449,17 +3329,17 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             ),
         )
 
-    def on_backend_submit_failed(self, error):
+    def on_api_submit_failed(self, error):
         self.set_status(
-            "Backend submission failed.",
+            "API submission failed.",
             level="error",
         )
-        self.set_backend_status(
+        self.set_api_status(
             "Submission failed: {}".format(error),
             level="error",
         )
         self.append_activity(
-            "Backend submission failed: {}".format(error)
+            "API submission failed: {}".format(error)
         )
         QtWidgets.QMessageBox.critical(
             self,
@@ -3467,7 +3347,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             str(error),
         )
 
-    def on_backend_submit_finished(self):
+    def on_api_submit_finished(self):
         button = _WIDGETS.get("submit_job_button")
         if isinstance(button, QtWidgets.QPushButton):
             button.setEnabled(True)
@@ -3475,13 +3355,11 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         self.set_busy(False)
 
-        if self.backend_submit_thread is not None:
-            self.backend_submit_thread.deleteLater()
-            self.backend_submit_thread = None
+        if self.api_submit_thread is not None:
+            self.api_submit_thread.deleteLater()
+            self.api_submit_thread = None
 
 
-    def run_local_worker(self):
-        return self.safe_action("Running local worker", self.api.run_local_worker)
 
     def sync_from_scene(self, *args):
         qt_set_text("rh_scene_path", self.api.get_scene_path())

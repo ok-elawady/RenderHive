@@ -130,7 +130,7 @@ def _scene_info(task):
     }
 
 
-def build_job_payload(task, config):
+def build_job_request(task, config):
     if not isinstance(task, dict):
         raise PayloadError("RenderHive task must be a dictionary.")
 
@@ -233,11 +233,11 @@ def build_job_payload(task, config):
         "layers": [layer],
     }
 
-    validate_job_payload(payload)
+    validate_job_request(payload)
     return payload
 
 
-def validate_job_payload(payload):
+def validate_job_request(payload):
     errors = []
 
     for field in ("project", "user", "log_directory", "layers"):
