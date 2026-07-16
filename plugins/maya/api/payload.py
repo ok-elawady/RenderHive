@@ -57,21 +57,61 @@ def build_maya_command(task, config):
         default="{frame}"
     ) or "{frame}"
 
+    renderer = _text(task.get("renderer"), default="arnold") or "arnold"
+
     parts = [
         _quote(executable),
-        "-r", _text(task.get("renderer"), default="arnold") or "arnold",
+        "-r", renderer,
+    ]
+
+    parts.extend([
         "-s", frame_token,
         "-e", frame_token,
         "-b", "1",
         "-cam", _quote(task.get("camera")),
         "-proj", _quote(task.get("project_path")),
         "-rd", _quote(task.get("output_path")),
-        "-im", _quote(task.get("image_name")),
-        "-of", _text(task.get("image_format"), default="exr") or "exr",
-        "-pad", str(_integer(task.get("frame_padding"), 4, minimum=1)),
-        "-fnc", "3",
-        _quote(task.get("scene_path")),
-    ]
+    ])
+
+    # For Arnold, injecting image formatting flags directly into the command line (-of, -im)
+    # causes Render.exe to crash because it applies them before plugins load.
+    # Instead, we force-load Arnold and apply the user's overrides manually via python in the preRender script!
+    if renderer == "arnold":
+        image_name = task.get("image_name") or ""
+        image_format = task.get("image_format") or "exr"
+        padding = _integer(task.get("frame_padding"), 4, minimum=1)
+        
+        py_script = [
+            "import maya.cmds as cmds",
+            "cmds.loadPlugin('mtoa', quiet=True)",
+            "import mtoa.core",
+            "mtoa.core.createOptions()"
+        ]
+        
+        if image_name:
+            py_script.append(f"cmds.setAttr('defaultRenderGlobals.imageFilePrefix', '{image_name}', type='string')")
+        if image_format:
+            py_script.append(f"cmds.setAttr('defaultArnoldDriver.aiTranslator', '{image_format}', type='string')")
+        if padding:
+            py_script.append(f"cmds.setAttr('defaultRenderGlobals.extensionPadding', {padding})")
+            
+        # Prevent Arnold from silently aborting the batch render if no network license is found
+        py_script.append("cmds.setAttr('defaultArnoldRenderOptions.abortOnLicenseFail', 0)")
+            
+        py_string = "; ".join(py_script)
+        parts.extend(["-preRender", _quote(f"python(\"{py_string}\");")])
+        
+        # Force the formatting to be name.#.ext instead of name.ext.#
+        parts.extend(["-fnc", "3"])
+    else:
+        parts.extend([
+            "-im", _quote(task.get("image_name")),
+            "-of", _text(task.get("image_format"), default="exr") or "exr",
+            "-pad", str(_integer(task.get("frame_padding"), 4, minimum=1)),
+            "-fnc", "3",
+        ])
+
+    parts.append(_quote(task.get("scene_path")))
 
     return " ".join(parts)
 
