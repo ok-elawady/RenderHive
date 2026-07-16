@@ -2,23 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { Cpu as CpuIcon, X } from "lucide-react";
-import type { TelemetryPoint } from "../types/dashboard";
+import type { TelemetryMetrics, TelemetryPoint } from "../types/dashboard";
 
-const telemetryPoints: TelemetryPoint[] = [
-  { x: 0, vram: 22, cpu: 38 },
-  { x: 8, vram: 34, cpu: 42 },
-  { x: 16, vram: 28, cpu: 48 },
-  { x: 24, vram: 56, cpu: 46 },
-  { x: 32, vram: 48, cpu: 58 },
-  { x: 40, vram: 62, cpu: 54 },
-  { x: 48, vram: 68, cpu: 66 },
-  { x: 56, vram: 64, cpu: 60 },
-  { x: 64, vram: 78, cpu: 72 },
-  { x: 72, vram: 74, cpu: 68 },
-  { x: 80, vram: 83, cpu: 64 },
-  { x: 88, vram: 82, cpu: 70 },
-  { x: 96, vram: 88, cpu: 76 },
-  { x: 100, vram: 82, cpu: 64 },
+interface HardwareTelemetryProps {
+  telemetry: TelemetryMetrics;
+}
+
+const fallbackPoints: TelemetryPoint[] = [
+  { x: 0, vram: 0, cpu: 0 },
+  { x: 100, vram: 0, cpu: 0 },
 ];
 
 function buildLinePath(points: TelemetryPoint[], key: "vram" | "cpu"): string {
@@ -38,18 +30,21 @@ function buildAreaPath(points: TelemetryPoint[], key: "vram" | "cpu"): string {
   return `${line} L${lastPoint.x},100 L${firstPoint.x},100 Z`;
 }
 
-export default function HardwareTelemetry() {
+export default function HardwareTelemetry({
+  telemetry,
+}: HardwareTelemetryProps) {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [animationKey, setAnimationKey] = useState<number>(0);
+  const points = telemetry.points.length > 0 ? telemetry.points : fallbackPoints;
 
   const chartPaths = useMemo(
     () => ({
-      vramLine: buildLinePath(telemetryPoints, "vram"),
-      cpuLine: buildLinePath(telemetryPoints, "cpu"),
-      vramArea: buildAreaPath(telemetryPoints, "vram"),
-      cpuArea: buildAreaPath(telemetryPoints, "cpu"),
+      vramLine: buildLinePath(points, "vram"),
+      cpuLine: buildLinePath(points, "cpu"),
+      vramArea: buildAreaPath(points, "vram"),
+      cpuArea: buildAreaPath(points, "cpu"),
     }),
-    [],
+    [points],
   );
 
   const openModal = (): void => {
@@ -75,20 +70,30 @@ export default function HardwareTelemetry() {
           <div className="space-y-1.5">
             <div className="flex justify-between text-[#6B7280] dark:text-[#8A92A5]">
               <span>VRAM Usage</span>
-              <span className="text-[#5A1FA6] font-bold">82%</span>
+              <span className="text-[#5A1FA6] font-bold">
+                {telemetry.vramUsage}%
+              </span>
             </div>
             <div className="w-full bg-[#E7E9EF] dark:bg-[#2A3040] h-2 rounded-full overflow-hidden">
-              <div className="bg-gradient-to-r from-[#5A1FA6] to-[#7A39D9] h-full w-[82%] shadow-[0_0_10px_rgba(90,31,166,0.4)]"></div>
+              <div
+                className="bg-gradient-to-r from-[#5A1FA6] to-[#7A39D9] h-full transition-all duration-700 shadow-[0_0_10px_rgba(90,31,166,0.4)]"
+                style={{ width: `${telemetry.vramUsage}%` }}
+              ></div>
             </div>
           </div>
 
           <div className="space-y-1.5">
             <div className="flex justify-between text-[#6B7280] dark:text-[#8A92A5]">
               <span>CPU Cluster Load</span>
-              <span className="text-[#5A1FA6] font-bold">64%</span>
+              <span className="text-[#5A1FA6] font-bold">
+                {telemetry.cpuLoad}%
+              </span>
             </div>
             <div className="w-full bg-[#E7E9EF] dark:bg-[#2A3040] h-2 rounded-full overflow-hidden">
-              <div className="bg-gradient-to-r from-[#5A1FA6] to-[#7A39D9] h-full w-[64%] shadow-[0_0_10px_rgba(90,31,166,0.4)]"></div>
+              <div
+                className="bg-gradient-to-r from-[#5A1FA6] to-[#7A39D9] h-full transition-all duration-700 shadow-[0_0_10px_rgba(90,31,166,0.4)]"
+                style={{ width: `${telemetry.cpuLoad}%` }}
+              ></div>
             </div>
           </div>
         </div>
@@ -139,7 +144,7 @@ export default function HardwareTelemetry() {
             <div className="flex items-center justify-between border-b border-[#D7DBE3] dark:border-[#343B4D] px-6 py-4 bg-[#F7F8FA]/80 dark:bg-[#0E1016]/40">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#8A92A5]">
-                  Live Micro-Analytics
+                  Backend Micro-Analytics
                 </p>
                 <h3 className="mt-1 text-lg font-bold text-[#1A1D23] dark:text-[#F5F7FA]">
                   Telemetry History (24h)
