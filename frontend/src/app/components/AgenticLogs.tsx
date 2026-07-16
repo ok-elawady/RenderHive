@@ -1,60 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Search } from "lucide-react";
-import type { LogEntry, LogMessage } from "../types/dashboard";
+import type { LogEntry } from "../types/dashboard";
 
 interface AgenticLogsProps {
+  logs: LogEntry[];
   searchQuery: string;
 }
-
-const initialLogs: LogEntry[] = [
-  {
-    time: "18:20:01",
-    type: "INFO",
-    msg: "RenderHive Engine core initialized successfully.",
-    color: "text-[#3DDC84]",
-  },
-  {
-    time: "18:20:05",
-    type: "ROUTE",
-    msg: "Gateway connection verified with local clusters.",
-    color: "text-[#5A1FA6]",
-  },
-];
-
-const mockMessages: LogMessage[] = [
-  {
-    type: "INFO",
-    msg: "Syncing task data matrices with internal storage.",
-    color: "text-[#5A1FA6]",
-  },
-  {
-    type: "ROUTE",
-    msg: "Load balancer distributed frame packet #741A to Node-Gamma.",
-    color: "text-[#5A1FA6]",
-  },
-  {
-    type: "WARN",
-    msg: "Node-Delta VRAM spikes detected (89%). Allocating paging safety files.",
-    color: "text-[#FFB84D]",
-  },
-  {
-    type: "INFO",
-    msg: "Bucket rendering completed for frame SEQ_014_SH_020_v08 [Chunk 4].",
-    color: "text-[#3DDC84]",
-  },
-  {
-    type: "ROUTE",
-    msg: "Re-routing queued light pass task to an optimized CPU cluster.",
-    color: "text-[#5A1FA6]",
-  },
-  {
-    type: "WARN",
-    msg: "Minor latency delay in Node-Beta-04 client response. Retrying ping...",
-    color: "text-[#FFB84D]",
-  },
-];
 
 function matchesLogSearch(log: LogEntry, normalizedQuery: string): boolean {
   if (!normalizedQuery) return true;
@@ -64,10 +17,8 @@ function matchesLogSearch(log: LogEntry, normalizedQuery: string): boolean {
   );
 }
 
-export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
+export default function AgenticLogs({ logs, searchQuery }: AgenticLogsProps) {
   const terminalRef = useRef<HTMLDivElement | null>(null);
-  const logTimerRef = useRef<number | null>(null);
-  const [logs, setLogs] = useState<LogEntry[]>(initialLogs);
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
   const filteredLogs = useMemo<LogEntry[]>(
@@ -76,34 +27,10 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
   );
 
   useEffect(() => {
-    logTimerRef.current = window.setInterval(() => {
-      const now = new Date();
-      const timeStr = now.toTimeString().split(" ")[0];
-      const randomMsg =
-        mockMessages[Math.floor(Math.random() * mockMessages.length)];
-
-      setLogs((prevLogs) => {
-        const updatedLogs: LogEntry[] = [
-          ...prevLogs,
-          { time: timeStr, ...randomMsg },
-        ];
-        if (updatedLogs.length > 30) updatedLogs.shift();
-        return updatedLogs;
-      });
-    }, 3500);
-
-    return () => {
-      if (logTimerRef.current !== null) {
-        window.clearInterval(logTimerRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
-  }, [logs, filteredLogs.length]);
+  }, [filteredLogs.length]);
 
   return (
     <section className="bg-[#FFFFFF] dark:bg-[#171A24] border border-[#D7DBE3] dark:border-[#343B4D] p-6 rounded-lg space-y-4 shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
@@ -121,7 +48,7 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
         {filteredLogs.length > 0 ? (
           filteredLogs.map((log, idx) => (
             <div
-              key={`${log.time}-${idx}`}
+              key={`${log.time}-${idx}-${log.msg}`}
               className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 hover:bg-[#F1F3F6] dark:hover:bg-[#1E2433] px-2 py-0.5 rounded transition-all"
             >
               <span className="text-[#9AA1AE] dark:text-[#5F687D]">
@@ -141,7 +68,7 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
           <div className="flex h-full min-h-32 flex-col items-center justify-center text-center">
             <Search size={28} className="mb-2 text-[#5A1FA6] opacity-25" />
             <p className="text-xs font-bold text-[#1A1D23] dark:text-[#F5F7FA]">
-              No matching system logs found
+              No backend logs available
             </p>
           </div>
         )}

@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
-import { Search } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Search, Trash2 } from "lucide-react";
+import { deleteJob } from "../lib/api";
 import type { JobPriority, RenderJob } from "../types/dashboard";
 
 interface JobQueueProps {
   jobs: RenderJob[];
   searchQuery: string;
+  onJobRemoved: () => Promise<void>;
 }
 
 function getPriorityClass(priority: JobPriority): string {
@@ -18,17 +20,33 @@ function getPriorityClass(priority: JobPriority): string {
 function matchesJobSearch(job: RenderJob, normalizedQuery: string): boolean {
   if (!normalizedQuery) return true;
 
-  return [job.id, job.node, job.status].some((value) =>
-    value.toLowerCase().includes(normalizedQuery),
+  return [job.id, job.displayId, job.node, job.status, job.backendState].some(
+    (value) => value.toLowerCase().includes(normalizedQuery),
   );
 }
 
-export default function JobQueue({ jobs, searchQuery }: JobQueueProps) {
+export default function JobQueue({
+  jobs,
+  searchQuery,
+  onJobRemoved,
+}: JobQueueProps) {
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredJobs = useMemo<RenderJob[]>(
     () => jobs.filter((job) => matchesJobSearch(job, normalizedQuery)),
     [jobs, normalizedQuery],
   );
+
+  const handleRemoveJob = async (jobId: string): Promise<void> => {
+    setDeletingJobId(jobId);
+
+    try {
+      await deleteJob(jobId);
+      await onJobRemoved();
+    } finally {
+      setDeletingJobId(null);
+    }
+  };
 
   return (
     <div className="bg-[#FFFFFF] dark:bg-[#171A24] border border-[#D7DBE3] dark:border-[#343B4D] p-6 rounded-lg flex flex-col justify-between h-full shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
@@ -37,9 +55,9 @@ export default function JobQueue({ jobs, searchQuery }: JobQueueProps) {
           <h3 className="text-base font-bold text-[#1A1D23] dark:text-[#F5F7FA]">
             Live Job Queue
           </h3>
-          <button className="text-xs font-semibold text-[#5A1FA6] hover:text-[#6C2AC4] hover:underline">
-            View All
-          </button>
+          <span className="text-xs font-semibold text-[#5A1FA6]">
+            {filteredJobs.length} active
+          </span>
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-[#D7DBE3] dark:border-[#2A3143]">
@@ -51,6 +69,7 @@ export default function JobQueue({ jobs, searchQuery }: JobQueueProps) {
                 <th className="px-4 py-3 font-medium">Assigned Node</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium text-right">Progress</th>
+                <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#D7DBE3] dark:divide-[#2A3143] text-xs font-mono">
@@ -61,7 +80,7 @@ export default function JobQueue({ jobs, searchQuery }: JobQueueProps) {
                     className="bg-[#FFFFFF] dark:bg-[#11161F] hover:bg-[#F1F3F6] dark:hover:bg-[#1E2433] transition-all group"
                   >
                     <td className="px-4 py-4 font-medium text-[#1A1D23] dark:text-[#D7DBE5] group-hover:text-[#5A1FA6] transition-colors">
-                      {job.id}
+                      {job.displayId}
                     </td>
                     <td
                       className={`px-4 py-4 font-bold text-[10px] ${getPriorityClass(job.priority)}`}
@@ -89,16 +108,27 @@ export default function JobQueue({ jobs, searchQuery }: JobQueueProps) {
                             style={{ width: `${job.progress}%` }}
                           ></div>
                         </div>
-                        <span className="text-[11px] text-[#6B7280] dark:text-[#8A92A5] w-12 text-left">
+                        <span className="text-[11px] text-[#6B7280] dark:text-[#8A92A5] w-16 text-left">
                           {job.eta}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => void handleRemoveJob(job.id)}
+                        disabled={deletingJobId === job.id}
+                        className="inline-flex items-center justify-center rounded-md border border-[#FF5D73]/30 px-2.5 py-1 text-[#FF5D73] transition-all hover:bg-[#FF5D73]/10 disabled:cursor-wait disabled:opacity-60"
+                        aria-label={`Kill or remove ${job.displayId}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr className="bg-[#FFFFFF] dark:bg-[#11161F]">
-                  <td colSpan={5} className="px-4 py-14">
+                  <td colSpan={6} className="px-4 py-14">
                     <div className="flex flex-col items-center justify-center text-center">
                       <Search
                         size={34}

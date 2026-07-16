@@ -9,8 +9,13 @@ if importlib.util.find_spec("debug_toolbar") and importlib.util.find_spec("djang
         "debug_toolbar",
         "django_extensions",
     ]
-    # Insert DebugToolbarMiddleware as early as possible
-    MIDDLEWARE = ["debug_toolbar.middleware.DebugToolbarMiddleware"] + MIDDLEWARE
+    # Keep CorsMiddleware first so preflight and actual API responses always get CORS headers.
+    cors_middleware = "corsheaders.middleware.CorsMiddleware"
+    MIDDLEWARE = [
+        cors_middleware,
+        "debug_toolbar.middleware.DebugToolbarMiddleware",
+        *[middleware for middleware in MIDDLEWARE if middleware != cors_middleware],
+    ]
 
 # Docker-safe INTERNAL_IPS mapping
 try:

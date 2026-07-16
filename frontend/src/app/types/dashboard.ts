@@ -13,13 +13,26 @@ export interface SidebarItem {
 }
 
 export type JobPriority = "HIGH" | "MED" | "LOW";
-export type JobStatus = "Rendering" | "Simulating" | "Queued";
+export type BackendJobState =
+  | "PENDING"
+  | "RUNNING"
+  | "FINISHED"
+  | "FAILED"
+  | "PAUSED";
+
+export type JobStatus =
+  | "Rendering"
+  | "Queued"
+  | "Completed"
+  | "Failed";
 
 export interface RenderJob {
   id: string;
+  displayId: string;
   priority: JobPriority;
   node: string;
   status: JobStatus;
+  backendState: BackendJobState;
   progress: number;
   eta: string;
   statusColor: string;
@@ -40,4 +53,10 @@ export interface TelemetryPoint {
   x: number;
   vram: number;
   cpu: number;
+}
+
+export interface TelemetryMetrics {
+  vramUsage: number;
+  cpuLoad: number;
+  points: TelemetryPoint[];
 }

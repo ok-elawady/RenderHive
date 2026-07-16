@@ -2,19 +2,18 @@
 
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { AlertCircle, Play, X } from "lucide-react";
+import {
+  buildJobRequest,
+  createJob,
+  formatApiError,
+  getDefaultRenderCommand,
+} from "../lib/api";
+import type { JobFormValues } from "../lib/api";
 
 interface NewJobModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (jobName: string) => void;
-}
-
-interface JobFormData {
-  jobName: string;
-  engine: string;
-  priority: "HIGH" | "MED" | "LOW";
-  startFrame: string;
-  endFrame: string;
+  onSuccess: (jobName: string) => Promise<void> | void;
 }
 
 export default function NewJobModal({
@@ -22,17 +21,32 @@ export default function NewJobModal({
   onClose,
   onSuccess,
 }: NewJobModalProps) {
-  const [formData, setFormData] = useState<JobFormData>({
+  const defaultEngine = "Houdini (Mantra/Karma)";
+  const defaultStartFrame = "1";
+  const defaultEndFrame = "100";
+
+  const [formData, setFormData] = useState<JobFormValues>({
     jobName: "",
-    engine: "Houdini (Mantra/Karma)",
+    userId: 1,
+    engine: defaultEngine,
     priority: "MED",
-    startFrame: "1",
-    endFrame: "100",
+    startFrame: defaultStartFrame,
+    endFrame: defaultEndFrame,
+    logDirectory: "/tmp/render_logs",
+    renderCommand: getDefaultRenderCommand(
+      defaultEngine,
+      defaultStartFrame,
+      defaultEndFrame,
+    ),
   });
 
   const [hasError, setHasError] = useState<boolean>(false);
+  const [submitError, setSubmitError] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> => {
     event.preventDefault();
     const flexiblePattern = /^[a-zA-Z0-9_]+_v[0-9]+$/;
 
@@ -41,44 +55,156 @@ export default function NewJobModal({
       return;
     }
 
+    if (formData.userId < 1) {
+      setSubmitError("User ID must be a valid Django user ID.");
+      return;
+    }
+
+    if (!formData.logDirectory.trim() || !formData.renderCommand.trim()) {
+      setSubmitError("Log Directory and Render Command are required.");
+      return;
+    }
+
     setHasError(false);
-    onSuccess(formData.jobName);
-    onClose();
+    setSubmitError("");
+    setIsSubmitting(true);
+
+    try {
+      await createJob(buildJobRequest(formData));
+      await onSuccess(formData.jobName);
+      onClose();
+    } catch (error) {
+      setSubmitError(formatApiError(error));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleJobNameChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    setFormData({ ...formData, jobName: event.target.value });
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      jobName: event.target.value,
+    }));
     if (hasError) setHasError(false);
+    if (submitError) setSubmitError("");
+  };
+
+  const handleUserIdChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const nextUserId = Number(event.target.value);
+
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      userId: Number.isFinite(nextUserId)
+        ? Math.max(1, Math.trunc(nextUserId))
+        : 1,
+    }));
+    if (submitError) setSubmitError("");
   };
 
   const handleEngineChange = (event: ChangeEvent<HTMLSelectElement>): void => {
-    setFormData({ ...formData, engine: event.target.value });
+    const nextEngine = event.target.value;
+
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      engine: nextEngine,
+      renderCommand: getDefaultRenderCommand(
+        nextEngine,
+        currentFormData.startFrame,
+        currentFormData.endFrame,
+      ),
+    }));
   };
 
   const handleStartFrameChange = (
     event: ChangeEvent<HTMLInputElement>,
   ): void => {
-    setFormData({ ...formData, startFrame: event.target.value });
+    const nextStartFrame = event.target.value;
+
+    setFormData((currentFormData) => {
+      const currentDefaultCommand = getDefaultRenderCommand(
+        currentFormData.engine,
+        currentFormData.startFrame,
+        currentFormData.endFrame,
+      );
+      const nextFormData = {
+        ...currentFormData,
+        startFrame: nextStartFrame,
+      };
+
+      return currentFormData.renderCommand === currentDefaultCommand
+        ? {
+            ...nextFormData,
+            renderCommand: getDefaultRenderCommand(
+              nextFormData.engine,
+              nextFormData.startFrame,
+              nextFormData.endFrame,
+            ),
+          }
+        : nextFormData;
+    });
   };
 
   const handleEndFrameChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    setFormData({ ...formData, endFrame: event.target.value });
+    const nextEndFrame = event.target.value;
+
+    setFormData((currentFormData) => {
+      const currentDefaultCommand = getDefaultRenderCommand(
+        currentFormData.engine,
+        currentFormData.startFrame,
+        currentFormData.endFrame,
+      );
+      const nextFormData = {
+        ...currentFormData,
+        endFrame: nextEndFrame,
+      };
+
+      return currentFormData.renderCommand === currentDefaultCommand
+        ? {
+            ...nextFormData,
+            renderCommand: getDefaultRenderCommand(
+              nextFormData.engine,
+              nextFormData.startFrame,
+              nextFormData.endFrame,
+            ),
+          }
+        : nextFormData;
+    });
   };
 
   const handlePriorityChange = (
     event: ChangeEvent<HTMLSelectElement>,
   ): void => {
-    setFormData({
-      ...formData,
-      priority: event.target.value as JobFormData["priority"],
-    });
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      priority: event.target.value as JobFormValues["priority"],
+    }));
+  };
+
+  const handleLogDirectoryChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ): void => {
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      logDirectory: event.target.value,
+    }));
+    if (submitError) setSubmitError("");
+  };
+
+  const handleRenderCommandChange = (
+    event: ChangeEvent<HTMLTextAreaElement>,
+  ): void => {
+    setFormData((currentFormData) => ({
+      ...currentFormData,
+      renderCommand: event.target.value,
+    }));
+    if (submitError) setSubmitError("");
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-[#FFFFFF] dark:bg-[#171A24] border border-[#D7DBE3] dark:border-[#343B4D] w-full max-w-2xl rounded-2xl shadow-2xl shadow-black/20 dark:shadow-black/90 overflow-hidden transform-gpu origin-center animate-[modalPopIn_0.3s_ease-out_forwards]">
+      <div className="bg-[#FFFFFF] dark:bg-[#171A24] border border-[#D7DBE3] dark:border-[#343B4D] w-full max-w-2xl max-h-[92vh] rounded-2xl shadow-2xl shadow-black/20 dark:shadow-black/90 overflow-hidden transform-gpu origin-center animate-[modalPopIn_0.3s_ease-out_forwards]">
         <div className="flex items-center justify-between border-b border-[#D7DBE3] dark:border-[#343B4D] px-8 py-5 bg-[#F7F8FA]/80 dark:bg-[#0E1016]/40">
           <div className="flex items-center gap-3">
             <div className="h-2.5 w-2.5 rounded-full bg-[#5A1FA6] shadow-[0_0_8px_#5A1FA6]"></div>
@@ -97,7 +223,7 @@ export default function NewJobModal({
 
         <form
           onSubmit={handleSubmit}
-          className="p-8 space-y-6 font-mono text-sm"
+          className="p-8 space-y-6 font-mono text-sm max-h-[calc(92vh-78px)] overflow-y-auto"
         >
           <div className="space-y-2">
             <div className="flex justify-between items-center">
@@ -146,6 +272,38 @@ export default function NewJobModal({
                 </span>
                 ).
               </p>
+            </div>
+            {submitError && (
+              <p className="text-xs font-bold text-[#FF5D73]">
+                {submitError}
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[0.45fr_1fr] gap-6">
+            <div className="space-y-2">
+              <label className="text-[#6B7280] dark:text-[#8A92A5] font-bold text-sm">
+                User ID
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={formData.userId}
+                onChange={handleUserIdChange}
+                className="w-full bg-[#F7F8FA] dark:bg-[#161B24] border border-[#D7DBE3] dark:border-[#31384A] rounded-xl px-4 py-3 text-[#1A1D23] dark:text-[#F5F7FA] text-center text-sm focus:outline-none focus:border-[#5A1FA6]"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[#6B7280] dark:text-[#8A92A5] font-bold text-sm">
+                Log Directory
+              </label>
+              <input
+                type="text"
+                value={formData.logDirectory}
+                onChange={handleLogDirectoryChange}
+                placeholder="/tmp/render_logs"
+                className="w-full bg-[#F7F8FA] dark:bg-[#161B24] border border-[#D7DBE3] dark:border-[#31384A] rounded-xl px-5 py-3.5 text-[#1A1D23] dark:text-[#F5F7FA] placeholder-[#6B7280] dark:placeholder-[#8A92A5] focus:outline-none focus:border-[#5A1FA6] text-sm"
+              />
             </div>
           </div>
 
@@ -204,6 +362,18 @@ export default function NewJobModal({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <label className="text-[#6B7280] dark:text-[#8A92A5] font-bold text-sm">
+              Render Command
+            </label>
+            <textarea
+              value={formData.renderCommand}
+              onChange={handleRenderCommandChange}
+              rows={3}
+              className="w-full resize-none bg-[#F7F8FA] dark:bg-[#161B24] border border-[#D7DBE3] dark:border-[#31384A] rounded-xl px-5 py-3.5 text-[#1A1D23] dark:text-[#F5F7FA] placeholder-[#6B7280] dark:placeholder-[#8A92A5] focus:outline-none focus:border-[#5A1FA6] text-sm leading-relaxed"
+            />
+          </div>
+
           <div className="flex items-center justify-end gap-4 pt-5 border-t border-[#D7DBE3] dark:border-[#343B4D]/60 mt-8">
             <button
               type="button"
@@ -214,10 +384,11 @@ export default function NewJobModal({
             </button>
             <button
               type="submit"
-              className="flex items-center gap-2 bg-[#5A1FA6] hover:bg-[#6C2AC4] text-[#F5F7FA] font-bold px-6 py-3 rounded-xl text-sm shadow-lg shadow-[#5A1FA6]/30 transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="flex items-center gap-2 bg-[#5A1FA6] hover:bg-[#6C2AC4] text-[#F5F7FA] font-bold px-6 py-3 rounded-xl text-sm shadow-lg shadow-[#5A1FA6]/30 transition-all cursor-pointer disabled:cursor-wait disabled:opacity-70"
             >
               <Play size={14} className="fill-current" />
-              Queue Job
+              {isSubmitting ? "Queueing..." : "Queue Job"}
             </button>
           </div>
         </form>
