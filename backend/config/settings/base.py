@@ -18,13 +18,18 @@ import environ
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 env = environ.Env()
-environ.Env.read_env(BASE_DIR / ".env")
+# Look for .env in the repository root (d:\Projects\RenderHive\.env)
+environ.Env.read_env(BASE_DIR.parent / ".env")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env("SECRET_KEY")
+import sys
+if "pytest" in sys.modules or env.bool("DEBUG", default=False):
+    SECRET_KEY = env("SECRET_KEY", default="django-insecure-test-key-do-not-use-in-production")
+else:
+    SECRET_KEY = env("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool("DEBUG", default=False)
