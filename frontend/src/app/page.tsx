@@ -14,7 +14,10 @@ import HardwareTelemetry from "./components/HardwareTelemetry";
 import JobQueue from "./components/JobQueue";
 import KpiCards from "./components/KpiCards";
 import NewJobModal from "./components/NewJobModal";
-import { JobQueueSkeleton, KpiCardsSkeleton } from "./components/SkeletonLoaders";
+import {
+  JobQueueSkeleton,
+  KpiCardsSkeleton,
+} from "./components/SkeletonLoaders";
 import {
   deriveLogsFromJobs,
   deriveTelemetryFromJobs,
