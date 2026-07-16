@@ -12,13 +12,13 @@ except ImportError:
 
 from .config import normalize_config
 from .errors import (
-    BackendConnectionError,
-    BackendHTTPError,
-    BackendResponseError,
+    ApiConnectionError,
+    ApiHttpError,
+    ApiResponseError,
 )
 
 
-class BackendClient(object):
+class RenderHiveApiClient(object):
     def __init__(self, config):
         self.config = normalize_config(config)
 
@@ -34,14 +34,14 @@ class BackendClient(object):
         path = self.config.get("endpoints", {}).get(name)
 
         if not path:
-            raise BackendResponseError(
-                "Backend endpoint is not configured: {}".format(name)
+            raise ApiResponseError(
+                "API endpoint is not configured: {}".format(name)
             )
 
         try:
             path = str(path).format(**values)
         except KeyError as error:
-            raise BackendResponseError(
+            raise ApiResponseError(
                 "Missing endpoint value {} for {}".format(error, name)
             )
 
@@ -119,7 +119,7 @@ class BackendClient(object):
             if field_messages:
                 return " | ".join(field_messages)
 
-        return "Backend returned HTTP {}.".format(status_code)
+        return "RenderHive API returned HTTP {}.".format(status_code)
 
     def request(
         self,
@@ -162,7 +162,7 @@ class BackendClient(object):
 
         except HTTPError as error:
             payload_data = self._decode_response(error.read())
-            raise BackendHTTPError(
+            raise ApiHttpError(
                 error.code,
                 self._error_message(payload_data, error.code),
                 payload=payload_data,
@@ -170,13 +170,13 @@ class BackendClient(object):
 
         except (URLError, socket.timeout) as error:
             reason = getattr(error, "reason", error)
-            raise BackendConnectionError(
+            raise ApiConnectionError(
                 "Cannot connect to {}: {}".format(url, reason)
             )
 
         except Exception as error:
-            raise BackendConnectionError(
-                "Backend request failed: {}".format(error)
+            raise ApiConnectionError(
+                "RenderHive API request failed: {}".format(error)
             )
 
     def test_connection(self):
@@ -192,7 +192,7 @@ class BackendClient(object):
         data = response.get("data", {})
 
         if not isinstance(data, dict):
-            raise BackendResponseError(
+            raise ApiResponseError(
                 "Job submission response must be a JSON object."
             )
 

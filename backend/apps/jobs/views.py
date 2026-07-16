@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Frame, FrameState, Job, Layer
+from .models import Frame, FrameState, Job, JobState, Layer
 from .permissions import IsFarmAgent, IsJobOwnerOrStaff
 from .serializers import (
     FrameDetailSerializer,
@@ -137,7 +137,8 @@ class JobViewSet(viewsets.ModelViewSet):
         """
         job = self.get_object()
         job.is_paused = True
-        job.save(update_fields=["is_paused", "updated_at"])
+        job.state = JobState.PAUSED
+        job.save(update_fields=["is_paused", "state", "updated_at"])
         return Response({"status": "paused", "is_paused": True})
 
     @action(detail=True, methods=["post"])
@@ -155,7 +156,18 @@ class JobViewSet(viewsets.ModelViewSet):
         """
         job = self.get_object()
         job.is_paused = False
-        job.save(update_fields=["is_paused", "updated_at"])
+        
+        # Recalculate state based on current counters
+        if job.running_frames > 0:
+            job.state = JobState.RUNNING
+        elif job.total_frames > 0 and (job.succeeded_frames + job.skipped_frames) == job.total_frames:
+            job.state = JobState.FINISHED
+        elif job.failed_frames > 0 and job.ready_frames == 0 and job.running_frames == 0:
+            job.state = JobState.FAILED
+        else:
+            job.state = JobState.PENDING
+            
+        job.save(update_fields=["is_paused", "state", "updated_at"])
         return Response({"status": "resumed", "is_paused": False})
 
 

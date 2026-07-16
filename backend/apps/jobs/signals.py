@@ -4,7 +4,7 @@ from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from .models import Dependency, Frame, FrameState, Job, Layer
+from .models import Dependency, Frame, FrameState, Job, JobState, Layer
 
 
 @receiver(post_save, sender=Dependency)
@@ -119,3 +119,39 @@ def frame_pre_save(sender, instance, update_fields=None, **kwargs):
                 dep.is_satisfied = True
                 dep.satisfied_at = timezone.now()
                 dep.save()  # will trigger dependency_pre_save which handles depend_count
+
+        # Atomic state transitions for Job and Layer based on the newly updated counts
+        if instance.state in (FrameState.RUNNING, FrameState.CHECKPOINT):
+            Job.objects.filter(id=instance.job_id, is_paused=False).exclude(state=JobState.RUNNING).update(state=JobState.RUNNING)
+            Layer.objects.filter(id=instance.layer_id).exclude(state=JobState.RUNNING).update(state=JobState.RUNNING)
+
+        elif instance.state in (FrameState.SUCCEEDED, FrameState.SKIPPED, FrameState.FAILED):
+            now = timezone.now()
+            
+            # Check if finished (all frames are succeeded or skipped)
+            Job.objects.filter(
+                id=instance.job_id,
+                total_frames__gt=0,
+                total_frames=F("succeeded_frames") + F("skipped_frames"),
+            ).exclude(state=JobState.FINISHED).update(state=JobState.FINISHED, stopped_at=now)
+            
+            Layer.objects.filter(
+                id=instance.layer_id,
+                total_frames__gt=0,
+                total_frames=F("succeeded_frames") + F("skipped_frames"),
+            ).exclude(state=JobState.FINISHED).update(state=JobState.FINISHED)
+
+            # Check if failed (no frames running/ready, and at least 1 failed frame)
+            Job.objects.filter(
+                id=instance.job_id,
+                running_frames=0,
+                ready_frames=0,
+                failed_frames__gt=0,
+            ).exclude(state__in=[JobState.FINISHED, JobState.FAILED]).update(state=JobState.FAILED, stopped_at=now)
+            
+            Layer.objects.filter(
+                id=instance.layer_id,
+                running_frames=0,
+                ready_frames=0,
+                failed_frames__gt=0,
+            ).exclude(state__in=[JobState.FINISHED, JobState.FAILED]).update(state=JobState.FAILED)

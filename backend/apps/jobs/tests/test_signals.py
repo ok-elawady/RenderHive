@@ -1,6 +1,6 @@
 import pytest
 
-from apps.jobs.models import FrameState, Job, Layer
+from apps.jobs.models import FrameState, Job, JobState, Layer
 
 from .factories import DependencyFactory, FrameFactory, LayerFactory
 
@@ -129,3 +129,93 @@ class TestDependencySignals:
         frame.refresh_from_db()
         assert frame.depend_count == 0
         assert frame.state == FrameState.READY
+
+
+class TestJobAndLayerStateTransitions:
+    def test_job_layer_transition_to_running(self):
+        frame = FrameFactory(state=FrameState.READY)
+        layer = frame.layer
+        job = frame.job
+        
+        # Initial state is PENDING
+        assert job.state == JobState.PENDING
+        assert layer.state == JobState.PENDING
+
+        # Change state
+        frame.state = FrameState.RUNNING
+        frame.save()
+
+        layer.refresh_from_db()
+        job.refresh_from_db()
+
+        assert layer.state == JobState.RUNNING
+        assert job.state == JobState.RUNNING
+
+    def test_job_layer_transition_to_finished(self):
+        # Create a layer with 2 frames
+        layer = LayerFactory()
+        job = layer.job
+        frame1 = FrameFactory(layer=layer, job=job, state=FrameState.RUNNING)
+        frame2 = FrameFactory(layer=layer, job=job, state=FrameState.RUNNING)
+
+        # First frame succeeds
+        frame1.state = FrameState.SUCCEEDED
+        frame1.save()
+
+        job.refresh_from_db()
+        # Not finished yet because total_frames is 2 but succeeded is 1
+        assert job.state != JobState.FINISHED
+
+        # Second frame succeeds
+        frame2.state = FrameState.SUCCEEDED
+        frame2.save()
+
+        layer.refresh_from_db()
+        job.refresh_from_db()
+
+        assert layer.state == JobState.FINISHED
+        assert job.state == JobState.FINISHED
+        assert job.stopped_at is not None
+
+    def test_job_layer_transition_to_failed(self):
+        layer = LayerFactory()
+        job = layer.job
+        frame1 = FrameFactory(layer=layer, job=job, state=FrameState.RUNNING)
+        frame2 = FrameFactory(layer=layer, job=job, state=FrameState.READY)
+
+        # One frame fails, but another is ready, so job doesn't fail yet
+        frame1.state = FrameState.FAILED
+        frame1.save()
+
+        job.refresh_from_db()
+        assert job.state != JobState.FAILED
+
+        # The other frame fails, now there are no running/ready frames
+        frame2.state = FrameState.FAILED
+        frame2.save()
+
+        layer.refresh_from_db()
+        job.refresh_from_db()
+
+        assert layer.state == JobState.FAILED
+        assert job.state == JobState.FAILED
+        assert job.stopped_at is not None
+
+    def test_paused_job_does_not_transition_to_running(self):
+        frame = FrameFactory(state=FrameState.READY)
+        job = frame.job
+        
+        # Pause the job
+        job.is_paused = True
+        job.state = JobState.PAUSED
+        job.save()
+
+        # Start the frame
+        frame.state = FrameState.RUNNING
+        frame.save()
+
+        job.refresh_from_db()
+        
+        # Job should remain PAUSED, not switch to RUNNING
+        assert job.state == JobState.PAUSED
+        assert job.is_paused is True

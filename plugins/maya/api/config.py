@@ -4,7 +4,7 @@ import copy
 import json
 import os
 
-from .errors import BackendConfigurationError
+from .errors import ApiConfigurationError
 
 
 DEFAULT_CONFIG = {
@@ -44,24 +44,19 @@ def _package_root():
 def _local_config_root():
     root = os.environ.get("LOCALAPPDATA")
 
-    if not root:
-        root = os.path.join(
-            os.path.expanduser("~"),
-            ".renderhive"
-        )
-    else:
-        root = os.path.join(
-            root,
-            "RenderHive"
-        )
+    if root:
+        return os.path.join(root, "RenderHive")
 
-    return root
+    return os.path.join(
+        os.path.expanduser("~"),
+        ".renderhive"
+    )
 
 
 def get_config_path():
     return os.path.join(
         _local_config_root(),
-        "backend_config.json"
+        "api_config.json"
     )
 
 
@@ -69,8 +64,22 @@ def get_template_path():
     return os.path.join(
         _package_root(),
         "config",
-        "backend_config.template.json"
+        "api_config.template.json"
     )
+
+
+def _legacy_config_paths():
+    return [
+        os.path.join(
+            _local_config_root(),
+            "backend_config.json"
+        ),
+        os.path.join(
+            _package_root(),
+            "config",
+            "backend_config.json"
+        ),
+    ]
 
 
 def _deep_merge(base, override):
@@ -106,16 +115,16 @@ def normalize_config(config):
     ).strip().rstrip("/")
 
     if not base_url:
-        raise BackendConfigurationError(
-            "Backend base URL is empty."
+        raise ApiConfigurationError(
+            "API base URL is empty."
         )
 
     if not (
         base_url.startswith("http://")
         or base_url.startswith("https://")
     ):
-        raise BackendConfigurationError(
-            "Backend URL must start with http:// or https://"
+        raise ApiConfigurationError(
+            "API URL must start with http:// or https://"
         )
 
     result["base_url"] = base_url
@@ -142,7 +151,7 @@ def normalize_config(config):
         "x-session-token",
         "none",
     ):
-        raise BackendConfigurationError(
+        raise ApiConfigurationError(
             "Unsupported authentication type: {}".format(
                 auth_type
             )
@@ -154,12 +163,18 @@ def normalize_config(config):
     ).strip()
     result["auth"] = auth
 
-    if not isinstance(result.get("endpoints"), dict):
+    if not isinstance(
+        result.get("endpoints"),
+        dict
+    ):
         result["endpoints"] = copy.deepcopy(
             DEFAULT_CONFIG["endpoints"]
         )
 
-    if not isinstance(result.get("maya"), dict):
+    if not isinstance(
+        result.get("maya"),
+        dict
+    ):
         result["maya"] = copy.deepcopy(
             DEFAULT_CONFIG["maya"]
         )
@@ -172,16 +187,22 @@ def _read_existing(path):
         return {}
 
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(
+            path,
+            "r",
+            encoding="utf-8"
+        ) as handle:
             value = json.load(handle)
     except Exception as error:
-        raise BackendConfigurationError(
-            "Could not read backend config: {}".format(error)
+        raise ApiConfigurationError(
+            "Could not read API config: {}".format(
+                error
+            )
         )
 
     if not isinstance(value, dict):
-        raise BackendConfigurationError(
-            "Backend config must be a JSON object."
+        raise ApiConfigurationError(
+            "API config must be a JSON object."
         )
 
     return value
@@ -191,15 +212,15 @@ def load_config():
     path = get_config_path()
 
     if not os.path.isfile(path):
-        # Migrate the previous package-local config if it exists, but never
-        # require it. New installs keep tokens outside the project/repository.
-        legacy_path = os.path.join(
-            _package_root(),
-            "config",
-            "backend_config.json"
-        )
-        legacy = _read_existing(legacy_path) if os.path.isfile(legacy_path) else {}
-        return save_config(legacy)
+        # Preserve settings and token from versions that used
+        # backend_config.json, then migrate to api_config.json.
+        for legacy_path in _legacy_config_paths():
+            if os.path.isfile(legacy_path):
+                return save_config(
+                    _read_existing(legacy_path)
+                )
+
+        return save_config({})
 
     return normalize_config(
         _read_existing(path)
@@ -208,7 +229,9 @@ def load_config():
 
 def save_config(updates):
     path = get_config_path()
-    current = copy.deepcopy(DEFAULT_CONFIG)
+    current = copy.deepcopy(
+        DEFAULT_CONFIG
+    )
 
     if os.path.isfile(path):
         current = _deep_merge(
@@ -217,7 +240,10 @@ def save_config(updates):
         )
 
     config = normalize_config(
-        _deep_merge(current, updates or {})
+        _deep_merge(
+            current,
+            updates or {}
+        )
     )
 
     folder = os.path.dirname(path)
@@ -225,7 +251,12 @@ def save_config(updates):
         os.makedirs(folder)
 
     temp_path = path + ".tmp"
-    with open(temp_path, "w", encoding="utf-8") as handle:
+
+    with open(
+        temp_path,
+        "w",
+        encoding="utf-8"
+    ) as handle:
         json.dump(
             config,
             handle,
@@ -236,5 +267,9 @@ def save_config(updates):
     if os.path.isfile(path):
         os.remove(path)
 
-    os.rename(temp_path, path)
+    os.rename(
+        temp_path,
+        path
+    )
+
     return config
