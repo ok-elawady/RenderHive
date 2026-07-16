@@ -14,7 +14,10 @@ import HardwareTelemetry from "./components/HardwareTelemetry";
 import JobQueue from "./components/JobQueue";
 import KpiCards from "./components/KpiCards";
 import NewJobModal from "./components/NewJobModal";
-import { JobQueueSkeleton, KpiCardsSkeleton } from "./components/SkeletonLoaders";
+import {
+  JobQueueSkeleton,
+  KpiCardsSkeleton,
+} from "./components/SkeletonLoaders";
 import {
   deriveLogsFromJobs,
   deriveTelemetryFromJobs,
@@ -190,7 +193,7 @@ export default function DashboardPage() {
             Platform Settings
           </p>
           <h2 className="mt-3 text-xl font-bold text-[#1A1D23] dark:text-[#F5F7FA]">
-            API base URL: http://127.0.0.1:8000/api
+            API base URL: http://localhost:8000/api
           </h2>
         </div>
       );

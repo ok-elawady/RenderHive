@@ -263,20 +263,13 @@ export default function NewJobModal({
                   must end with _v
                 </span>{" "}
                 and version number (e.g.,{" "}
-                <span className="text-[#1A1D23] dark:text-[#F5F7FA]">
-                  _v1
-                </span>
-                ,{" "}
-                <span className="text-[#1A1D23] dark:text-[#F5F7FA]">
-                  _v12
-                </span>
+                <span className="text-[#1A1D23] dark:text-[#F5F7FA]">_v1</span>,{" "}
+                <span className="text-[#1A1D23] dark:text-[#F5F7FA]">_v12</span>
                 ).
               </p>
             </div>
             {submitError && (
-              <p className="text-xs font-bold text-[#FF5D73]">
-                {submitError}
-              </p>
+              <p className="text-xs font-bold text-[#FF5D73]">{submitError}</p>
             )}
           </div>
 

@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { Cpu as CpuIcon, X } from "lucide-react";
-import type { TelemetryMetrics, TelemetryPoint } from "../types/dashboard";
+import type {
+  TelemetryMetrics,
+  TelemetryPoint,
+} from "../types/dashboard";
 
 interface HardwareTelemetryProps {
   telemetry: TelemetryMetrics;
@@ -35,7 +38,8 @@ export default function HardwareTelemetry({
 }: HardwareTelemetryProps) {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [animationKey, setAnimationKey] = useState<number>(0);
-  const points = telemetry.points.length > 0 ? telemetry.points : fallbackPoints;
+  const points =
+    telemetry.points.length > 0 ? telemetry.points : fallbackPoints;
 
   const chartPaths = useMemo(
     () => ({

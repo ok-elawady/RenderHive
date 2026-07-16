@@ -1,4 +1,3 @@
-import axios from "axios";
 import type {
   BackendJobState,
   JobPriority,
@@ -12,15 +11,85 @@ export const API_BASE_URL = "http://localhost:8000";
 const JOBS_ENDPOINT = "/api/jobs/";
 const renderHiveAuthToken = process.env.NEXT_PUBLIC_RENDERHIVE_AUTH_TOKEN;
 
-export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    ...(renderHiveAuthToken
-      ? { Authorization: `Token ${renderHiveAuthToken}` }
-      : {}),
+interface ApiRequestError extends Error {
+  status: number;
+  data: unknown;
+}
+
+function getApiHeaders(): HeadersInit {
+  return {
     "Content-Type": "application/json",
-  },
-});
+    Authorization: `Token ${renderHiveAuthToken ?? ""}`,
+  };
+}
+
+function mergeHeaders(headers?: HeadersInit): Headers {
+  const mergedHeaders = new Headers(getApiHeaders());
+
+  if (headers) {
+    new Headers(headers).forEach((value, key) => {
+      mergedHeaders.set(key, value);
+    });
+  }
+
+  return mergedHeaders;
+}
+
+async function parseResponseBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+function createApiRequestError(
+  response: Response,
+  data: unknown,
+): ApiRequestError {
+  const message =
+    stringifyApiValue(data) ||
+    `Request failed with ${response.status} ${response.statusText}`;
+  const error = new Error(message) as ApiRequestError;
+
+  error.name = "ApiRequestError";
+  error.status = response.status;
+  error.data = data;
+
+  return error;
+}
+
+async function apiFetch<T>(
+  endpoint: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...init,
+    headers: mergeHeaders(init.headers),
+    cache: "no-store",
+  });
+
+  const data = await parseResponseBody(response);
+
+  if (!response.ok) {
+    throw createApiRequestError(response, data);
+  }
+
+  return data as T;
+}
+
+function isApiRequestError(error: unknown): error is ApiRequestError {
+  return (
+    error instanceof Error &&
+    "status" in error &&
+    typeof (error as { status: unknown }).status === "number" &&
+    "data" in error
+  );
+}
 
 export interface BackendJob {
   id: string;
@@ -152,13 +221,18 @@ export function normalizeJobsResponse(
   return isPaginatedResponse(data) ? data.results : data;
 }
 
-export async function fetchJobs(): Promise<BackendJob[]> {
-  const response = await apiClient.get<BackendJob[] | PaginatedResponse<BackendJob>>(
+export async function getJobs(): Promise<BackendJob[]> {
+  const data = await apiFetch<BackendJob[] | PaginatedResponse<BackendJob>>(
     JOBS_ENDPOINT,
+    {
+      method: "GET",
+    },
   );
 
-  return normalizeJobsResponse(response.data);
+  return normalizeJobsResponse(data);
 }
+
+export const fetchJobs = getJobs;
 
 export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
   return {
@@ -249,18 +323,21 @@ export function buildJobRequest(formData: JobFormValues): CreateJobPayload {
 }
 
 export async function createJob(payload: CreateJobPayload): Promise<BackendJob> {
-  const response = await apiClient.post<BackendJob>(JOBS_ENDPOINT, payload);
-
-  return response.data;
+  return apiFetch<BackendJob>(JOBS_ENDPOINT, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function deleteJob(jobId: string): Promise<void> {
-  await apiClient.delete(`${JOBS_ENDPOINT}${jobId}/`);
+  await apiFetch<void>(`${JOBS_ENDPOINT}${jobId}/`, {
+    method: "DELETE",
+  });
 }
 
 export function formatApiError(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const responseMessage = stringifyApiValue(error.response?.data);
+  if (isApiRequestError(error)) {
+    const responseMessage = stringifyApiValue(error.data);
 
     if (responseMessage) return responseMessage;
     if (error.message) return error.message;
