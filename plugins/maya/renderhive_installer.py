@@ -286,7 +286,7 @@ def install_from_drag_drop(
 
 def close_renderhive_windows():
     try:
-        from PySide2 import QtWidgets
+        from ui.qt_compat import QtWidgets
 
         app = QtWidgets.QApplication.instance()
 
@@ -347,6 +347,21 @@ def uninstall_renderhive(
         shutil.rmtree(
             install_dir
         )
+        
+    # Clear the plugin from Maya's python memory cache
+    import sys
+    modules_to_remove = []
+    for mod_name, mod in sys.modules.items():
+        if getattr(mod, "__file__", None) and install_dir in getattr(mod, "__file__", ""):
+            modules_to_remove.append(mod_name)
+        elif mod_name.startswith("renderhive_"):
+            modules_to_remove.append(mod_name)
+            
+    for mod_name in modules_to_remove:
+        try:
+            del sys.modules[mod_name]
+        except KeyError:
+            pass
 
     cmds.confirmDialog(
         title="RenderHive Uninstalled",
