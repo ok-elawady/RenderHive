@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AgenticLogs from "@/components/dashboard/AgenticLogs";
 import HardwareTelemetry from "@/components/dashboard/HardwareTelemetry";
 import JobQueue from "@/components/dashboard/JobQueue";
@@ -34,14 +28,9 @@ function getFarmEfficiency(jobs: RenderJob[]): number {
   if (jobs.length === 0) return 0;
 
   const failedJobs = jobs.filter((job) => job.status === "Failed").length;
-  const completedOrActiveJobs = jobs.filter(
-    (job) => job.status === "Completed" || job.status === "Rendering",
-  ).length;
+  const completedOrActiveJobs = jobs.filter((job) => job.status === "Completed" || job.status === "Rendering").length;
 
-  return Math.round(
-    ((completedOrActiveJobs + (jobs.length - failedJobs)) / (jobs.length * 2)) *
-      100,
-  );
+  return Math.round(((completedOrActiveJobs + (jobs.length - failedJobs)) / (jobs.length * 2)) * 100);
 }
 
 export default function DashboardPage() {
@@ -53,10 +42,7 @@ export default function DashboardPage() {
   const pollingTimerRef = useRef<number | null>(null);
   const { activeView } = useNavigation();
   const { theme } = useTheme();
-  const activeJobCount = useMemo<number>(
-    () => jobs.filter((job) => job.status === "Rendering").length,
-    [jobs],
-  );
+  const activeJobCount = useMemo<number>(() => jobs.filter((job) => job.status === "Rendering").length, [jobs]);
 
   const farmEfficiency = useMemo<number>(() => getFarmEfficiency(jobs), [jobs]);
 
@@ -73,8 +59,6 @@ export default function DashboardPage() {
   const refreshJobsData = useCallback(async (): Promise<void> => {
     await fetchJobsData();
   }, [fetchJobsData]);
-
-
 
   useEffect(() => {
     initialFetchTimerRef.current = window.setTimeout(() => {
@@ -110,13 +94,7 @@ export default function DashboardPage() {
     <KpiCards activeJobs={activeJobCount} farmEfficiency={farmEfficiency} />
   );
 
-  const renderJobQueue = (): React.ReactNode => (
-    <JobQueue
-      jobs={jobs}
-      searchQuery=""
-      onJobRemoved={refreshJobsData}
-    />
-  );
+  const renderJobQueue = (): React.ReactNode => <JobQueue jobs={jobs} searchQuery="" onJobRemoved={refreshJobsData} />;
 
   const renderDashboardContent = (): React.ReactNode => {
     if (isLoading) {
@@ -139,8 +117,8 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-1">
               <p className="text-sm text-foreground">
-                Worker pool metrics are derived from the latest Django job queue
-                response until dedicated telemetry endpoints are exposed.
+                Worker pool metrics are derived from the latest Django job queue response until dedicated telemetry
+                endpoints are exposed.
               </p>
             </CardContent>
           </Card>
@@ -161,9 +139,7 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
-            <h2 className="text-xl font-bold text-foreground">
-              API base URL: {API_BASE_URL}
-            </h2>
+            <h2 className="text-xl font-bold text-foreground">API base URL: {API_BASE_URL}</h2>
           </CardContent>
         </Card>
       );
@@ -185,10 +161,5 @@ export default function DashboardPage() {
     );
   };
 
-  return (
-    <div className="flex-1 p-6 space-y-6 font-mono">
-
-      {renderDashboardContent()}
-    </div>
-  );
+  return <div className="flex-1 p-6 space-y-6 font-mono">{renderDashboardContent()}</div>;
 }
