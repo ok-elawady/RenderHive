@@ -24,77 +24,76 @@ SHADCN_STYLESHEET = """
 QWidget {
     background-color: #0E1016;
     color: #F5F7FA;
-    font-family: monospace;
+    font-family: 'Segoe UI', Inter, sans-serif;
     font-size: 13px;
 }
 QDialog {
-    background-color: #0E1016;
+    background-color: #0b0d13;
 }
 QPushButton {
-    background-color: #5A1FA6;
-    color: #F5F7FA;
-    border: 1px solid #5A1FA6;
+    background-color: #5a1fa6;
+    color: #ffffff;
+    border: none;
     border-radius: 6px;
     padding: 8px 16px;
-    font-weight: bold;
+    font-weight: 600;
 }
 QPushButton:hover {
-    background-color: #4A178A;
+    background-color: #4a178a;
 }
 QPushButton:disabled {
-    background-color: #1A1D23;
-    color: #4A5060;
-    border: 1px solid #1A1D23;
+    background-color: #171a24;
+    color: #71717a;
 }
 QPushButton#SecondaryBtn {
-    background-color: #0E1016;
-    color: #F5F7FA;
-    border: 1px solid #343B4D;
+    background-color: #0b0d13;
+    color: #fafafa;
+    border: 1px solid #171a24;
 }
 QPushButton#SecondaryBtn:hover {
-    background-color: #5A1FA6;
-    border: 1px solid #5A1FA6;
+    background-color: #171a24;
 }
 QPushButton#SecondaryBtn:disabled {
-    background-color: #1A1D23;
-    color: #4A5060;
-    border: 1px solid #1A1D23;
+    background-color: #0b0d13;
+    color: #71717a;
+    border: 1px solid #171a24;
 }
 QPushButton#DestructiveBtn {
-    background-color: #ef4444;
-    color: #F5F7FA;
-    border: 1px solid #ef4444;
+    background-color: #ca2a30;
+    color: #ffffff;
+    border: none;
 }
 QPushButton#DestructiveBtn:hover {
-    background-color: #dc2626;
+    background-color: #b34052;
 }
 QPushButton#DestructiveBtn:disabled {
-    background-color: #1A1D23;
-    color: #4A5060;
-    border: 1px solid #1A1D23;
+    background-color: #171a24;
+    color: #71717a;
 }
 QLineEdit {
-    background-color: #0E1016;
-    color: #F5F7FA;
-    border: 1px solid #343B4D;
+    background-color: #171a24;
+    color: #fafafa;
+    border: 1px solid #27272a;
     border-radius: 6px;
     padding: 6px 12px;
 }
 QLineEdit:focus {
-    border: 1px solid #5A1FA6;
+    border: 1px solid #5a1fa6;
 }
 QTextEdit {
-    background-color: #0E1016;
-    color: #F5F7FA;
-    border: 1px solid #343B4D;
+    background-color: #171a24;
+    color: #a1a1aa;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    border: 1px solid #27272a;
     border-radius: 6px;
-    padding: 8px;
+    padding: 10px;
 }
 QLabel {
-    color: #F5F7FA;
+    color: #fafafa;
 }
 QLabel#MutedLabel {
-    color: #D7DBE3;
+    color: #a1a1aa;
 }
 """
 
@@ -188,10 +187,7 @@ class WorkerThread(QThread):
         normalized_maya_exec = self.maya_exec.replace("\\", "/")
         normalized_scene_path = frame["scene_path"].replace("\\", "/")
         
-        # Fallback: if the command starts with 'render ', replace it with the actual maya_exec path
-        if cmd.lower().startswith("render "):
-            cmd = f'"{normalized_maya_exec}" ' + cmd[7:]
-            
+
         # Support both uppercase and lowercase placeholders for robustness
         # Auto-wrap in quotes if not already quoted to handle spaces in paths safely
         for placeholder in ("{MAYA_EXEC}", "{maya_exec}"):
@@ -228,10 +224,15 @@ class WorkerThread(QThread):
             if os.name == 'nt':
                 creationflags = subprocess.CREATE_NO_WINDOW
                 
-            cmd_list = shlex.split(cmd, posix=(os.name != 'nt'))
-            # On Windows (non-posix shlex), quotes are kept in the parsed tokens.
-            # We must strip them so subprocess.Popen receives clean paths/args without literal quotes.
-            cmd_list = [x.strip('"') for x in cmd_list]
+            # Use POSIX mode even on Windows so that shlex correctly handles escaped quotes (like \")
+            # inside arguments. POSIX mode automatically strips the outer quotes.
+            cmd_list = shlex.split(cmd, posix=True)
+            
+            # Ensure the first argument is the absolute path to Maya if the command just says "render"
+            if cmd_list and cmd_list[0].lower() in ("render", "render.exe"):
+                cmd_list[0] = self.maya_exec
+            
+            # self.log_signal.emit(f"Command list: {cmd_list}")
             
             with open(log_file, "w") as f:
                 process = subprocess.Popen(
@@ -428,7 +429,7 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self.open_settings)
         
         quit_action = QAction("Quit", self)
-        quit_action.triggered.connect(QApplication.instance().quit)
+        quit_action.triggered.connect(self.quit_app)
         
         tray_menu = QMenu()
         tray_menu.addAction(show_action)
@@ -448,14 +449,14 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
         
         # Top Bar
         top_layout = QHBoxLayout()
-        top_layout.setContentsMargins(0, 0, 0, 10)
         
         self.status_label = QLabel("Status: OFFLINE")
         self.status_label.setObjectName("MutedLabel")
-        self.status_label.setStyleSheet("font-weight: bold;")
         top_layout.addWidget(self.status_label)
         
         top_layout.addStretch()
@@ -541,10 +542,20 @@ class MainWindow(QMainWindow):
         self.update_status("OFFLINE")
 
     def on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.DoubleClick:
+        if reason == QSystemTrayIcon.DoubleClick or reason == QSystemTrayIcon.Trigger:
             self.show()
+            self.raise_()
+            self.activateWindow()
+
+    def quit_app(self):
+        self.is_quitting = True
+        QApplication.instance().quit()
 
     def closeEvent(self, event):
+        if hasattr(self, 'is_quitting') and self.is_quitting:
+            event.accept()
+            return
+            
         event.ignore()
         self.hide()
         self.tray_icon.showMessage(
