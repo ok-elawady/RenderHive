@@ -3,25 +3,18 @@ global proc renderHiveDragInstall()
     string $scriptInfo = `whatIs renderHiveDragInstall`;
     string $scriptPath = `substitute "Mel procedure found in: " $scriptInfo ""`;
     $scriptPath = `substituteAllString $scriptPath "\\" "/"`;
-
     string $scriptDir = `dirname $scriptPath`;
 
     python(
-        "import sys, os, importlib\n" +
-        "submitter_dir = r'" + $scriptDir + "'\n" +
-        "if submitter_dir not in sys.path:\n" +
-        "    sys.path.insert(0, submitter_dir)\n" +
+        "import importlib, sys\n" +
+        "source_dir = r'" + $scriptDir + "'\n" +
+        "if source_dir in sys.path:\n" +
+        "    sys.path.remove(source_dir)\n" +
+        "sys.path.insert(0, source_dir)\n" +
         "import renderhive_installer\n" +
         "importlib.reload(renderhive_installer)\n" +
-        "renderhive_installer.install_from_drag_drop(submitter_dir)\n"
+        "renderhive_installer.install_from_drag_drop(source_dir)\n"
     );
 }
 
 renderHiveDragInstall();
-
-
-// RENDERHIVE_BRANDING_FIX_V2_1
-python("import os, sys, maya.cmds as cmds; p=os.path.join(cmds.internalVar(userScriptDir=True), 'RenderHive'); p=p.replace('\\\\','/'); sys.path.insert(0,p) if p not in sys.path else None; import renderhive_branding; renderhive_branding.apply_shelf_icon()");
-
-// RENDERHIVE_BRANDING_V1
-python("import os, sys, maya.cmds as cmds; p=os.path.join(cmds.internalVar(userScriptDir=True), 'RenderHive'); p=p.replace('\\\\','/'); sys.path.insert(0,p) if p not in sys.path else None; import importlib, renderhive_branding; importlib.reload(renderhive_branding); renderhive_branding.apply_shelf_icon()");

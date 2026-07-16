@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.log
+*.zip
+
+backup_*/
+logs/
+reports/
+
+# Authentication is stored outside the package, but ignore accidental copies.
+config/api_config.json
+config/backend_config.json
