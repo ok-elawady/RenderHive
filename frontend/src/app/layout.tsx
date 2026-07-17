@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import "./globals.css";
-import AppSidebar from "./components/AppSidebar";
-import { NavigationProvider } from "./components/NavigationProvider";
-import { ThemeProvider } from "./components/ThemeProvider";
+import "@/styles/globals.css";
+import AppSidebar from "@/components/layout/AppSidebar";
+import { NavigationProvider } from "@/components/common/NavigationProvider";
+import { ThemeProvider } from "@/components/common/ThemeProvider";
 
 export const metadata: Metadata = {
   title: "RenderHive",

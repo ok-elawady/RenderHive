@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import { Bot, Cpu, LayoutDashboard, ListOrdered, Settings } from "lucide-react";
-import { useNavigation } from "./NavigationProvider";
-import type { SidebarItem } from "../types/dashboard";
+import { useNavigation } from "@/components/common/NavigationProvider";
+import type { SidebarItem } from "@/types/dashboard";
 
 const sidebarItems: SidebarItem[] = [
   { icon: <LayoutDashboard size={20} />, label: "Dashboard" },
@@ -17,7 +17,7 @@ export default function AppSidebar() {
   const { activeView, setActiveView } = useNavigation();
 
   return (
-    <aside className="w-64 bg-[#FFFFFF] dark:bg-[#171A24] border-r border-[#D7DBE3] dark:border-[#343B4D] flex flex-col justify-between p-6 shrink-0 select-none">
+    <aside className="w-64 bg-surface border-r border-border flex flex-col justify-between p-6 shrink-0 select-none">
       <div>
         <div className="flex items-center gap-3 mb-10 pl-2">
           <div className="relative h-9 w-9 shrink-0">
@@ -31,10 +31,10 @@ export default function AppSidebar() {
             />
           </div>
           <div className="flex flex-col font-mono">
-            <span className="text-xl font-black tracking-wider bg-gradient-to-r from-[#1A1D23] to-[#6B7280] dark:from-[#FFFFFF] dark:to-[#AAABAD] bg-clip-text text-transparent">
-              Render<span className="text-[#9C73F2]">Hive</span>
+            <span className="text-xl font-black tracking-wider bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+              Render<span className="text-primary">Hive</span>
             </span>
-            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#6B7280] dark:text-[#8A92A5] -mt-0.5">
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground -mt-0.5">
               RENDER MANAGEMENT
             </span>
           </div>
@@ -51,8 +51,8 @@ export default function AppSidebar() {
                 onClick={() => setActiveView(item.label)}
                 className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
                   isActive
-                    ? "bg-[#5A1FA6] hover:bg-[#6C2AC4] text-[#F5F7FA] shadow-lg shadow-[#5A1FA6]/25"
-                    : "text-[#6B7280] dark:text-[#8A92A5] hover:bg-[#F1F3F6] dark:hover:bg-[#1F2330] hover:text-[#1A1D23] dark:hover:text-[#F5F7FA]"
+                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90"
+                    : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
                 }`}
               >
                 {item.icon}
@@ -63,15 +63,15 @@ export default function AppSidebar() {
         </nav>
       </div>
 
-      <div className="border-t border-[#D7DBE3] dark:border-[#2A3143] pt-4 flex items-center gap-3 pl-2">
-        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#d01fc7] to-[#9C73F2] flex items-center justify-center font-bold text-xs text-[#F5F7FA]">
+      <div className="border-t border-input pt-4 flex items-center gap-3 pl-2">
+        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#d01fc7] to-primary flex items-center justify-center font-bold text-xs text-white">
           SA
         </div>
         <div>
-          <p className="text-xs font-semibold text-[#1A1D23] dark:text-[#D7DBE5]">
+          <p className="text-xs font-semibold text-foreground">
             Seif Ashraf
           </p>
-          <p className="text-[10px] text-[#9C73F2] font-mono">TD Admin</p>
+          <p className="text-[10px] text-primary font-mono">TD Admin</p>
         </div>
       </div>
     </aside>

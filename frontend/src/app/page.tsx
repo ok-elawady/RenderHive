@@ -9,21 +9,21 @@ import {
   type ChangeEvent,
 } from "react";
 import { CheckCircle2, Moon, Plus, Search, Sun } from "lucide-react";
-import AgenticLogs from "./components/AgenticLogs";
-import HardwareTelemetry from "./components/HardwareTelemetry";
-import JobQueue from "./components/JobQueue";
-import KpiCards from "./components/KpiCards";
-import NewJobModal from "./components/NewJobModal";
-import { JobQueueSkeleton, KpiCardsSkeleton } from "./components/SkeletonLoaders";
+import AgenticLogs from "@/components/dashboard/AgenticLogs";
+import HardwareTelemetry from "@/components/dashboard/HardwareTelemetry";
+import JobQueue from "@/components/dashboard/JobQueue";
+import KpiCards from "@/components/dashboard/KpiCards";
+import NewJobModal from "@/components/dashboard/NewJobModal";
+import { JobQueueSkeleton, KpiCardsSkeleton } from "@/components/ui/SkeletonLoaders";
 import {
   deriveLogsFromJobs,
   deriveTelemetryFromJobs,
   fetchJobs,
   mapBackendJobToRenderJob,
-} from "./lib/api";
-import { useNavigation } from "./components/NavigationProvider";
-import { useTheme } from "./components/ThemeProvider";
-import type { LogEntry, RenderJob, TelemetryMetrics } from "./types/dashboard";
+} from "@/services/api";
+import { useNavigation } from "@/components/common/NavigationProvider";
+import { useTheme } from "@/components/common/ThemeProvider";
+import type { LogEntry, RenderJob, TelemetryMetrics } from "@/types/dashboard";
 
 interface ToastState {
   show: boolean;
@@ -166,11 +166,11 @@ export default function DashboardPage() {
       return (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <HardwareTelemetry telemetry={telemetry} />
-          <div className="bg-[#FFFFFF] dark:bg-[#171A24] border border-[#D7DBE3] dark:border-[#343B4D] p-6 rounded-lg shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
-            <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280] dark:text-[#8A92A5]">
+          <div className="bg-surface border border-border p-6 rounded-lg shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Node Pool Preview
             </p>
-            <p className="mt-3 text-sm text-[#1A1D23] dark:text-[#F5F7FA]">
+            <p className="mt-3 text-sm text-foreground">
               Worker pool metrics are derived from the latest Django job queue
               response until dedicated telemetry endpoints are exposed.
             </p>
@@ -185,11 +185,11 @@ export default function DashboardPage() {
 
     if (activeView === "Settings") {
       return (
-        <div className="bg-[#FFFFFF] dark:bg-[#171A24] border border-[#D7DBE3] dark:border-[#343B4D] p-8 rounded-lg shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
-          <p className="text-xs font-semibold uppercase tracking-wider text-[#6B7280] dark:text-[#8A92A5]">
+        <div className="bg-surface border border-border p-8 rounded-lg shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Platform Settings
           </p>
-          <h2 className="mt-3 text-xl font-bold text-[#1A1D23] dark:text-[#F5F7FA]">
+          <h2 className="mt-3 text-xl font-bold text-foreground">
             API base URL: http://127.0.0.1:8000/api
           </h2>
         </div>
@@ -213,26 +213,26 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="p-8 space-y-6 overflow-y-auto h-screen bg-[#F7F8FA] text-[#1A1D23] dark:bg-[#0E1016] dark:text-[#F5F7FA] w-full font-mono">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#FFFFFF] dark:bg-[#171A24] border border-[#D7DBE3] dark:border-[#343B4D] p-4 rounded-lg shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.25)]">
-        <div className="flex items-center gap-6 text-xs text-[#6B7280] dark:text-[#8A92A5]">
+    <div className="p-8 space-y-6 overflow-y-auto h-screen bg-background text-foreground w-full font-mono">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-surface border border-border p-4 rounded-lg shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.25)]">
+        <div className="flex items-center gap-6 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#5A1FA6] animate-pulse"></span>
+            <span className="h-2 w-2 rounded-full bg-primary animate-pulse"></span>
             API:{" "}
-            <span className="text-[#1A1D23] dark:text-[#F5F7FA]">
+            <span className="text-foreground">
               localhost:8000
             </span>
           </div>
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-[#9E8EFF]"></span>
             Polling:{" "}
-            <span className="text-[#1A1D23] dark:text-[#F5F7FA]">7s</span>
+            <span className="text-foreground">7s</span>
           </div>
         </div>
 
         <div className="relative flex-1 max-w-md mx-0 md:mx-6">
           <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280] dark:text-[#8A92A5]"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
             size={16}
           />
           <input
@@ -240,7 +240,7 @@ export default function DashboardPage() {
             value={searchQuery}
             onChange={handleSearchChange}
             placeholder="Search nodes, jobs, logs..."
-            className="w-full bg-[#F7F8FA] dark:bg-[#1F2330] border border-[#D7DBE3] dark:border-[#343B4D] rounded-lg pl-10 pr-4 py-2 text-sm text-[#1A1D23] dark:text-[#F5F7FA] placeholder-[#6B7280] dark:placeholder-[#8A92A5] focus:outline-none focus:border-[#5A1FA6] focus:shadow-[0_0_10px_rgba(90,31,166,0.3)]"
+            className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:shadow-[0_0_10px] focus:shadow-primary/30"
           />
         </div>
 
@@ -250,7 +250,7 @@ export default function DashboardPage() {
             onClick={toggleTheme}
             aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            className="group flex h-10 w-10 items-center justify-center rounded-lg border border-[#D7DBE3] dark:border-[#343B4D] bg-[#FFFFFF] dark:bg-[#1F2330] text-[#5A1FA6] shadow-sm shadow-black/5 transition-all duration-300 hover:-translate-y-0.5 hover:border-[#5A1FA6] hover:bg-[#F1F3F6] dark:hover:bg-[#2A3040] hover:shadow-[0_0_16px_rgba(90,31,166,0.22)] active:scale-95 cursor-pointer"
+            className="group flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-primary shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary hover:bg-surface-hover hover:shadow-[0_0_16px] hover:shadow-primary/22 active:scale-95 cursor-pointer"
           >
             {isDark ? (
               <Sun
@@ -270,7 +270,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-[#5A1FA6] hover:bg-[#6C2AC4] active:bg-[#7A39D9] text-[#F5F7FA] text-sm px-4 py-2 rounded-lg font-bold shadow-lg shadow-[#5A1FA6]/30 transition-all cursor-pointer"
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground text-sm px-4 py-2 rounded-lg font-bold shadow-lg shadow-primary/30 transition-all cursor-pointer"
           >
             <Plus size={16} />
             New Job
@@ -287,11 +287,11 @@ export default function DashboardPage() {
       />
 
       {toast.show && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-[#3DDC84]/10 border border-[#3DDC84]/30 backdrop-blur-md px-5 py-3.5 rounded-lg shadow-xl shadow-black/20 dark:shadow-black/40 border-l-4 border-l-[#3DDC84]">
-          <CheckCircle2 className="text-[#3DDC84] shrink-0" size={18} />
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-success/10 border border-success/30 backdrop-blur-md px-5 py-3.5 rounded-lg shadow-xl shadow-black/20 dark:shadow-black/40 border-l-4 border-l-success">
+          <CheckCircle2 className="text-success shrink-0" size={18} />
           <div className="text-xs">
-            <p className="text-[#3DDC84] font-bold">Saved Successfully</p>
-            <p className="text-[#1A1D23] dark:text-[#F5F7FA] mt-0.5">
+            <p className="text-success font-bold">Saved Successfully</p>
+            <p className="text-foreground mt-0.5">
               {toast.message}
             </p>
           </div>

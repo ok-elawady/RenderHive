@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Cpu as CpuIcon, X } from "lucide-react";
-import type { TelemetryMetrics, TelemetryPoint } from "../types/dashboard";
+import type { TelemetryMetrics, TelemetryPoint } from "@/types/dashboard";
 
 interface HardwareTelemetryProps {
   telemetry: TelemetryMetrics;
@@ -58,40 +58,40 @@ export default function HardwareTelemetry({
 
   return (
     <>
-      <div className="bg-[#FFFFFF] dark:bg-[#171A24] border border-[#D7DBE3] dark:border-[#343B4D] p-6 rounded-lg space-y-6 shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
+      <div className="bg-surface border border-border p-6 rounded-lg space-y-6 shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
         <div className="flex items-center gap-2">
-          <CpuIcon className="text-[#5A1FA6]" size={18} />
-          <h3 className="text-base font-bold text-[#1A1D23] dark:text-[#F5F7FA]">
+          <CpuIcon className="text-primary" size={18} />
+          <h3 className="text-base font-bold text-foreground">
             Hardware Utilization
           </h3>
         </div>
 
         <div className="space-y-4 text-xs font-mono">
           <div className="space-y-1.5">
-            <div className="flex justify-between text-[#6B7280] dark:text-[#8A92A5]">
+            <div className="flex justify-between text-muted-foreground">
               <span>VRAM Usage</span>
-              <span className="text-[#5A1FA6] font-bold">
+              <span className="text-primary font-bold">
                 {telemetry.vramUsage}%
               </span>
             </div>
-            <div className="w-full bg-[#E7E9EF] dark:bg-[#2A3040] h-2 rounded-full overflow-hidden">
+            <div className="w-full bg-input h-2 rounded-full overflow-hidden">
               <div
-                className="bg-gradient-to-r from-[#5A1FA6] to-[#7A39D9] h-full transition-all duration-700 shadow-[0_0_10px_rgba(90,31,166,0.4)]"
+                className="bg-gradient-to-r from-primary to-primary/80 h-full transition-all duration-700 shadow-[0_0_10px] shadow-primary/40"
                 style={{ width: `${telemetry.vramUsage}%` }}
               ></div>
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex justify-between text-[#6B7280] dark:text-[#8A92A5]">
+            <div className="flex justify-between text-muted-foreground">
               <span>CPU Cluster Load</span>
-              <span className="text-[#5A1FA6] font-bold">
+              <span className="text-primary font-bold">
                 {telemetry.cpuLoad}%
               </span>
             </div>
-            <div className="w-full bg-[#E7E9EF] dark:bg-[#2A3040] h-2 rounded-full overflow-hidden">
+            <div className="w-full bg-input h-2 rounded-full overflow-hidden">
               <div
-                className="bg-gradient-to-r from-[#5A1FA6] to-[#7A39D9] h-full transition-all duration-700 shadow-[0_0_10px_rgba(90,31,166,0.4)]"
+                className="bg-gradient-to-r from-primary to-primary/80 h-full transition-all duration-700 shadow-[0_0_10px] shadow-primary/40"
                 style={{ width: `${telemetry.cpuLoad}%` }}
               ></div>
             </div>
@@ -104,10 +104,10 @@ export default function HardwareTelemetry({
           className="w-full pt-2 text-left cursor-pointer group"
           aria-label="Open telemetry history analytics"
         >
-          <p className="text-[11px] font-mono text-[#6B7280] dark:text-[#8A92A5] mb-2">
+          <p className="text-[11px] font-mono text-muted-foreground mb-2">
             Telemetry History (24h)
           </p>
-          <div className="w-full h-32 bg-[#F7F8FA] dark:bg-[#1F2330] rounded-lg border border-[#D7DBE3] dark:border-[#2A3143] relative overflow-hidden flex items-end transition-all duration-300 group-hover:border-[#5A1FA6] group-hover:shadow-[0_0_18px_rgba(90,31,166,0.18)]">
+          <div className="w-full h-32 bg-surface-deep rounded-lg border border-input relative overflow-hidden flex items-end transition-all duration-300 group-hover:border-primary group-hover:shadow-[0_0_18px] group-hover:shadow-primary/20">
             <svg
               className="w-full h-full p-1"
               viewBox="0 0 100 100"
@@ -115,15 +115,15 @@ export default function HardwareTelemetry({
             >
               <defs>
                 <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#5A1FA6" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#5A1FA6" stopOpacity="0" />
+                  <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
                 </linearGradient>
               </defs>
               <path d={chartPaths.vramArea} fill="url(#chartGradient)" />
               <path
                 d={chartPaths.vramLine}
                 fill="none"
-                stroke="#9C73F2"
+                stroke="var(--primary)"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
@@ -138,22 +138,22 @@ export default function HardwareTelemetry({
           onClick={closeModal}
         >
           <div
-            className="w-full max-w-5xl bg-[#FFFFFF] dark:bg-[#171A24] border border-[#D7DBE3] dark:border-[#343B4D] rounded-2xl shadow-2xl shadow-black/20 dark:shadow-black/90 overflow-hidden animate-[modalPopIn_0.3s_ease-out_forwards]"
+            className="w-full max-w-5xl bg-surface border border-border rounded-2xl shadow-2xl shadow-black/20 dark:shadow-black/90 overflow-hidden animate-[modalPopIn_0.3s_ease-out_forwards]"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-[#D7DBE3] dark:border-[#343B4D] px-6 py-4 bg-[#F7F8FA]/80 dark:bg-[#0E1016]/40">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4 bg-background/80">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#8A92A5]">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
                   Backend Micro-Analytics
                 </p>
-                <h3 className="mt-1 text-lg font-bold text-[#1A1D23] dark:text-[#F5F7FA]">
+                <h3 className="mt-1 text-lg font-bold text-foreground">
                   Telemetry History (24h)
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={closeModal}
-                className="text-[#6B7280] dark:text-[#8A92A5] hover:text-[#1A1D23] dark:hover:text-[#F5F7FA] transition-colors cursor-pointer"
+                className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 aria-label="Close telemetry analytics"
               >
                 <X size={22} />
@@ -161,18 +161,18 @@ export default function HardwareTelemetry({
             </div>
 
             <div className="p-6">
-              <div className="mb-4 flex flex-wrap items-center gap-4 text-xs font-mono text-[#6B7280] dark:text-[#8A92A5]">
+              <div className="mb-4 flex flex-wrap items-center gap-4 text-xs font-mono text-muted-foreground">
                 <span className="inline-flex items-center gap-2">
-                  <span className="h-2 w-4 rounded-full bg-[#5A1FA6]"></span>
+                  <span className="h-2 w-4 rounded-full bg-primary"></span>
                   VRAM Usage
                 </span>
                 <span className="inline-flex items-center gap-2">
-                  <span className="h-2 w-4 rounded-full bg-[#4DA3FF]"></span>
+                  <span className="h-2 w-4 rounded-full bg-info"></span>
                   CPU Cluster Load
                 </span>
               </div>
 
-              <div className="h-[420px] rounded-xl border border-[#D7DBE3] dark:border-[#2A3143] bg-[#F7F8FA] dark:bg-[#11161F] overflow-hidden">
+              <div className="h-[420px] rounded-xl border border-input bg-surface-deep overflow-hidden">
                 <svg
                   key={animationKey}
                   className="h-full w-full p-5"
@@ -189,10 +189,10 @@ export default function HardwareTelemetry({
                     >
                       <stop
                         offset="0%"
-                        stopColor="#5A1FA6"
+                        stopColor="var(--primary)"
                         stopOpacity="0.28"
                       />
-                      <stop offset="100%" stopColor="#5A1FA6" stopOpacity="0" />
+                      <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
                     </linearGradient>
                     <linearGradient
                       id="cpuModalGradient"
@@ -203,10 +203,10 @@ export default function HardwareTelemetry({
                     >
                       <stop
                         offset="0%"
-                        stopColor="#4DA3FF"
+                        stopColor="var(--info)"
                         stopOpacity="0.18"
                       />
-                      <stop offset="100%" stopColor="#4DA3FF" stopOpacity="0" />
+                      <stop offset="100%" stopColor="var(--info)" stopOpacity="0" />
                     </linearGradient>
                   </defs>
                   <g className="telemetry-area-sweep">
@@ -224,7 +224,7 @@ export default function HardwareTelemetry({
                     className="telemetry-line-sweep"
                     pathLength={1}
                     fill="none"
-                    stroke="#5A1FA6"
+                    stroke="var(--primary)"
                     strokeWidth="1.8"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -234,7 +234,7 @@ export default function HardwareTelemetry({
                     className="telemetry-line-sweep telemetry-line-sweep-delayed"
                     pathLength={1}
                     fill="none"
-                    stroke="#4DA3FF"
+                    stroke="var(--info)"
                     strokeWidth="1.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"

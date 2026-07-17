@@ -26,14 +26,7 @@ const STORAGE_KEY = "renderhive-theme";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function getInitialTheme(): ThemeMode {
-  if (typeof window === "undefined") return "dark";
-
-  const storedTheme = window.localStorage.getItem(STORAGE_KEY);
-  if (storedTheme === "light" || storedTheme === "dark") return storedTheme;
-
-  return document.documentElement.classList.contains("light")
-    ? "light"
-    : "dark";
+  return "dark"; // Default to dark for server-side rendering to prevent hydration mismatch
 }
 
 function applyTheme(theme: ThemeMode): void {
@@ -45,11 +38,27 @@ function applyTheme(theme: ThemeMode): void {
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
   const [theme, setThemeState] = useState<ThemeMode>(getInitialTheme);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    applyTheme(theme);
-    window.localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+    const storedTheme = window.localStorage.getItem(STORAGE_KEY);
+    if (storedTheme === "light" || storedTheme === "dark") {
+      setThemeState(storedTheme);
+    } else {
+      setThemeState(
+        document.documentElement.classList.contains("light") ? "light" : "dark"
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mounted) {
+      applyTheme(theme);
+      window.localStorage.setItem(STORAGE_KEY, theme);
+    }
+  }, [theme, mounted]);
 
   const setTheme = useCallback((nextTheme: ThemeMode) => {
     setThemeState(nextTheme);
