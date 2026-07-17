@@ -3,77 +3,94 @@
 import Image from "next/image";
 import { Bot, Cpu, LayoutDashboard, ListOrdered, Settings } from "lucide-react";
 import { useNavigation } from "@/components/common/NavigationProvider";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+
 import type { SidebarItem } from "@/types/dashboard";
 
 const sidebarItems: SidebarItem[] = [
-  { icon: <LayoutDashboard size={20} />, label: "Dashboard" },
-  { icon: <ListOrdered size={20} />, label: "Active Queue" },
-  { icon: <Cpu size={20} />, label: "Node Pool" },
-  { icon: <Bot size={20} />, label: "AI Rules" },
-  { icon: <Settings size={20} />, label: "Settings" },
+  { icon: <LayoutDashboard size={18} />, label: "Dashboard" },
+  { icon: <ListOrdered size={18} />, label: "Active Queue" },
+  { icon: <Cpu size={18} />, label: "Node Pool" },
+  { icon: <Bot size={18} />, label: "AI Rules" },
+  { icon: <Settings size={18} />, label: "Settings" },
 ];
 
 export default function AppSidebar() {
   const { activeView, setActiveView } = useNavigation();
 
   return (
-    <aside className="w-64 bg-surface border-r border-border flex flex-col justify-between p-6 shrink-0 select-none">
-      <div>
-        <div className="flex items-center gap-3 mb-10 pl-2">
-          <div className="relative h-9 w-9 shrink-0">
-            <Image
-              src="/Logo2.png"
-              alt="RenderHive Logo"
-              width={66}
-              height={66}
-              className="object-contain"
-              priority
-            />
-          </div>
-          <div className="flex flex-col font-mono">
-            <span className="text-xl font-black tracking-wider bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
-              Render<span className="text-primary">Hive</span>
-            </span>
-            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground -mt-0.5">
-              RENDER MANAGEMENT
-            </span>
-          </div>
-        </div>
+    <Sidebar className="border-r-0">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg">
+              <div className="relative flex aspect-square size-10 items-center justify-center shrink-0 mr-1">
+                <Image
+                  src="/Logo2.png"
+                  alt="RenderHive Logo"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  fill
+                  className="object-contain"
+                />
+              </div>
+              <div className="flex flex-col gap-0.5 leading-none font-mono">
+                <span className="font-black tracking-wider bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+                  Render<span className="text-primary">Hive</span>
+                </span>
+                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                  RENDER MANAGEMENT
+                </span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-        <nav className="space-y-2">
-          {sidebarItems.map((item) => {
-            const isActive = activeView === item.label;
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Application</SidebarGroupLabel>
+          <SidebarMenu>
+            {sidebarItems.map((item) => {
+              const isActive = activeView === item.label;
 
-            return (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => setActiveView(item.label)}
-                className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
-                  isActive
-                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:bg-primary/90"
-                    : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-                }`}
-              >
-                {item.icon}
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
+              return (
+                <SidebarMenuItem key={item.label}>
+                  <SidebarMenuButton isActive={isActive} onClick={() => setActiveView(item.label)} tooltip={item.label}>
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
 
-      <div className="border-t border-input pt-4 flex items-center gap-3 pl-2">
-        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#d01fc7] to-primary flex items-center justify-center font-bold text-xs text-white">
-          SA
-        </div>
-        <div>
-          <p className="text-xs font-semibold text-foreground">
-            Seif Ashraf
-          </p>
-          <p className="text-[10px] text-primary font-mono">TD Admin</p>
-        </div>
-      </div>
-    </aside>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg">
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white shrink-0">
+                SA
+              </div>
+              <div className="flex flex-col gap-0.5 leading-none">
+                <span className="font-semibold text-foreground text-sm">Seif Ashraf</span>
+                <span className="text-[10px] text-primary font-mono">TD Admin</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
   );
 }

@@ -8,13 +8,13 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
-import { CheckCircle2, Moon, Plus, Search, Sun } from "lucide-react";
+import { Moon, Plus, Search, Sun } from "lucide-react";
 import AgenticLogs from "@/components/dashboard/AgenticLogs";
 import HardwareTelemetry from "@/components/dashboard/HardwareTelemetry";
 import JobQueue from "@/components/dashboard/JobQueue";
 import KpiCards from "@/components/dashboard/KpiCards";
 import NewJobModal from "@/components/dashboard/NewJobModal";
-import { JobQueueSkeleton, KpiCardsSkeleton } from "@/components/ui/SkeletonLoaders";
+import { PageSkeleton } from "@/components/ui/SkeletonLoaders";
 import {
   deriveLogsFromJobs,
   deriveTelemetryFromJobs,
@@ -24,11 +24,10 @@ import {
 import { useNavigation } from "@/components/common/NavigationProvider";
 import { useTheme } from "@/components/common/ThemeProvider";
 import type { LogEntry, RenderJob, TelemetryMetrics } from "@/types/dashboard";
-
-interface ToastState {
-  show: boolean;
-  message: string;
-}
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 const emptyTelemetry: TelemetryMetrics = {
   vramUsage: 0,
@@ -52,7 +51,6 @@ function getFarmEfficiency(jobs: RenderJob[]): number {
 
 export default function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-  const [toast, setToast] = useState<ToastState>({ show: false, message: "" });
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -85,13 +83,11 @@ export default function DashboardPage() {
     await fetchJobsData();
   }, [fetchJobsData]);
 
-  const showSuccessToast = (jobName: string): void => {
-    setToast({ show: true, message: `Job "${jobName}" successfully queued!` });
-  };
-
   const handleJobSubmitted = async (jobName: string): Promise<void> => {
     await refreshJobsData();
-    showSuccessToast(jobName);
+    toast.success("Saved Successfully", {
+      description: `Job "${jobName}" successfully queued!`,
+    });
   };
 
   const handleSearchChange = (event: ChangeEvent<HTMLInputElement>): void => {
@@ -128,36 +124,23 @@ export default function DashboardPage() {
     };
   }, [fetchJobsData]);
 
-  useEffect(() => {
-    if (toast.show) {
-      const timer = window.setTimeout(() => {
-        setToast({ show: false, message: "" });
-      }, 4000);
-      return () => window.clearTimeout(timer);
-    }
+  const renderKpiCards = (): React.ReactNode => (
+    <KpiCards activeJobs={activeJobCount} farmEfficiency={farmEfficiency} />
+  );
 
-    return undefined;
-  }, [toast.show]);
-
-  const renderKpiCards = (): React.ReactNode =>
-    isLoading ? (
-      <KpiCardsSkeleton />
-    ) : (
-      <KpiCards activeJobs={activeJobCount} farmEfficiency={farmEfficiency} />
-    );
-
-  const renderJobQueue = (): React.ReactNode =>
-    isLoading ? (
-      <JobQueueSkeleton />
-    ) : (
-      <JobQueue
-        jobs={jobs}
-        searchQuery={searchQuery}
-        onJobRemoved={refreshJobsData}
-      />
-    );
+  const renderJobQueue = (): React.ReactNode => (
+    <JobQueue
+      jobs={jobs}
+      searchQuery={searchQuery}
+      onJobRemoved={refreshJobsData}
+    />
+  );
 
   const renderDashboardContent = (): React.ReactNode => {
+    if (isLoading) {
+      return <PageSkeleton />;
+    }
+
     if (activeView === "Active Queue") {
       return <div className="min-h-[520px]">{renderJobQueue()}</div>;
     }
@@ -166,15 +149,19 @@ export default function DashboardPage() {
       return (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <HardwareTelemetry telemetry={telemetry} />
-          <div className="bg-surface border border-border p-6 rounded-lg shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Node Pool Preview
-            </p>
-            <p className="mt-3 text-sm text-foreground">
-              Worker pool metrics are derived from the latest Django job queue
-              response until dedicated telemetry endpoints are exposed.
-            </p>
-          </div>
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Node Pool Preview
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              <p className="text-sm text-foreground">
+                Worker pool metrics are derived from the latest Django job queue
+                response until dedicated telemetry endpoints are exposed.
+              </p>
+            </CardContent>
+          </Card>
         </div>
       );
     }
@@ -185,14 +172,18 @@ export default function DashboardPage() {
 
     if (activeView === "Settings") {
       return (
-        <div className="bg-surface border border-border p-8 rounded-lg shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.22)]">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Platform Settings
-          </p>
-          <h2 className="mt-3 text-xl font-bold text-foreground">
-            API base URL: http://127.0.0.1:8000/api
-          </h2>
-        </div>
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Platform Settings
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <h2 className="text-xl font-bold text-foreground">
+              API base URL: http://127.0.0.1:8000/api
+            </h2>
+          </CardContent>
+        </Card>
       );
     }
 
@@ -213,8 +204,8 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="p-8 space-y-6 overflow-y-auto h-screen bg-background text-foreground w-full font-mono">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-surface border border-border p-4 rounded-lg shadow-[0_0_24px_rgba(15,23,42,0.08)] dark:shadow-[0_0_24px_rgba(0,0,0,0.25)]">
+    <div className="p-6 space-y-6 overflow-y-auto h-screen bg-background text-foreground w-full font-mono">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-surface border border-border p-4 rounded-xl">
         <div className="flex items-center gap-6 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-primary animate-pulse"></span>
@@ -235,46 +226,46 @@ export default function DashboardPage() {
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
             size={16}
           />
-          <input
+          <Input
             type="text"
             value={searchQuery}
             onChange={handleSearchChange}
-            placeholder="Search nodes, jobs, logs..."
-            className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary focus:shadow-[0_0_10px] focus:shadow-primary/30"
+            placeholder="Search users, jobs, logs..."
+            className="pl-10 h-10 w-full"
           />
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="icon"
             onClick={toggleTheme}
             aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            className="group flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-primary shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-primary hover:bg-surface-hover hover:shadow-[0_0_16px] hover:shadow-primary/22 active:scale-95 cursor-pointer"
+            className="group hover:border-primary"
           >
             {isDark ? (
               <Sun
                 key="sun"
                 size={17}
-                className="transition-transform duration-500 group-hover:rotate-45 group-active:scale-90"
+                className="transition-transform duration-500 group-hover:rotate-45 text-primary"
               />
             ) : (
               <Moon
                 key="moon"
                 size={17}
-                className="transition-transform duration-500 group-hover:-rotate-12 group-active:scale-90"
+                className="transition-transform duration-500 group-hover:-rotate-12 text-primary"
               />
             )}
-          </button>
+          </Button>
 
-          <button
-            type="button"
+          <Button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-primary hover:bg-primary/90 active:bg-primary/80 text-primary-foreground text-sm px-4 py-2 rounded-lg font-bold shadow-lg shadow-primary/30 transition-all cursor-pointer"
+            className="font-bold px-4"
           >
             <Plus size={16} />
             New Job
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -285,18 +276,6 @@ export default function DashboardPage() {
         onClose={() => setIsModalOpen(false)}
         onSuccess={handleJobSubmitted}
       />
-
-      {toast.show && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-success/10 border border-success/30 backdrop-blur-md px-5 py-3.5 rounded-lg shadow-xl shadow-black/20 dark:shadow-black/40 border-l-4 border-l-success">
-          <CheckCircle2 className="text-success shrink-0" size={18} />
-          <div className="text-xs">
-            <p className="text-success font-bold">Saved Successfully</p>
-            <p className="text-foreground mt-0.5">
-              {toast.message}
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
