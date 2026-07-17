@@ -1,80 +1,28 @@
-import axios from "axios";
+import createClient from "openapi-fetch";
+import type { paths, components } from "@/types/schema";
+import type { JobFormValues } from "@/types/api";
 import type {
-  BackendJobState,
   JobPriority,
   LogEntry,
   RenderJob,
   TelemetryMetrics,
   TelemetryPoint,
-} from "../types/dashboard";
+} from "@/types/dashboard";
 
 export const API_BASE_URL = "http://localhost:8000";
-const JOBS_ENDPOINT = "/api/jobs/";
 const renderHiveAuthToken = process.env.NEXT_PUBLIC_RENDERHIVE_AUTH_TOKEN;
 
-export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    ...(renderHiveAuthToken
-      ? { Authorization: `Token ${renderHiveAuthToken}` }
-      : {}),
-    "Content-Type": "application/json",
-  },
+// Initialize the openapi-fetch client
+export const client = createClient<paths>({
+  baseUrl: API_BASE_URL,
+  headers: renderHiveAuthToken
+    ? { Authorization: `Token ${renderHiveAuthToken}` }
+    : {},
 });
 
-export interface BackendJob {
-  id: string;
-  name: string;
-  visible_name: string;
-  project: string;
-  department: string;
-  user: string;
-  state: BackendJobState;
-  priority: number;
-  is_paused: boolean;
-  total_frames: number;
-  waiting_frames: number;
-  ready_frames: number;
-  running_frames: number;
-  succeeded_frames: number;
-  failed_frames: number;
-  skipped_frames: number;
-  depend_frames: number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface PaginatedResponse<T> {
-  results: T[];
-}
-
-export interface JobFormValues {
-  jobName: string;
-  userId: number;
-  engine: string;
-  priority: JobPriority;
-  startFrame: string;
-  endFrame: string;
-  logDirectory: string;
-  renderCommand: string;
-}
-
-export interface CreateJobPayload {
-  visible_name: string;
-  project: "test";
-  department: "td";
-  priority: number;
-  max_frames_per_worker: number;
-  user: number;
-  log_directory: string;
-  layers: Array<{
-    name: string;
-    renderer: string;
-    frame_range: string;
-    chunk_size: number;
-    command: string;
-  }>;
-}
+// Extract types from the generated schema
+export type BackendJob = components["schemas"]["JobList"];
+export type BackendJobState = components["schemas"]["State1dfEnum"];
 
 function stringifyApiValue(value: unknown): string {
   if (typeof value === "string") return value;
@@ -94,12 +42,6 @@ function stringifyApiValue(value: unknown): string {
   return "";
 }
 
-function isPaginatedResponse<T>(
-  value: T[] | PaginatedResponse<T>,
-): value is PaginatedResponse<T> {
-  return !Array.isArray(value) && Array.isArray(value.results);
-}
-
 function mapPriority(priority: number): JobPriority {
   if (priority >= 75) return "HIGH";
   if (priority >= 35) return "MED";
@@ -111,22 +53,6 @@ function mapStatus(state: BackendJobState): RenderJob["status"] {
   if (state === "PENDING" || state === "PAUSED") return "Queued";
   if (state === "FINISHED") return "Completed";
   return "Failed";
-}
-
-function getStatusColor(state: BackendJobState): string {
-  if (state === "RUNNING") {
-    return "text-[#5A1FA6] bg-[#5A1FA6]/10 border-[#5A1FA6]/30";
-  }
-
-  if (state === "PENDING" || state === "PAUSED") {
-    return "text-[#4DA3FF] bg-[#4DA3FF]/10 border-[#4DA3FF]/30";
-  }
-
-  if (state === "FINISHED") {
-    return "text-[#3DDC84] bg-[#3DDC84]/10 border-[#3DDC84]/30";
-  }
-
-  return "text-[#FF5D73] bg-[#FF5D73]/10 border-[#FF5D73]/30";
 }
 
 function getProgress(job: BackendJob): number {
@@ -146,18 +72,14 @@ function getEta(job: BackendJob): string {
   return "Waiting";
 }
 
-export function normalizeJobsResponse(
-  data: BackendJob[] | PaginatedResponse<BackendJob>,
-): BackendJob[] {
-  return isPaginatedResponse(data) ? data.results : data;
-}
-
 export async function fetchJobs(): Promise<BackendJob[]> {
-  const response = await apiClient.get<BackendJob[] | PaginatedResponse<BackendJob>>(
-    JOBS_ENDPOINT,
-  );
+  const { data, error } = await client.GET("/api/jobs/");
+  
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
 
-  return normalizeJobsResponse(response.data);
+  return data?.results || [];
 }
 
 export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
@@ -170,7 +92,6 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
     backendState: job.state,
     progress: getProgress(job),
     eta: getEta(job),
-    statusColor: getStatusColor(job.state),
   };
 }
 
@@ -218,7 +139,9 @@ export function getDefaultRenderCommand(
   return `render --renderer ${renderer} --frames ${frameRange}`;
 }
 
-export function buildJobRequest(formData: JobFormValues): CreateJobPayload {
+export function buildJobRequest(
+  formData: JobFormValues,
+): components["schemas"]["JobCreate"] {
   const priorityMap: Record<JobPriority, number> = {
     HIGH: 80,
     MED: 50,
@@ -227,6 +150,12 @@ export function buildJobRequest(formData: JobFormValues): CreateJobPayload {
 
   const frameRange = `${formData.startFrame}-${formData.endFrame}`;
   const sanitizedName = formData.jobName.trim();
+  const renderer = getRendererName(formData.engine);
+
+  let layerType: components["schemas"]["LayerTypeEnum"] = "RENDER";
+  if (renderer.includes("comp") || renderer.includes("nuke")) {
+    layerType = "POST";
+  }
 
   return {
     visible_name: sanitizedName,
@@ -234,12 +163,12 @@ export function buildJobRequest(formData: JobFormValues): CreateJobPayload {
     department: "td",
     priority: priorityMap[formData.priority],
     max_frames_per_worker: 0,
-    user: formData.userId,
+    user: String(formData.userId),
     log_directory: formData.logDirectory.trim(),
     layers: [
       {
         name: "default_layer",
-        renderer: getRendererName(formData.engine),
+        layer_type: layerType,
         frame_range: frameRange,
         chunk_size: 1,
         command: formData.renderCommand.trim(),
@@ -248,25 +177,47 @@ export function buildJobRequest(formData: JobFormValues): CreateJobPayload {
   };
 }
 
-export async function createJob(payload: CreateJobPayload): Promise<BackendJob> {
-  const response = await apiClient.post<BackendJob>(JOBS_ENDPOINT, payload);
+export async function createJob(
+  payload: components["schemas"]["JobCreate"],
+): Promise<BackendJob> {
+  const { data, error } = await client.POST("/api/jobs/", {
+    body: payload,
+  });
 
-  return response.data;
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  // The backend returns the created Job object, we cast it to BackendJob
+  return data as unknown as BackendJob;
 }
 
 export async function deleteJob(jobId: string): Promise<void> {
-  await apiClient.delete(`${JOBS_ENDPOINT}${jobId}/`);
+  const { error } = await client.DELETE("/api/jobs/{id}/", {
+    params: { path: { id: jobId } },
+  });
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
 }
 
 export function formatApiError(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const responseMessage = stringifyApiValue(error.response?.data);
-
-    if (responseMessage) return responseMessage;
-    if (error.message) return error.message;
+  try {
+    if (error instanceof Error) {
+      try {
+        // Attempt to parse stringified JSON error payloads
+        const parsedError = JSON.parse(error.message);
+        const responseMessage = stringifyApiValue(parsedError);
+        if (responseMessage) return responseMessage;
+      } catch {
+        // Not a JSON string, fallback below
+      }
+      return error.message;
+    }
+  } catch {
+    // Ultimate fallback
   }
-
-  if (error instanceof Error) return error.message;
 
   return "Unable to submit this job to the backend API.";
 }
@@ -281,12 +232,6 @@ export function deriveLogsFromJobs(jobs: RenderJob[]): LogEntry[] {
           ? "INFO"
           : "ROUTE",
     msg: `${job.displayId} is ${job.backendState.toLowerCase()} at ${job.progress}% through ${job.node}.`,
-    color:
-      job.status === "Failed"
-        ? "text-[#FF5D73]"
-        : job.status === "Completed"
-          ? "text-[#3DDC84]"
-          : "text-[#5A1FA6]",
   }));
 }
 

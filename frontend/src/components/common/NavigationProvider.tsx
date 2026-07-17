@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { DashboardView } from "../types/dashboard";
+import type { DashboardView } from "@/types/dashboard";
 
 interface NavigationContextValue {
   activeView: DashboardView;

@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Semantic RenderHive Colors */
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-deep: var(--surface-deep);
+  
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+}
+
+:root {
+  /* Layout */
+  --background: #F7F8FA;
+  --foreground: #1A1D23;
+  --card: #FFFFFF;
+  --card-foreground: #1A1D23;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1D23;
+  
+  /* Brand */
+  --primary: #5A1FA6;
+  --primary-foreground: #FFFFFF;
+  
+  /* Semantic */
+  --secondary: #F1F3F6;
+  --secondary-foreground: #1A1D23;
+  --muted: #F1F3F6;
+  --muted-foreground: #6B7280;
+  --accent: #F1F3F6;
+  --accent-foreground: #1A1D23;
+  --destructive: #FF5D73;
+  --destructive-foreground: #FFFFFF;
+  
+  /* Borders */
+  --border: #D7DBE3;
+  --input: #D7DBE3;
+  --ring: #5A1FA6;
+
+  /* Custom Surfaces */
+  --surface: #FFFFFF;
+  --surface-hover: #F1F3F6;
+  --surface-deep: #F7F8FA; /* Terminal / inset */
+  
+  /* Status Colors */
+  --success: #3DDC84;
+  --warning: #FFB84D;
+  --info: #4DA3FF;
+}
+
+.dark {
+  /* Layout */
+  --background: #0E1016;
+  --foreground: #F5F7FA;
+  --card: #171A24;
+  --card-foreground: #F5F7FA;
+  --popover: #171A24;
+  --popover-foreground: #F5F7FA;
+  
+  /* Brand */
+  --primary: #9C73F2;
+  --primary-foreground: #0E1016; /* High contrast black text on bright purple for a11y */
+  
+  /* Semantic */
+  --secondary: #1F2330;
+  --secondary-foreground: #F5F7FA;
+  --muted: #1F2330;
+  --muted-foreground: #8A92A5;
+  --accent: #1F2330;
+  --accent-foreground: #F5F7FA;
+  --destructive: #FF5D73;
+  --destructive-foreground: #FFFFFF;
+  
+  /* Borders */
+  --border: #343B4D;
+  --input: #2A3143;
+  --ring: #9C73F2;
+
+  /* Custom Surfaces */
+  --surface: #171A24;
+  --surface-hover: #1E2433; 
+  --surface-deep: #11161F;
+}
+
+* {
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: monospace;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid var(--background);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+@keyframes modalPopIn {
+  0% { opacity: 0; transform: translateY(20px) scale(0.72); }
+  10% { opacity: 1; }
+  72% { opacity: 1; transform: translateY(0) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes telemetryLineSweep {
+  0% { opacity: 0; stroke-dashoffset: 1; transform: translateX(-8px); }
+  35% { opacity: 1; }
+  100% { opacity: 1; stroke-dashoffset: 0; transform: translateX(0); }
+}
+
+@keyframes telemetryAreaSweep {
+  0% { opacity: 0; transform: translateX(-8px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+.telemetry-line-sweep {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transform-origin: center;
+  animation: telemetryLineSweep 1.5s ease-out forwards;
+}
+
+.telemetry-line-sweep-delayed {
+  animation-delay: 120ms;
+}
+
+.telemetry-area-sweep {
+  opacity: 0;
+  transform-origin: center;
+  animation: telemetryAreaSweep 1.5s ease-out forwards;
+}
