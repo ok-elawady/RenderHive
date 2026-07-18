@@ -39,6 +39,16 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
+
+  /* Sidebar */
+  --color-sidebar: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 :root {
@@ -58,10 +68,10 @@
   --secondary: #F1F3F6;
   --secondary-foreground: #1A1D23;
   --muted: #F1F3F6;
-  --muted-foreground: #6B7280;
+  --muted-foreground: #4B5563; /* High contrast gray */
   --accent: #F1F3F6;
   --accent-foreground: #1A1D23;
-  --destructive: #FF5D73;
+  --destructive: #E11D48; /* Rose 600 */
   --destructive-foreground: #FFFFFF;
   
   /* Borders */
@@ -75,9 +85,19 @@
   --surface-deep: #F7F8FA; /* Terminal / inset */
   
   /* Status Colors */
-  --success: #3DDC84;
-  --warning: #FFB84D;
-  --info: #4DA3FF;
+  --success: #16A34A; /* Green 600 */
+  --warning: #D97706; /* Amber 600 */
+  --info: #2563EB; /* Blue 600 */
+
+  /* Sidebar */
+  --sidebar-background: var(--surface);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in srgb, var(--primary) 10%, transparent);
+  --sidebar-accent-foreground: var(--primary);
+  --sidebar-border: transparent;
+  --sidebar-ring: var(--ring);
 }
 
 .dark {
@@ -97,7 +117,7 @@
   --secondary: #1F2330;
   --secondary-foreground: #F5F7FA;
   --muted: #1F2330;
-  --muted-foreground: #8A92A5;
+  --muted-foreground: #A1A7BB; /* Lightened for Dark Mode A11y */
   --accent: #1F2330;
   --accent-foreground: #F5F7FA;
   --destructive: #FF5D73;
@@ -112,6 +132,21 @@
   --surface: #171A24;
   --surface-hover: #1E2433; 
   --surface-deep: #11161F;
+
+  /* Status Colors (Bright for Dark Mode) */
+  --success: #3DDC84;
+  --warning: #FFB84D;
+  --info: #4DA3FF;
+
+  /* Sidebar */
+  --sidebar-background: var(--surface);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: color-mix(in srgb, var(--primary) 15%, transparent);
+  --sidebar-accent-foreground: var(--primary);
+  --sidebar-border: transparent;
+  --sidebar-ring: var(--ring);
 }
 
 * {
@@ -122,7 +157,6 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: monospace;
 }
 
 ::-webkit-scrollbar {

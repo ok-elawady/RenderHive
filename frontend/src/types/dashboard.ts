@@ -13,7 +13,7 @@ export interface SidebarItem {
   label: DashboardView;
 }
 
-export type JobPriority = "HIGH" | "MED" | "LOW";
+export type JobPriority = number;
 export type BackendJobState = components["schemas"]["State1dfEnum"];
 
 export type JobStatus =
@@ -26,11 +26,11 @@ export interface RenderJob {
   id: string;
   displayId: string;
   priority: JobPriority;
-  node: string;
+  user: string;
   status: JobStatus;
   backendState: BackendJobState;
   progress: number;
-  eta: string;
+  frameCounts: string;
 }
 
 export type LogType = "INFO" | "ROUTE" | "WARN";

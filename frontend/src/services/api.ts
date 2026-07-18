@@ -42,11 +42,7 @@ function stringifyApiValue(value: unknown): string {
   return "";
 }
 
-function mapPriority(priority: number): JobPriority {
-  if (priority >= 75) return "HIGH";
-  if (priority >= 35) return "MED";
-  return "LOW";
-}
+
 
 function mapStatus(state: BackendJobState): RenderJob["status"] {
   if (state === "RUNNING") return "Rendering";
@@ -63,14 +59,7 @@ function getProgress(job: BackendJob): number {
   );
 }
 
-function getEta(job: BackendJob): string {
-  if (job.state === "FINISHED") return "Done";
-  if (job.state === "FAILED") return "Failed";
-  if (job.state === "PAUSED") return "Paused";
-  if (job.running_frames > 0) return "Rendering";
-  if (job.ready_frames > 0) return "Ready";
-  return "Waiting";
-}
+
 
 export async function fetchJobs(): Promise<BackendJob[]> {
   const { data, error } = await client.GET("/api/jobs/");
@@ -86,12 +75,12 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
   return {
     id: job.id,
     displayId: job.visible_name || job.name,
-    priority: mapPriority(job.priority),
-    node: job.running_frames > 0 ? "Render Worker Pool" : "Dispatcher Queue",
+    priority: job.priority,
+    user: job.user || "System",
     status: mapStatus(job.state),
     backendState: job.state,
     progress: getProgress(job),
-    eta: getEta(job),
+    frameCounts: `${job.succeeded_frames + job.skipped_frames}/${job.total_frames}`,
   };
 }
 
@@ -142,11 +131,7 @@ export function getDefaultRenderCommand(
 export function buildJobRequest(
   formData: JobFormValues,
 ): components["schemas"]["JobCreate"] {
-  const priorityMap: Record<JobPriority, number> = {
-    HIGH: 80,
-    MED: 50,
-    LOW: 30,
-  };
+
 
   const frameRange = `${formData.startFrame}-${formData.endFrame}`;
   const sanitizedName = formData.jobName.trim();
@@ -161,7 +146,7 @@ export function buildJobRequest(
     visible_name: sanitizedName,
     project: "test",
     department: "td",
-    priority: priorityMap[formData.priority],
+    priority: formData.priority,
     max_frames_per_worker: 0,
     user: String(formData.userId),
     log_directory: formData.logDirectory.trim(),
@@ -224,14 +209,14 @@ export function formatApiError(error: unknown): string {
 
 export function deriveLogsFromJobs(jobs: RenderJob[]): LogEntry[] {
   return jobs.slice(0, 30).map((job) => ({
-    time: job.eta,
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     type:
       job.status === "Failed"
         ? "WARN"
         : job.status === "Completed"
           ? "INFO"
           : "ROUTE",
-    msg: `${job.displayId} is ${job.backendState.toLowerCase()} at ${job.progress}% through ${job.node}.`,
+    msg: `${job.displayId} is ${job.backendState.toLowerCase()} at ${job.progress}% for ${job.user}.`,
   }));
 }
 
