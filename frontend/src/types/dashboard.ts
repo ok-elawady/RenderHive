@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { components } from "./schema";
 
 export type DashboardView =
   | "Dashboard"
@@ -12,13 +13,8 @@ export interface SidebarItem {
   label: DashboardView;
 }
 
-export type JobPriority = "HIGH" | "MED" | "LOW";
-export type BackendJobState =
-  | "PENDING"
-  | "RUNNING"
-  | "FINISHED"
-  | "FAILED"
-  | "PAUSED";
+export type JobPriority = number;
+export type BackendJobState = components["schemas"]["State1dfEnum"];
 
 export type JobStatus =
   | "Rendering"
@@ -30,12 +26,11 @@ export interface RenderJob {
   id: string;
   displayId: string;
   priority: JobPriority;
-  node: string;
+  user: string;
   status: JobStatus;
   backendState: BackendJobState;
   progress: number;
-  eta: string;
-  statusColor: string;
+  frameCounts: string;
 }
 
 export type LogType = "INFO" | "ROUTE" | "WARN";
@@ -44,7 +39,6 @@ export interface LogEntry {
   time: string;
   type: LogType;
   msg: string;
-  color: string;
 }
 
 export type LogMessage = Omit<LogEntry, "time">;

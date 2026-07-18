@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import "./globals.css";
-import AppSidebar from "./components/AppSidebar";
-import { NavigationProvider } from "./components/NavigationProvider";
-import { ThemeProvider } from "./components/ThemeProvider";
+import "@/styles/globals.css";
+import AppSidebar from "@/components/layout/AppSidebar";
+import { NavigationProvider } from "@/components/common/NavigationProvider";
+import { ThemeProvider } from "@/components/common/ThemeProvider";
+import { Toaster } from "@/components/ui/sonner";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
   title: "RenderHive",
@@ -36,13 +39,18 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="flex min-h-screen bg-[#F7F8FA] text-[#1A1D23] dark:bg-[#0E1016] dark:text-[#F5F7FA]">
+      <body className="flex min-h-screen bg-background text-foreground">
         <ThemeProvider>
-          <NavigationProvider>
-            <AppSidebar />
-            <main className="flex-1 flex flex-col min-w-0">{children}</main>
-          </NavigationProvider>
+          <TooltipProvider>
+            <NavigationProvider>
+              <SidebarProvider>
+                <AppSidebar />
+                <main className="flex-1 flex flex-col min-w-0">{children}</main>
+              </SidebarProvider>
+            </NavigationProvider>
+          </TooltipProvider>
         </ThemeProvider>
+        <Toaster />
       </body>
     </html>
   );

@@ -9,8 +9,7 @@ import platform
 import sys
 import uuid
 
-from PySide2 import QtCore, QtGui, QtWidgets
-from shiboken2 import wrapInstance
+from .qt_compat import QtCore, QtGui, QtWidgets, wrapInstance
 
 import maya.OpenMayaUI as omui
 import maya.cmds as cmds
@@ -1440,8 +1439,8 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         chunk_size = register("rh_chunk_size", QtWidgets.QSpinBox())
         chunk_size.setRange(1, 10000)
-        chunk_size.setValue(10)
-        chunk_size.setToolTip("Number of frames assigned to each farm task.")
+        chunk_size.setValue(1)
+        chunk_size.setToolTip("Number of frames assigned to each farm task. Note: Chunking > 1 is not fully supported in the MVP yet.")
 
         machine_limit = register("rh_machine_limit", QtWidgets.QSpinBox())
         machine_limit.setRange(0, 10000)
