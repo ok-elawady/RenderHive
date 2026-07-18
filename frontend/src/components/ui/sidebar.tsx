@@ -519,7 +519,7 @@ function SidebarMenuButton({
       {
         "data-active": isActive || undefined,
         className: cn(sidebarMenuButtonVariants({ variant, size }), className),
-      },
+      } as React.ComponentProps<"button">,
       props
     ),
     render: !tooltip ? render : <TooltipTrigger render={render} />,
