@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+@custom-variant data-active (&[data-active]);
+@custom-variant data-open (&[data-open], &[data-state="open"]);
+@custom-variant data-closed (&[data-closed], &[data-state="closed"]);
+@custom-variant data-disabled (&[data-disabled], &[disabled]);
+@custom-variant data-placeholder (&[data-placeholder]);
+@custom-variant data-horizontal (&[data-orientation="horizontal"], &[data-horizontal]);
+@custom-variant data-vertical (&[data-orientation="vertical"], &[data-vertical]);
 
 @theme {
   --color-background: var(--background);
