@@ -180,7 +180,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-1">
             <h2 className="text-xl font-bold text-foreground">
-              API base URL: http://127.0.0.1:8000/api
+              API base URL: http://localhost:8000/api
             </h2>
           </CardContent>
         </Card>
