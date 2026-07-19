@@ -43,6 +43,7 @@ export default function AppSidebar() {
                   src="/Logo2.png"
                   alt="RenderHive Logo"
                   sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  loading="eager"
                   fill
                   className="object-contain"
                 />

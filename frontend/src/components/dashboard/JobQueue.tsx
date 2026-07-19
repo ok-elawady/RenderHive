@@ -131,7 +131,7 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow className="hover:bg-transparent">
+                  <TableRow className="hover:bg-transparent border-0">
                     <TableCell colSpan={6} className="h-32 text-center">
                       <div className="flex flex-col items-center justify-center">
                         <Search size={34} className="mb-3 text-primary opacity-25" />
