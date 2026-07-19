@@ -147,6 +147,16 @@ class Job(models.Model):
             Index(fields=["user", "state"]),
         ]
 
+    def save(self, *args, **kwargs):
+        if not self.name:
+            from apps.jobs.services import generate_job_name
+            self.name = generate_job_name(
+                project=self.project or "unknown",
+                user=self.user or "unknown",
+                visible_name=self.visible_name or "job",
+            )
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 

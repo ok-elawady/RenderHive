@@ -28,13 +28,15 @@ def generate_job_name(project: str, user: str, visible_name: str) -> str:
     Returns:
         A unique, filesystem-safe job name string.
     """
+    import uuid
     epoch_ms = int(time.time() * 1000)
+    uid = uuid.uuid4().hex[:4]
 
     # Sanitize each part: lowercase, replace non-alphanumeric with underscore
     def sanitize(s: str) -> str:
         return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
 
-    return f"{sanitize(project)}-{sanitize(user)}-{sanitize(visible_name)}-{epoch_ms}"
+    return f"{sanitize(project)}-{sanitize(user)}-{sanitize(visible_name)}-{epoch_ms}-{uid}"
 
 
 def expand_frame_range(frame_range: str, chunk_size: int = 1) -> list[int]:
@@ -124,13 +126,7 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
 
     layers_data = validated_data.pop("layers")
 
-    # Generate a stable system name if not provided
-    if not validated_data.get("name"):
-        validated_data["name"] = generate_job_name(
-            project=validated_data.get("project", "unknown"),
-            user=validated_data.get("user", "unknown"),
-            visible_name=validated_data.get("visible_name", "job"),
-        )
+    # The Job model's save() method will auto-generate the name if not provided.
 
     job = Job.objects.create(submitted_by=submitted_by, **validated_data)
 
