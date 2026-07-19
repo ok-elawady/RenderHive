@@ -11,6 +11,7 @@ export type DashboardView =
 export interface SidebarItem {
   icon: ReactNode;
   label: DashboardView;
+  href: string;
 }
 
 export type JobPriority = number;

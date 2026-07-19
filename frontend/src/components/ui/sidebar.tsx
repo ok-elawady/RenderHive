@@ -513,13 +513,15 @@ function SidebarMenuButton({
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar()
+  const buttonDataProps = {
+    "data-active": isActive || undefined,
+    className: cn(sidebarMenuButtonVariants({ variant, size }), className),
+  } as React.ComponentProps<"button"> & { "data-active"?: boolean }
+
   const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
-      {
-        "data-active": isActive || undefined,
-        className: cn(sidebarMenuButtonVariants({ variant, size }), className),
-      } as React.ComponentProps<"button">,
+      buttonDataProps,
       props
     ),
     render: !tooltip ? render : <TooltipTrigger render={render} />,

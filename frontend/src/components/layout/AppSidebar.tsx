@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Bot, Cpu, LayoutDashboard, ListOrdered, Settings } from "lucide-react";
-import { useNavigation } from "@/components/common/NavigationProvider";
 import {
   Sidebar,
   SidebarContent,
@@ -18,22 +19,25 @@ import {
 import type { SidebarItem } from "@/types/dashboard";
 
 const sidebarItems: SidebarItem[] = [
-  { icon: <LayoutDashboard size={18} />, label: "Dashboard" },
-  { icon: <ListOrdered size={18} />, label: "Active Queue" },
-  { icon: <Cpu size={18} />, label: "Node Pool" },
-  { icon: <Bot size={18} />, label: "AI Rules" },
-  { icon: <Settings size={18} />, label: "Settings" },
+  { icon: <LayoutDashboard size={18} />, label: "Dashboard", href: "/" },
+  { icon: <ListOrdered size={18} />, label: "Active Queue", href: "/jobs" },
+  { icon: <Cpu size={18} />, label: "Node Pool", href: "/nodes" },
+  { icon: <Bot size={18} />, label: "AI Rules", href: "/logs" },
+  { icon: <Settings size={18} />, label: "Settings", href: "/settings" },
 ];
 
 export default function AppSidebar() {
-  const { activeView, setActiveView } = useNavigation();
+  const pathname = usePathname();
 
   return (
     <Sidebar className="border-r-0">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg">
+            <SidebarMenuButton
+              size="lg"
+              render={<Link href="/" className="cursor-pointer" />}
+            >
               <div className="relative flex aspect-square size-10 items-center justify-center shrink-0 mr-1">
                 <Image
                   src="/Logo2.png"
@@ -62,11 +66,18 @@ export default function AppSidebar() {
           <SidebarGroupLabel>Application</SidebarGroupLabel>
           <SidebarMenu>
             {sidebarItems.map((item) => {
-              const isActive = activeView === item.label;
+              const isActive =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(item.href);
 
               return (
                 <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton isActive={isActive} onClick={() => setActiveView(item.label)} tooltip={item.label}>
+                  <SidebarMenuButton
+                    isActive={isActive}
+                    render={<Link href={item.href} />}
+                    tooltip={item.label}
+                  >
                     {item.icon}
                     <span>{item.label}</span>
                   </SidebarMenuButton>
