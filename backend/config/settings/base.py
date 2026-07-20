@@ -200,6 +200,7 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 HEADLESS_ONLY = True
+HEADLESS_ADAPTER = "apps.users.adapters.CustomHeadlessAdapter"
 HEADLESS_SERVE_SPECIFICATION = True
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_LOGIN_METHODS = {"username"}

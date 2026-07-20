@@ -34,9 +34,7 @@ export interface AuthSession {
 interface RawLoginUser {
   id?: number | string;
   username?: string;
-  display_name?: string;
-  displayName?: string;
-  name?: string;
+  display?: string;
   email?: string;
   is_staff?: boolean;
   isStaff?: boolean;
@@ -83,12 +81,7 @@ function getInitials(name: string): string {
 }
 
 function normalizeUser(rawUser: RawLoginUser | undefined, username: string): AuthUser {
-  const displayName =
-    rawUser?.display_name ||
-    rawUser?.displayName ||
-    rawUser?.name ||
-    rawUser?.username ||
-    username;
+  const displayName = rawUser?.display || rawUser?.username || username;
   const isStaff = Boolean(rawUser?.is_staff ?? rawUser?.isStaff);
   const isSuperuser = Boolean(rawUser?.is_superuser ?? rawUser?.isSuperuser);
 
@@ -487,7 +480,7 @@ export async function deleteJob(jobId: string): Promise<void> {
 }
 
 export async function login(credentials: LoginCredentials): Promise<AuthSession> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/token/`, {
+  const response = await fetch(`${API_BASE_URL}/_allauth/app/v1/auth/login`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -504,7 +497,9 @@ export async function login(credentials: LoginCredentials): Promise<AuthSession>
 
   const rawPayload = payload as RawLoginResponse;
   const token = rawPayload.token || rawPayload.key;
+  const headerSessionToken = response.headers.get("x-session-token");
   const xSessionToken =
+    headerSessionToken ||
     rawPayload.session_token ||
     rawPayload.sessionToken ||
     rawPayload.data?.session_token ||

@@ -20,7 +20,6 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from apps.users.views import obtain_renderhive_token
 
 
 def api_root(request):
@@ -32,7 +31,6 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     # Jobs API
     path("api/", include("apps.jobs.urls")),
-    path("api/auth/token/", obtain_renderhive_token, name="renderhive-token-auth"),
     # Workers API
     path("api/", include("apps.workers.urls")),
     # OpenAPI schema and Swagger UI
