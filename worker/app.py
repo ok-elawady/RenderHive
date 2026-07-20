@@ -378,7 +378,7 @@ class SettingsDialog(QDialog):
         layout = QFormLayout(self)
         
         self.api_url_input = QLineEdit()
-        self.api_url_input.setText(self.settings.value("api_url", "http://server.renderhive.local/api"))
+        self.api_url_input.setText(self.settings.value("api_url", "http://api.renderhive.local/api"))
         layout.addRow("API URL:", self.api_url_input)
         
         self.api_token_input = QLineEdit()
