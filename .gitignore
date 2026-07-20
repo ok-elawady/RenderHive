@@ -107,3 +107,6 @@ worker/RenderHiveWorker.exe
 
 # Generated OpenAPI schemas
 backend/schema.yml
+
+# Installer Output
+worker/Output/
