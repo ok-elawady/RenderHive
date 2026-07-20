@@ -22,7 +22,13 @@ DEFAULT_CONFIG = {
         "job_status": "/api/jobs/{job_id}/",
         "job_pause": "/api/jobs/{job_id}/pause/",
         "job_resume": "/api/jobs/{job_id}/resume/",
-        "job_delete": "/api/jobs/{job_id}/"
+        "job_delete": "/api/jobs/{job_id}/",
+        "workers": "/api/workers/",
+        "worker_detail": "/api/workers/{worker_id}/",
+        "worker_ping": "/api/workers/ping/",
+        "pools": "/api/pools/",
+        "pool_detail": "/api/pools/{pool_id}/",
+        "frame_dispatch": "/api/frames/dispatch/"
     },
     "maya": {
         "render_executable": "Render.exe",

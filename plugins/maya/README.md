@@ -38,3 +38,8 @@ Then set the URL, token, enable the API, save, and test the connection.
 The supplied API exposes Jobs, Layers and Frames but no worker-discovery or
 pool-management endpoints. Pool definitions therefore remain local and worker
 sync returns no online workers until those endpoints are added.
+
+
+## API Pools & Workers — UI 1.8.0
+
+See `API_INTEGRATION_1_8_0.md`.

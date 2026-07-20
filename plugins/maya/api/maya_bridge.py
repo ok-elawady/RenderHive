@@ -96,14 +96,79 @@ def test_api_connection():
 
 
 def get_available_workers():
-    # The current OpenAPI document contains Jobs, Layers and Frames,
-    # but does not expose a worker-discovery endpoint yet.
+    config = load_config()
+
+    if not config.get("enabled", False):
+        return []
+
+    client = _client()
+    list_workers = getattr(
+        client,
+        "list_workers",
+        None,
+    )
+
+    if callable(list_workers):
+        return list_workers()
+
+    # Compatibility fallback for a stale Maya session that still holds the
+    # earlier API client class. The next plugin reload will use list_workers.
+    response = client.request(
+        "GET",
+        "workers",
+    )
+    data = response.get("data", {})
+
+    if isinstance(data, list):
+        return data
+
+    if isinstance(data, dict):
+        for key in (
+            "results",
+            "workers",
+            "items",
+            "data",
+        ):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+
     return []
 
 
 def get_api_pools():
-    # Pools remain local until the API exposes pool CRUD endpoints.
-    return []
+    config = load_config()
+    if not config.get("enabled", False):
+        return []
+    return _client().list_pools()
+
+
+def get_worker_targeting_snapshot():
+    config = load_config()
+    if not config.get("enabled", False):
+        return {"workers": [], "pools": []}
+
+    client = _client()
+    return {
+        "workers": client.list_workers(),
+        "pools": client.list_pools(),
+    }
+
+
+def create_api_pool(name, description=""):
+    return _client().create_pool(name, description)
+
+
+def update_api_pool(pool_id, name=None, description=None):
+    return _client().update_pool(
+        pool_id,
+        name=name,
+        description=description,
+    )
+
+
+def delete_api_pool(pool_id):
+    return _client().delete_pool(pool_id)
 
 
 def _submission_log_folder():
@@ -312,6 +377,10 @@ def install(maya_api):
     maya_api.get_available_workers = get_available_workers
     maya_api.list_available_workers = get_available_workers
     maya_api.get_api_pools = get_api_pools
+    maya_api.get_worker_targeting_snapshot = get_worker_targeting_snapshot
+    maya_api.create_api_pool = create_api_pool
+    maya_api.update_api_pool = update_api_pool
+    maya_api.delete_api_pool = delete_api_pool
     maya_api.build_api_job_request = build_api_job_request
     maya_api.submit_job_to_api = submit_job_to_api
     maya_api.get_api_job_status = get_api_job_status
