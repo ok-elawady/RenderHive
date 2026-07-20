@@ -15,7 +15,7 @@ reach them with a single UUID, without needing to know the layer/job hierarchy.
 from django.urls import path
 from rest_framework_nested import routers
 
-from .views import FrameViewSet, JobViewSet, LayerViewSet, FrameDispatchView
+from .views import FrameDispatchView, FrameViewSet, JobViewSet, LayerViewSet
 
 # ── Top-level router ──────────────────────────────────────────────────────────
 router = routers.DefaultRouter()

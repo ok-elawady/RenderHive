@@ -122,8 +122,12 @@ def frame_pre_save(sender, instance, update_fields=None, **kwargs):
 
         # Atomic state transitions for Job and Layer based on the newly updated counts
         if instance.state in (FrameState.RUNNING, FrameState.CHECKPOINT):
-            Job.objects.filter(id=instance.job_id, is_paused=False).exclude(state=JobState.RUNNING).update(state=JobState.RUNNING)
-            Layer.objects.filter(id=instance.layer_id).exclude(state=JobState.RUNNING).update(state=JobState.RUNNING)
+            Job.objects.filter(id=instance.job_id, is_paused=False).exclude(
+                state=JobState.RUNNING
+            ).update(state=JobState.RUNNING)
+            Layer.objects.filter(id=instance.layer_id).exclude(
+                state=JobState.RUNNING
+            ).update(state=JobState.RUNNING)
 
         elif instance.state in (FrameState.SUCCEEDED, FrameState.SKIPPED, FrameState.FAILED):
             now = timezone.now()

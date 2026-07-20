@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from apps.workers.models import WorkerNode, WorkerStatus
+from apps.workers.models import WorkerNode, WorkerPool, WorkerStatus
 
 User = get_user_model()
 pytestmark = pytest.mark.django_db
@@ -74,7 +74,12 @@ class TestWorkerPingAPI:
         payload = {
             "hostname": "new-node",
             "ip_address": "10.0.0.5",
-            "system_info": {"cpu_percent": 45}
+            "system_info": {"cpu_percent": 45},
+            "pool_names": ["render-farm", "gpu-nodes"],
+            "tags": ["fast", "linux"],
+            "cores": 64,
+            "memory_mb": 128000,
+            "gpu_models": ["RTX 4090"]
         }
         res = farm_client.post("/api/workers/ping/", payload, format="json")
         
@@ -86,6 +91,11 @@ class TestWorkerPingAPI:
         assert worker.ip_address == "10.0.0.5"
         assert worker.status == WorkerStatus.ONLINE
         assert worker.system_info["cpu_percent"] == 45
+        assert worker.tags == ["fast", "linux"]
+        assert worker.cores == 64
+        assert worker.memory_mb == 128000
+        assert worker.gpu_models == ["RTX 4090"]
+        assert list(worker.pools.values_list("name", flat=True).order_by("name")) == ["gpu-nodes", "render-farm"]
 
     def test_ping_updates_existing_worker(self, farm_client):
         """A ping from an existing hostname updates last_ping and system_info."""
@@ -162,4 +172,28 @@ class TestWorkerListAPI:
     def test_list_workers_requires_auth(self, anon_client):
         """Anonymous users cannot list workers."""
         res = anon_client.get("/api/workers/")
+        assert res.status_code == 403
+
+
+class TestWorkerPoolAPI:
+    """Tests for the /api/pools/ endpoints."""
+
+    def test_list_pools(self, user_client):
+        WorkerPool.objects.create(name="pool1", description="desc1")
+        WorkerPool.objects.create(name="pool2")
+        
+        res = user_client.get("/api/pools/")
+        assert res.status_code == 200
+        assert len(res.data["results"]) == 2
+        assert res.data["results"][0]["name"] == "pool1"
+        
+    def test_create_pool(self, user_client):
+        payload = {"name": "new-pool", "description": "Brand new"}
+        res = user_client.post("/api/pools/", payload, format="json")
+        
+        assert res.status_code == 201
+        assert WorkerPool.objects.filter(name="new-pool").exists()
+        
+    def test_pools_require_auth(self, anon_client):
+        res = anon_client.get("/api/pools/")
         assert res.status_code == 403
