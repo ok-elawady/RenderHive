@@ -147,6 +147,7 @@ def _scene_info(task):
         },
         "worker_targeting": {
             "pool": farm.get("pool", task.get("pool", "All")),
+            "pool_id": farm.get("pool_id", task.get("pool_id", "")),
             "pool_workers": farm.get(
                 "pool_workers",
                 task.get("pool_workers", [])
