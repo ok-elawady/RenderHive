@@ -9,24 +9,157 @@ import type {
 } from "@/types/dashboard";
 
 export const API_BASE_URL = "http://localhost:8000";
+export const AUTH_STORAGE_KEY = "renderhive-auth-session";
 const renderHiveAuthToken = process.env.NEXT_PUBLIC_RENDERHIVE_AUTH_TOKEN;
 const renderHiveAdminAuthToken =
   process.env.NEXT_PUBLIC_RENDERHIVE_ADMIN_AUTH_TOKEN;
 
+export interface AuthUser {
+  id: number | string;
+  username: string;
+  displayName: string;
+  email: string;
+  role: string;
+  initials: string;
+  isStaff: boolean;
+  isSuperuser: boolean;
+}
+
+export interface AuthSession {
+  token?: string;
+  xSessionToken?: string;
+  user: AuthUser;
+}
+
+interface RawLoginUser {
+  id?: number | string;
+  username?: string;
+  display_name?: string;
+  displayName?: string;
+  name?: string;
+  email?: string;
+  is_staff?: boolean;
+  isStaff?: boolean;
+  is_superuser?: boolean;
+  isSuperuser?: boolean;
+}
+
+interface RawLoginResponse {
+  token?: string;
+  key?: string;
+  session_token?: string;
+  sessionToken?: string;
+  user?: RawLoginUser;
+  data?: {
+    user?: RawLoginUser;
+    session_token?: string;
+    sessionToken?: string;
+  };
+  meta?: {
+    session_token?: string;
+    sessionToken?: string;
+  };
+}
+
+export interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getInitials(name: string): string {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) return "RH";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
+function normalizeUser(rawUser: RawLoginUser | undefined, username: string): AuthUser {
+  const displayName =
+    rawUser?.display_name ||
+    rawUser?.displayName ||
+    rawUser?.name ||
+    rawUser?.username ||
+    username;
+  const isStaff = Boolean(rawUser?.is_staff ?? rawUser?.isStaff);
+  const isSuperuser = Boolean(rawUser?.is_superuser ?? rawUser?.isSuperuser);
+
+  return {
+    id: rawUser?.id ?? username,
+    username: rawUser?.username ?? username,
+    displayName,
+    email: rawUser?.email ?? "",
+    role: isSuperuser ? "Superuser" : isStaff ? "TD Admin" : "Render User",
+    initials: getInitials(displayName),
+    isStaff,
+    isSuperuser,
+  };
+}
+
+function getStoredAuthSession(): AuthSession | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const rawSession = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!rawSession) return null;
+
+    const parsedSession: unknown = JSON.parse(rawSession);
+    if (!isRecord(parsedSession) || !isRecord(parsedSession.user)) return null;
+
+    return parsedSession as unknown as AuthSession;
+  } catch {
+    return null;
+  }
+}
+
+export function readAuthSession(): AuthSession | null {
+  return getStoredAuthSession();
+}
+
+export function persistAuthSession(session: AuthSession): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+}
+
+export function clearAuthSession(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
 function getApiHeaders(): HeadersInit {
-  const token = renderHiveAdminAuthToken || renderHiveAuthToken;
+  const session = getStoredAuthSession();
+  const token = renderHiveAdminAuthToken || session?.token || renderHiveAuthToken;
 
   return {
     Accept: "application/json",
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Token ${token}` } : {}),
+    ...(session?.xSessionToken ? { "X-Session-Token": session.xSessionToken } : {}),
   };
+}
+
+function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    headers: {
+      ...getApiHeaders(),
+      ...init?.headers,
+    },
+  });
 }
 
 // Initialize the openapi-fetch client
 export const client = createClient<paths>({
   baseUrl: API_BASE_URL,
-  headers: getApiHeaders(),
+  fetch: apiFetch,
 });
 
 // Extract types from the generated schema
@@ -351,6 +484,50 @@ export async function deleteJob(jobId: string): Promise<void> {
 
     throw new Error(JSON.stringify(errorPayload));
   }
+}
+
+export async function login(credentials: LoginCredentials): Promise<AuthSession> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/token/`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(credentials),
+    cache: "no-store",
+  });
+  const payload: unknown = await response.json();
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(payload));
+  }
+
+  const rawPayload = payload as RawLoginResponse;
+  const token = rawPayload.token || rawPayload.key;
+  const xSessionToken =
+    rawPayload.session_token ||
+    rawPayload.sessionToken ||
+    rawPayload.data?.session_token ||
+    rawPayload.data?.sessionToken ||
+    rawPayload.meta?.session_token ||
+    rawPayload.meta?.sessionToken;
+
+  if (!token && !xSessionToken) {
+    throw new Error(
+      JSON.stringify({
+        detail: "Login succeeded, but the backend did not return an auth token.",
+      }),
+    );
+  }
+
+  const session: AuthSession = {
+    token,
+    xSessionToken,
+    user: normalizeUser(rawPayload.user || rawPayload.data?.user, credentials.username),
+  };
+
+  persistAuthSession(session);
+  return session;
 }
 
 export function formatApiError(error: unknown): string {
