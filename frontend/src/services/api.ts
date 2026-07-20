@@ -2,7 +2,6 @@ import createClient from "openapi-fetch";
 import type { paths, components } from "@/types/schema";
 import type { JobFormValues } from "@/types/api";
 import type {
-  JobPriority,
   LogEntry,
   RenderJob,
   TelemetryMetrics,
@@ -11,18 +10,49 @@ import type {
 
 export const API_BASE_URL = "http://localhost:8000";
 const renderHiveAuthToken = process.env.NEXT_PUBLIC_RENDERHIVE_AUTH_TOKEN;
+const renderHiveAdminAuthToken =
+  process.env.NEXT_PUBLIC_RENDERHIVE_ADMIN_AUTH_TOKEN;
+
+function getApiHeaders(): HeadersInit {
+  const token = renderHiveAdminAuthToken || renderHiveAuthToken;
+
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Token ${token}` } : {}),
+  };
+}
 
 // Initialize the openapi-fetch client
 export const client = createClient<paths>({
   baseUrl: API_BASE_URL,
-  headers: renderHiveAuthToken
-    ? { Authorization: `Token ${renderHiveAuthToken}` }
-    : {},
+  headers: getApiHeaders(),
 });
 
 // Extract types from the generated schema
 export type BackendJob = components["schemas"]["JobList"];
 export type BackendJobState = components["schemas"]["State1dfEnum"];
+export type JobDetail = components["schemas"]["JobDetail"];
+export type JobPatch = components["schemas"]["PatchedJobPatch"];
+export type LayerList = components["schemas"]["LayerList"];
+export type LayerDetail = components["schemas"]["LayerDetail"];
+export type FrameList = components["schemas"]["FrameList"];
+export type FrameDetail = components["schemas"]["FrameDetail"];
+export type JobStateFilter = NonNullable<
+  NonNullable<paths["/api/jobs/"]["get"]["parameters"]["query"]>["state"]
+>;
+export type FrameStateFilter = NonNullable<
+  NonNullable<
+    paths["/api/jobs/{job_pk}/layers/{layer_pk}/frames/"]["get"]["parameters"]["query"]
+  >["state"]
+>;
+
+export interface JobFilters {
+  project?: string;
+  department?: string;
+  state?: JobStateFilter;
+  user?: string;
+}
 
 function stringifyApiValue(value: unknown): string {
   if (typeof value === "string") return value;
@@ -69,6 +99,135 @@ export async function fetchJobs(): Promise<BackendJob[]> {
   }
 
   return data?.results || [];
+}
+
+export async function getJobs(filters: JobFilters = {}): Promise<BackendJob[]> {
+  const { data, error } = await client.GET("/api/jobs/", {
+    params: { query: filters },
+  });
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  return data?.results || [];
+}
+
+export async function getJob(jobId: string): Promise<JobDetail> {
+  const { data, error } = await client.GET("/api/jobs/{id}/", {
+    params: { path: { id: jobId } },
+  });
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  return data;
+}
+
+export async function updateJob(
+  jobId: string,
+  payload: JobPatch,
+): Promise<components["schemas"]["JobPatch"]> {
+  const { data, error } = await client.PATCH("/api/jobs/{id}/", {
+    params: { path: { id: jobId } },
+    body: payload,
+  });
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  return data;
+}
+
+export async function abortJob(jobId: string): Promise<void> {
+  await deleteJob(jobId);
+}
+
+export async function pauseJob(jobId: string): Promise<JobDetail> {
+  const { data, error } = await client.POST("/api/jobs/{id}/pause/", {
+    params: { path: { id: jobId } },
+  });
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  return data;
+}
+
+export async function resumeJob(jobId: string): Promise<JobDetail> {
+  const { data, error } = await client.POST("/api/jobs/{id}/resume/", {
+    params: { path: { id: jobId } },
+  });
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  return data;
+}
+
+export async function getJobLayers(jobId: string): Promise<LayerList[]> {
+  const { data, error } = await client.GET("/api/jobs/{job_pk}/layers/", {
+    params: { path: { job_pk: jobId } },
+  });
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  return data?.results || [];
+}
+
+export async function getLayer(
+  jobId: string,
+  layerId: string,
+): Promise<LayerDetail> {
+  const { data, error } = await client.GET("/api/jobs/{job_pk}/layers/{id}/", {
+    params: { path: { job_pk: jobId, id: layerId } },
+  });
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  return data;
+}
+
+export async function getLayerFrames(
+  jobId: string,
+  layerId: string,
+  state?: FrameStateFilter,
+): Promise<FrameList[]> {
+  const { data, error } = await client.GET(
+    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/",
+    {
+      params: {
+        path: { job_pk: jobId, layer_pk: layerId },
+        query: state ? { state } : undefined,
+      },
+    },
+  );
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  return data?.results || [];
+}
+
+export async function skipFrame(frameId: string): Promise<FrameDetail> {
+  const { data, error } = await client.POST("/api/frames/{id}/skip/", {
+    params: { path: { id: frameId } },
+  });
+
+  if (error) {
+    throw new Error(JSON.stringify(error));
+  }
+
+  return data;
 }
 
 export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
@@ -178,12 +337,19 @@ export async function createJob(
 }
 
 export async function deleteJob(jobId: string): Promise<void> {
-  const { error } = await client.DELETE("/api/jobs/{id}/", {
-    params: { path: { id: jobId } },
+  const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/`, {
+    method: "DELETE",
+    headers: getApiHeaders(),
+    cache: "no-store",
   });
 
-  if (error) {
-    throw new Error(JSON.stringify(error));
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+    const errorPayload: unknown = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+
+    throw new Error(JSON.stringify(errorPayload));
   }
 }
 

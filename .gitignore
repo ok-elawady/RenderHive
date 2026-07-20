@@ -11,6 +11,8 @@ Render/renderhive_logs/
 # Worker generated files
 worker/tasks/*.json
 logs/
+!frontend/src/app/logs/
+!frontend/src/app/logs/page.tsx
 *.log
 last_task_result.json
 

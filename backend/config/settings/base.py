@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import sys
 from pathlib import Path
 
 import environ
@@ -25,7 +26,7 @@ environ.Env.read_env(BASE_DIR.parent / ".env")
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-import sys
+
 if "pytest" in sys.modules or env.bool("DEBUG", default=False):
     SECRET_KEY = env("SECRET_KEY", default="django-insecure-test-key-do-not-use-in-production")
 else:
@@ -97,11 +98,16 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+db_config = env.db(
+    "DATABASE_URL",
+    default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+)
+
+if "pytest" in sys.modules and db_config.get("HOST") == "postgres":
+    db_config["HOST"] = "127.0.0.1"
+
 DATABASES = {
-    "default": env.db(
-        "DATABASE_URL",
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-    )
+    "default": db_config
 }
 
 

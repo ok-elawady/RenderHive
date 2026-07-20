@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Search, Trash2 } from "lucide-react";
-import { deleteJob } from "@/services/api";
-import type { JobPriority, RenderJob } from "@/types/dashboard";
+import { toast } from "sonner";
+import { deleteJob, formatApiError } from "@/services/api";
+import type { RenderJob } from "@/types/dashboard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -42,6 +45,7 @@ function getStatusBadgeProps(status: RenderJob["status"]): {
 }
 
 export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueueProps) {
+  const router = useRouter();
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredJobs = useMemo<RenderJob[]>(
@@ -55,6 +59,12 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
     try {
       await deleteJob(jobId);
       await onJobRemoved();
+      router.refresh();
+      toast.success("Job deleted");
+    } catch (error) {
+      toast.error("Delete failed", {
+        description: formatApiError(error),
+      });
     } finally {
       setDeletingJobId(null);
     }
@@ -85,7 +95,12 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                   filteredJobs.map((job) => (
                     <TableRow key={job.id} className="hover:bg-surface-hover group transition-colors">
                       <TableCell className="font-medium text-foreground group-hover:text-primary transition-colors py-3">
-                        {job.displayId}
+                        <Link
+                          className="text-purple-400 transition-all hover:text-purple-300 hover:underline"
+                          href={`/jobs/${job.id}`}
+                        >
+                          {job.displayId}
+                        </Link>
                       </TableCell>
                       <TableCell className="text-center font-bold text-foreground">
                         {job.priority}
@@ -116,7 +131,7 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow className="hover:bg-transparent">
+                  <TableRow className="hover:bg-transparent border-0">
                     <TableCell colSpan={6} className="h-32 text-center">
                       <div className="flex flex-col items-center justify-center">
                         <Search size={34} className="mb-3 text-primary opacity-25" />
