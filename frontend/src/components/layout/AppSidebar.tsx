@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Cpu, LayoutDashboard, ListOrdered, Settings } from "lucide-react";
+import { Bot, Cpu, LayoutDashboard, ListOrdered, LogOut, Settings } from "lucide-react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import {
   Sidebar,
   SidebarContent,
@@ -28,6 +29,10 @@ const sidebarItems: SidebarItem[] = [
 
 export default function AppSidebar() {
   const pathname = usePathname();
+  const { logout, user } = useAuth();
+  const displayName = user?.displayName ?? "RenderHive User";
+  const role = user?.role ?? "Authenticated";
+  const initials = user?.initials ?? "RH";
 
   return (
     <Sidebar className="border-r-0">
@@ -93,12 +98,18 @@ export default function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg">
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white shrink-0">
-                SA
+                {initials}
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-semibold text-foreground text-sm">Seif Ashraf</span>
-                <span className="text-[10px] text-primary font-mono">TD Admin</span>
+                <span className="font-semibold text-foreground text-sm">{displayName}</span>
+                <span className="text-[10px] text-primary font-mono">{role}</span>
               </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={logout}>
+              <LogOut size={16} />
+              <span>Sign Out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
