@@ -9,10 +9,7 @@ import type {
 } from "@/types/dashboard";
 
 export const API_BASE_URL = "http://localhost:8000";
-export const AUTH_STORAGE_KEY = "renderhive-auth-session";
-const renderHiveAuthToken = process.env.NEXT_PUBLIC_RENDERHIVE_AUTH_TOKEN;
-const renderHiveAdminAuthToken =
-  process.env.NEXT_PUBLIC_RENDERHIVE_ADMIN_AUTH_TOKEN;
+const AUTH_STORAGE_KEY = "renderhive-auth-session";
 
 export interface AuthUser {
   id: number | string;
@@ -129,12 +126,11 @@ export function clearAuthSession(): void {
 
 function getApiHeaders(): HeadersInit {
   const session = getStoredAuthSession();
-  const token = renderHiveAdminAuthToken || session?.token || renderHiveAuthToken;
 
   return {
     Accept: "application/json",
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Token ${token}` } : {}),
+    ...(session?.token ? { Authorization: `Token ${session.token}` } : {}),
     ...(session?.xSessionToken ? { "X-Session-Token": session.xSessionToken } : {}),
   };
 }
@@ -433,7 +429,7 @@ export function buildJobRequest(
     department: "td",
     priority: formData.priority,
     max_frames_per_worker: 0,
-    user: String(formData.userId),
+    user: formData.user,
     log_directory: formData.logDirectory.trim(),
     layers: [
       {
