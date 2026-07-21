@@ -557,6 +557,58 @@ def build_stylesheet():
         padding: 8px;
     }
 
+
+    QFrame#SegmentedControl {
+        background-color: %(surface2)s;
+        border: 1px solid %(border)s;
+        border-radius: 7px;
+    }
+
+    QPushButton#SegmentButton {
+        background-color: transparent;
+        border: none;
+        border-radius: 5px;
+        color: %(muted)s;
+        min-height: 28px;
+        padding: 0 12px;
+        font-weight: 600;
+    }
+
+    QPushButton#SegmentButton:hover {
+        color: %(text)s;
+        background-color: %(surface3)s;
+    }
+
+    QPushButton#SegmentButton:checked {
+        color: %(text)s;
+        background-color: %(primary)s;
+    }
+
+    QToolButton#CollapsibleHeader {
+        background-color: transparent;
+        border: none;
+        border-top: 1px solid %(divider)s;
+        color: %(secondary)s;
+        min-height: 30px;
+        padding: 5px 2px;
+        text-align: left;
+        font-weight: 700;
+    }
+
+    QToolButton#CollapsibleHeader:hover {
+        color: %(text)s;
+        background-color: %(surface2)s;
+    }
+
+    QLabel#EligibilitySummary {
+        background-color: %(surface2)s;
+        border: 1px solid %(divider)s;
+        border-radius: 6px;
+        color: %(secondary)s;
+        padding: 7px 9px;
+        font-weight: 600;
+    }
+
     QLabel#PreviewError {
         background-color: #321820;
         color: %(error)s;
