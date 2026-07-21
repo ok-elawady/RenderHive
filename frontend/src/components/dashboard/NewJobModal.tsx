@@ -24,7 +24,7 @@ export default function NewJobModal({ isOpen, onClose, onSuccess }: NewJobModalP
 
   const [formData, setFormData] = useState<JobFormValues>({
     jobName: "",
-    userId: 1,
+    user: "",
     engine: defaultEngine,
     priority: 50,
     startFrame: defaultStartFrame,
@@ -46,8 +46,8 @@ export default function NewJobModal({ isOpen, onClose, onSuccess }: NewJobModalP
       return;
     }
 
-    if (formData.userId < 1) {
-      setSubmitError("User ID must be a valid Django user ID.");
+    if (!formData.user.trim()) {
+      setSubmitError("Artist Name is required.");
       return;
     }
 
@@ -80,12 +80,10 @@ export default function NewJobModal({ isOpen, onClose, onSuccess }: NewJobModalP
     if (submitError) setSubmitError("");
   };
 
-  const handleUserIdChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const nextUserId = Number(event.target.value);
-
+  const handleUserChange = (event: ChangeEvent<HTMLInputElement>): void => {
     setFormData((currentFormData) => ({
       ...currentFormData,
-      userId: Number.isFinite(nextUserId) ? Math.max(1, Math.trunc(nextUserId)) : 1,
+      user: event.target.value,
     }));
     if (submitError) setSubmitError("");
   };
@@ -215,27 +213,26 @@ export default function NewJobModal({ isOpen, onClose, onSuccess }: NewJobModalP
             {submitError && <p className="text-xs font-bold text-destructive">{submitError}</p>}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-[0.45fr_1fr] gap-6">
-            <div className="space-y-3">
-              <Label className="text-muted-foreground font-bold text-sm">User ID</Label>
-              <Input
-                type="number"
-                min={1}
-                value={formData.userId}
-                onChange={handleUserIdChange}
-                className="h-12 text-center text-sm"
-              />
-            </div>
-            <div className="space-y-3">
-              <Label className="text-muted-foreground font-bold text-sm">Log Directory</Label>
-              <Input
-                type="text"
-                value={formData.logDirectory}
-                onChange={handleLogDirectoryChange}
-                placeholder="/tmp/render_logs"
-                className="h-12 text-sm"
-              />
-            </div>
+          <div className="space-y-3">
+            <Label className="text-muted-foreground font-bold text-sm">Artist Name</Label>
+            <Input
+              type="text"
+              value={formData.user}
+              onChange={handleUserChange}
+              placeholder="e.g. John Doe"
+              className="h-12 text-sm"
+            />
+          </div>
+          
+          <div className="space-y-3">
+            <Label className="text-muted-foreground font-bold text-sm">Log Directory</Label>
+            <Input
+              type="text"
+              value={formData.logDirectory}
+              onChange={handleLogDirectoryChange}
+              placeholder="/tmp/render_logs"
+              className="h-12 text-sm"
+            />
           </div>
 
           <div className="space-y-3">

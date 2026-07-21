@@ -397,9 +397,9 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             ``403 Forbidden`` if the requesting user is not staff.
             ``409 Conflict`` if the frame is not in FAILED state.
         """
-        if not request.user.is_staff:
+        if not (request.user.is_staff or request.user.is_superuser):
             return Response(
-                {"detail": "Only staff users can skip frames."},
+                {"detail": "Only staff or superusers can skip frames."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         queryset = self.filter_queryset(self.get_queryset())

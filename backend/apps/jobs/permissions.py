@@ -81,6 +81,6 @@ class IsJobOwnerOrStaff(BasePermission):
             (PATCH, DELETE, pause, resume) a plugin-submitted job. Staff users are
             always permitted and can act as a proxy for the original submitter.
         """
-        if request.user.is_staff:
+        if request.user.is_staff or request.user.is_superuser:
             return True
         return obj.submitted_by == request.user
