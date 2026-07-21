@@ -20,6 +20,8 @@ export interface AuthUser {
   initials: string;
   isStaff: boolean;
   isSuperuser: boolean;
+  firstName?: string;
+  lastName?: string;
 }
 
 export interface AuthSession {
@@ -32,7 +34,12 @@ interface RawLoginUser {
   id?: number | string;
   username?: string;
   display?: string;
+  display_name?: string;
   email?: string;
+  first_name?: string;
+  firstName?: string;
+  last_name?: string;
+  lastName?: string;
   is_staff?: boolean;
   isStaff?: boolean;
   is_superuser?: boolean;
@@ -61,6 +68,22 @@ export interface LoginCredentials {
   password: string;
 }
 
+export interface CurrentUserProfile {
+  id: number | string;
+  username: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  isStaff: boolean;
+  isSuperuser: boolean;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -78,7 +101,14 @@ function getInitials(name: string): string {
 }
 
 function normalizeUser(rawUser: RawLoginUser | undefined, username: string): AuthUser {
-  const displayName = rawUser?.display || rawUser?.username || username;
+  const firstName = rawUser?.first_name || rawUser?.firstName || "";
+  const lastName = rawUser?.last_name || rawUser?.lastName || "";
+  const displayName =
+    rawUser?.display_name ||
+    rawUser?.display ||
+    [firstName, lastName].filter(Boolean).join(" ") ||
+    rawUser?.username ||
+    username;
   const isStaff = Boolean(rawUser?.is_staff ?? rawUser?.isStaff);
   const isSuperuser = Boolean(rawUser?.is_superuser ?? rawUser?.isSuperuser);
 
@@ -89,6 +119,27 @@ function normalizeUser(rawUser: RawLoginUser | undefined, username: string): Aut
     email: rawUser?.email ?? "",
     role: isSuperuser ? "Superuser" : isStaff ? "TD Admin" : "Render User",
     initials: getInitials(displayName),
+    isStaff,
+    isSuperuser,
+    firstName,
+    lastName,
+  };
+}
+
+function normalizeProfile(rawUser: RawLoginUser | undefined, fallbackUser: AuthUser | null): CurrentUserProfile {
+  const firstName = rawUser?.first_name || rawUser?.firstName || fallbackUser?.firstName || "";
+  const lastName = rawUser?.last_name || rawUser?.lastName || fallbackUser?.lastName || "";
+  const isStaff = Boolean(rawUser?.is_staff ?? rawUser?.isStaff ?? fallbackUser?.isStaff);
+  const isSuperuser = Boolean(rawUser?.is_superuser ?? rawUser?.isSuperuser ?? fallbackUser?.isSuperuser);
+  const username = rawUser?.username || fallbackUser?.username || "";
+
+  return {
+    id: rawUser?.id ?? fallbackUser?.id ?? username,
+    username,
+    email: rawUser?.email || fallbackUser?.email || "",
+    firstName,
+    lastName,
+    role: isSuperuser ? "Superuser" : isStaff ? "TD Admin" : "Render User",
     isStaff,
     isSuperuser,
   };
@@ -143,6 +194,15 @@ function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respons
       ...init?.headers,
     },
   });
+}
+
+async function parseApiResponse<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as T;
+  }
+
+  return undefined as T;
 }
 
 // Initialize the openapi-fetch client
@@ -472,6 +532,42 @@ export async function deleteJob(jobId: string): Promise<void> {
       : await response.text();
 
     throw new Error(JSON.stringify(errorPayload));
+  }
+}
+
+export async function fetchCurrentUserProfile(): Promise<CurrentUserProfile> {
+  const fallbackSession = readAuthSession();
+  const response = await fetch(`${API_BASE_URL}/_allauth/app/v1/auth/session`, {
+    method: "GET",
+    headers: getApiHeaders(),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    if (fallbackSession?.user) {
+      return normalizeProfile(undefined, fallbackSession.user);
+    }
+
+    throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
+  }
+
+  const payload = await parseApiResponse<RawLoginResponse>(response);
+  return normalizeProfile(payload.user || payload.data?.user, fallbackSession?.user ?? null);
+}
+
+export async function changePassword(payload: ChangePasswordPayload): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/password/change/`, {
+    method: "POST",
+    headers: getApiHeaders(),
+    body: JSON.stringify({
+      current_password: payload.currentPassword,
+      new_password: payload.newPassword,
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
   }
 }
 
