@@ -262,6 +262,8 @@ class JobListSerializer(serializers.ModelSerializer):
             "depend_frames",
             "created_at",
             "updated_at",
+            "included_pools",
+            "excluded_pools",
         ]
         read_only_fields = fields
 
@@ -321,8 +323,20 @@ class JobCreateSerializer(serializers.ModelSerializer):
             "priority",
             "log_directory",
             "max_frames_per_worker",
+            "included_pools",
+            "excluded_pools",
             "layers",
         ]
+
+    def validate(self, data: dict) -> dict:
+        included = data.get("included_pools", [])
+        excluded = data.get("excluded_pools", [])
+
+        if included and excluded:
+            intersection = set(included) & set(excluded)
+            if intersection:
+                raise serializers.ValidationError("A pool cannot be both included and excluded.")
+        return data
 
     def validate_layers(self, value: list) -> list:
         """Ensure at least one layer is provided.
@@ -368,7 +382,24 @@ class JobPatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Job
-        fields = ["visible_name", "priority", "max_frames_per_worker"]
+        fields = [
+            "visible_name",
+            "priority",
+            "max_frames_per_worker",
+            "included_pools",
+            "excluded_pools",
+        ]
+
+    def validate(self, data: dict) -> dict:
+        # Since this is a PATCH, we need to consider existing pools if not provided in the request
+        included = data.get("included_pools", self.instance.included_pools.all() if self.instance else [])
+        excluded = data.get("excluded_pools", self.instance.excluded_pools.all() if self.instance else [])
+
+        if included and excluded:
+            intersection = set(included) & set(excluded)
+            if intersection:
+                raise serializers.ValidationError("A pool cannot be both included and excluded.")
+        return data
 
 
 # ── Frame Action Serializers ──────────────────────────────────────────────────

@@ -137,6 +137,19 @@ class Job(models.Model):
     updated_at = DateTimeField(auto_now=True)
     stopped_at = DateTimeField(null=True, blank=True)
 
+    included_pools = models.ManyToManyField(
+        "workers.WorkerPool",
+        blank=True,
+        related_name="included_jobs",
+        help_text="If specified, only workers in these pools can process this job.",
+    )
+    excluded_pools = models.ManyToManyField(
+        "workers.WorkerPool",
+        blank=True,
+        related_name="excluded_jobs",
+        help_text="If specified, workers in these pools are strictly prevented from processing this job.",
+    )
+
     class Meta:
         verbose_name = "job"
         verbose_name_plural = "jobs"
@@ -155,7 +168,22 @@ class Job(models.Model):
                 user=self.user or "unknown",
                 visible_name=self.visible_name or "job",
             )
+        self.full_clean()
         super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        # Note: ManyToMany fields are not accessible before the object is created.
+        # This validation mostly protects against calls to full_clean() after creation, 
+        # such as from Django Admin forms or explicit validation checks.
+        if self.pk:
+            intersection = set(self.included_pools.values_list("pk", flat=True)) & set(
+                self.excluded_pools.values_list("pk", flat=True)
+            )
+            if intersection:
+                raise ValidationError(
+                    {"included_pools": "A pool cannot be both included and excluded."}
+                )
 
     def __str__(self):
         return self.name

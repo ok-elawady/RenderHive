@@ -10,6 +10,7 @@ ViewSets follow the serializer split pattern:
 
 import django_filters
 from django.db import transaction
+from django.db.models import Count, F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, mixins, status, viewsets
@@ -457,9 +458,36 @@ class FrameDispatchView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
         worker_name = serializer.validated_data["worker_name"]
 
+        # Find the worker
+        from apps.workers.models import WorkerNode
+        worker = WorkerNode.objects.filter(hostname=worker_name).prefetch_related("pools").first()
+        worker_pools = worker.pools.all() if worker else []
+
+        # Find jobs where this worker has reached the concurrency limit
+        maxed_jobs = Job.objects.annotate(
+            active_worker_frames=Count(
+                "frames", 
+                filter=Q(frames__state=FrameState.RUNNING, frames__worker_name=worker_name)
+            )
+        ).filter(
+            active_worker_frames__gte=F("max_frames_per_worker")
+        ).values("pk")
+
+        # Determine which jobs are eligible based on pause state, concurrency limit, and pool routing
+        allowed_jobs = Job.objects.filter(
+            is_paused=False
+        ).exclude(
+            pk__in=maxed_jobs
+        ).filter(
+            Q(included_pools__isnull=True) | Q(included_pools__in=worker_pools)
+        ).exclude(
+            excluded_pools__in=worker_pools
+        ).values("pk")
+
         # Find the highest priority READY frame and lock it
         frame = Frame.objects.select_for_update(skip_locked=True).filter(
-            state=FrameState.READY
+            state=FrameState.READY,
+            job_id__in=allowed_jobs
         ).order_by("job__priority", "dispatch_order").first()
 
         if not frame:
