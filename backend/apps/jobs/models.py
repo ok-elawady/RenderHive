@@ -173,10 +173,11 @@ class Job(models.Model):
 
     def clean(self):
         super().clean()
-        # Note: ManyToMany fields are not accessible before the object is created.
-        # This validation mostly protects against calls to full_clean() after creation, 
-        # such as from Django Admin forms or explicit validation checks.
-        if self.pk:
+        # ManyToMany fields cannot be queried before the instance is saved to the DB.
+        # We use `_state.adding` (Django's canonical unsaved-instance flag) instead of
+        # `self.pk`, because UUIDField assigns a pk at Python instantiation time —
+        # making `self.pk` always truthy even for brand-new, unsaved instances.
+        if not self._state.adding:
             intersection = set(self.included_pools.values_list("pk", flat=True)) & set(
                 self.excluded_pools.values_list("pk", flat=True)
             )
