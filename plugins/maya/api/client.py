@@ -57,7 +57,7 @@ class RenderHiveApiClient(object):
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": "RenderHive-Maya-Submitter/1.5",
+            "User-Agent": "RenderHive-Maya-Submitter/1.8",
         }
 
         auth = self.config.get("auth", {})
@@ -121,18 +121,7 @@ class RenderHiveApiClient(object):
 
         return "RenderHive API returned HTTP {}.".format(status_code)
 
-    def request(
-        self,
-        method,
-        endpoint_name,
-        payload=None,
-        endpoint_values=None,
-    ):
-        url = self._endpoint(
-            endpoint_name,
-            **(endpoint_values or {})
-        )
-
+    def _request_url(self, method, url, payload=None):
         body = None
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
@@ -179,13 +168,160 @@ class RenderHiveApiClient(object):
                 "RenderHive API request failed: {}".format(error)
             )
 
+    def request(
+        self,
+        method,
+        endpoint_name,
+        payload=None,
+        endpoint_values=None,
+    ):
+        url = self._endpoint(
+            endpoint_name,
+            **(endpoint_values or {})
+        )
+        return self._request_url(method, url, payload=payload)
+
     def test_connection(self):
         # The OpenAPI document does not define /health. An authenticated,
         # paginated jobs request is therefore used as the connection test.
         return self.request("GET", "connection_test")
 
+    @staticmethod
+    def _extract_list(payload, keys=("results", "items", "data")):
+        if isinstance(payload, list):
+            return payload
+
+        if isinstance(payload, dict):
+            for key in keys:
+                value = payload.get(key)
+                if isinstance(value, list):
+                    return value
+
+        return []
+
+    def _list_all_pages(self, endpoint_name, list_keys):
+        url = self._endpoint(endpoint_name)
+        items = []
+        visited = set()
+
+        while url and url not in visited:
+            visited.add(url)
+            response = self._request_url("GET", url)
+            payload = response.get("data", {})
+            items.extend(self._extract_list(payload, keys=list_keys))
+
+            if isinstance(payload, dict):
+                next_url = payload.get("next")
+            else:
+                next_url = None
+
+            if next_url and not str(next_url).startswith(("http://", "https://")):
+                next_url = "{}/{}".format(
+                    self.base_url.rstrip("/"),
+                    str(next_url).lstrip("/"),
+                )
+
+            url = next_url
+
+        return items
+
     def list_jobs(self):
         return self.request("GET", "jobs").get("data", {})
+
+    def list_workers(self):
+        return self._list_all_pages(
+            "workers",
+            ("results", "workers", "items", "data"),
+        )
+
+    def get_worker(self, worker_id):
+        return self.request(
+            "GET",
+            "worker_detail",
+            endpoint_values={"worker_id": worker_id},
+        ).get("data", {})
+
+    def list_pools(self):
+        return self._list_all_pages(
+            "pools",
+            ("results", "pools", "items", "data"),
+        )
+
+    def get_pool(self, pool_id):
+        return self.request(
+            "GET",
+            "pool_detail",
+            endpoint_values={"pool_id": pool_id},
+        ).get("data", {})
+
+    def create_pool(self, name, description=""):
+        return self.request(
+            "POST",
+            "pools",
+            payload={
+                "name": str(name or "").strip(),
+                "description": str(description or "").strip(),
+            },
+        ).get("data", {})
+
+    def update_pool(self, pool_id, name=None, description=None):
+        payload = {}
+        if name is not None:
+            payload["name"] = str(name).strip()
+        if description is not None:
+            payload["description"] = str(description).strip()
+
+        return self.request(
+            "PATCH",
+            "pool_detail",
+            payload=payload,
+            endpoint_values={"pool_id": pool_id},
+        ).get("data", {})
+
+    def delete_pool(self, pool_id):
+        return self.request(
+            "DELETE",
+            "pool_detail",
+            endpoint_values={"pool_id": pool_id},
+        )
+
+    def _resolve_created_job(self, submitted_payload):
+        jobs_payload = self.list_jobs()
+        jobs = self._extract_list(
+            jobs_payload,
+            keys=("results", "jobs", "items", "data"),
+        )
+
+        visible_name = str(
+            submitted_payload.get("visible_name") or ""
+        ).strip()
+        project = str(
+            submitted_payload.get("project") or ""
+        ).strip()
+        user = str(
+            submitted_payload.get("user") or ""
+        ).strip()
+
+        candidates = []
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            if visible_name and str(job.get("visible_name") or "") != visible_name:
+                continue
+            if project and str(job.get("project") or "") != project:
+                continue
+            if user and str(job.get("user") or "") != user:
+                continue
+            candidates.append(job)
+
+        if not candidates:
+            return {}
+
+        candidates.sort(
+            key=lambda item: str(item.get("created_at") or ""),
+            reverse=True,
+        )
+        return dict(candidates[0])
 
     def submit_job(self, payload):
         response = self.request("POST", "jobs", payload=payload)
@@ -195,6 +331,15 @@ class RenderHiveApiClient(object):
             raise ApiResponseError(
                 "Job submission response must be a JSON object."
             )
+
+        job_id = data.get("id") or data.get("job_id") or data.get("uid")
+        if not job_id:
+            resolved = self._resolve_created_job(payload)
+            if resolved:
+                merged = dict(data)
+                merged.update(resolved)
+                merged["_renderhive_resolved_from_list"] = True
+                data = merged
 
         return data
 

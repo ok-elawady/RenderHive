@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "@/styles/globals.css";
-import AppSidebar from "@/components/layout/AppSidebar";
-import { NavigationProvider } from "@/components/common/NavigationProvider";
+import { AuthProvider } from "@/components/auth/AuthProvider";
+import AppShell from "@/components/layout/AppShell";
 import { ThemeProvider } from "@/components/common/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
@@ -41,14 +40,11 @@ export default function RootLayout({ children }: RootLayoutProps) {
       </head>
       <body className="flex min-h-screen bg-background text-foreground">
         <ThemeProvider>
-          <TooltipProvider>
-            <NavigationProvider>
-              <SidebarProvider>
-                <AppSidebar />
-                <main className="flex-1 flex flex-col min-w-0">{children}</main>
-              </SidebarProvider>
-            </NavigationProvider>
-          </TooltipProvider>
+          <AuthProvider>
+            <TooltipProvider>
+              <AppShell>{children}</AppShell>
+            </TooltipProvider>
+          </AuthProvider>
         </ThemeProvider>
         <Toaster />
       </body>

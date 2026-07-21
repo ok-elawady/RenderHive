@@ -47,6 +47,10 @@ class WorkerNodeAdmin(admin.ModelAdmin):
             return "{}"
         formatted_json = json.dumps(instance.system_info, indent=4)
         # Use <pre> for monospaced font and preserved whitespace
-        return format_html("<pre style='margin: 0; padding: 10px; background-color: #f8f8f8; border-radius: 4px;'>{}</pre>", formatted_json)
+        return format_html(
+            "<pre style='margin: 0; padding: 10px; "
+            "background-color: #f8f8f8; border-radius: 4px;'>{}</pre>",
+            formatted_json
+        )
     
     pretty_system_info.short_description = "System Info"
