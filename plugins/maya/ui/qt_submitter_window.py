@@ -20,7 +20,7 @@ from core.state_store import StateStore
 
 
 WINDOW_OBJECT_NAME = "RenderHiveQtSubmitter"
-UI_VERSION = "1.9.0"
+UI_VERSION = "1.9.3"
 _WINDOW = None
 _API = None
 _WIDGETS = {}
@@ -80,8 +80,16 @@ def qt_set_int(name, value):
 
 def qt_get_option(name, default=""):
     widget = _WIDGETS.get(name)
+
     if isinstance(widget, QtWidgets.QComboBox):
         return widget.currentText()
+
+    if hasattr(widget, "currentText"):
+        try:
+            return widget.currentText()
+        except Exception:
+            pass
+
     return default
 
 
@@ -454,9 +462,23 @@ def build_task_v2():
     if _WINDOW is not None:
         pool_workers = _WINDOW.selected_pool_worker_ids()
         pool_id = _WINDOW.selected_pool_id()
+        eligible_workers = _WINDOW.eligible_worker_ids()
+        worker_targeting_synced = bool(
+            _WINDOW.worker_target_has_sync
+        )
+        worker_targeting_stale = bool(
+            _WINDOW.worker_data_is_stale()
+        )
+        online_pool_workers = len(
+            _WINDOW.online_pool_workers()
+        )
     else:
         pool_workers = []
         pool_id = ""
+        eligible_workers = []
+        worker_targeting_synced = False
+        worker_targeting_stale = True
+        online_pool_workers = 0
 
     serialized_pool_name = (
         "All"
@@ -464,8 +486,23 @@ def build_task_v2():
         else pool_name
     )
 
+    assignment_mode = qt_get_option(
+        "rh_worker_assignment_mode",
+        "Use All Workers in Pool",
+    )
+    selected_only = assignment_mode == "Use Selected Workers Only"
+
     allowed_workers = qt_get_list("rh_allowed_workers", [])
     denied_workers = qt_get_list("rh_denied_workers", [])
+
+    # The UI exposes one targeting strategy at a time. Keep the payload
+    # compatible with the existing backend contract while making overlap
+    # impossible by construction.
+    if selected_only:
+        denied_workers = []
+    else:
+        allowed_workers = []
+
     dependencies = split_worker_list(qt_get_text("rh_job_dependencies", ""))
 
     task_id = "RH-{}-{}".format(
@@ -487,6 +524,16 @@ def build_task_v2():
             "pool_workers": pool_workers,
             "allowed_workers": allowed_workers,
             "denied_workers": denied_workers,
+            "eligible_workers": eligible_workers,
+            "eligible_worker_count": len(eligible_workers),
+            "online_pool_worker_count": online_pool_workers,
+            "worker_targeting_synced": worker_targeting_synced,
+            "worker_targeting_stale": worker_targeting_stale,
+            "worker_assignment_mode": (
+                "selected_only"
+                if selected_only
+                else "all_in_pool"
+            ),
             "start_suspended": qt_get_bool("rh_start_suspended", False),
             "retry_count": qt_get_int("rh_retry_count", 2),
             "task_timeout_minutes": qt_get_int("rh_timeout_minutes", 0),
@@ -533,6 +580,15 @@ def build_task_v2():
             "pool_workers": pool_workers,
             "allowed_workers": allowed_workers,
             "denied_workers": denied_workers,
+            "assignment_mode": task.get(
+                "worker_assignment_mode",
+                "all_in_pool",
+            ),
+            "eligible_workers": eligible_workers,
+            "eligible_worker_count": len(eligible_workers),
+            "online_pool_worker_count": online_pool_workers,
+            "synced": worker_targeting_synced,
+            "stale": worker_targeting_stale,
             "empty_pool_means_all": True,
             "empty_allowed_means_entire_pool": True,
             "empty_denied_means_none": True,
@@ -593,12 +649,30 @@ def validate_task_v2(task):
             )
         )
 
+    assignment_mode = str(
+        task.get("worker_assignment_mode") or "all_in_pool"
+    )
+
+    if assignment_mode == "selected_only" and not allowed:
+        errors.append(
+            "Select at least one worker when using Selected Workers Only."
+        )
+
     pool_workers = set(task.get("pool_workers", []))
     if pool_workers and allowed:
         outside_pool = sorted(allowed.difference(pool_workers))
         if outside_pool:
             errors.append(
-                "Allowed workers must exist inside the selected pool: {}".format(
+                "Selected workers must exist inside the selected pool: {}".format(
+                    ", ".join(outside_pool)
+                )
+            )
+
+    if pool_workers and denied:
+        outside_pool = sorted(denied.difference(pool_workers))
+        if outside_pool:
+            errors.append(
+                "Excluded workers must exist inside the selected pool: {}".format(
                     ", ".join(outside_pool)
                 )
             )
@@ -670,95 +744,497 @@ def install_api_bridge(api):
 # -----------------------------------------------------------------------------
 
 
+def worker_identifier(worker):
+    if not isinstance(worker, dict):
+        return str(worker or "").strip()
+
+    return str(
+        worker.get("id")
+        or worker.get("worker_id")
+        or worker.get("hostname")
+        or worker.get("name")
+        or ""
+    ).strip()
+
+
+def worker_display_name(worker):
+    if not isinstance(worker, dict):
+        return str(worker or "").strip()
+
+    return str(
+        worker.get("hostname")
+        or worker.get("machine_name")
+        or worker.get("label")
+        or worker.get("display_name")
+        or worker.get("name")
+        or worker_identifier(worker)
+        or "Unnamed Worker"
+    ).strip()
+
+
+def worker_status(worker):
+    if not isinstance(worker, dict):
+        return ""
+
+    return str(
+        worker.get("status")
+        or worker.get("state")
+        or ""
+    ).strip().upper()
+
+
+def worker_is_online(worker):
+    status = worker_status(worker)
+
+    if status in (
+        "OFFLINE",
+        "DISCONNECTED",
+        "DISABLED",
+    ):
+        return False
+
+    if isinstance(worker, dict):
+        available = worker.get("available")
+        if available is False:
+            return False
+
+    return status in (
+        "",
+        "ONLINE",
+        "IDLE",
+        "AVAILABLE",
+        "RENDERING",
+        "BUSY",
+        "WORKING",
+    )
+
+
+def _safe_number(value):
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def worker_memory_gb(worker):
+    if not isinstance(worker, dict):
+        return None
+
+    direct_gb = _safe_number(
+        worker.get("ram_gb")
+        or worker.get("memory_gb")
+    )
+    if direct_gb is not None:
+        return direct_gb
+
+    memory_mb = _safe_number(
+        worker.get("memory_mb")
+        or worker.get("ram_mb")
+    )
+    if memory_mb is not None:
+        return memory_mb / 1024.0
+
+    system_info = worker.get("system_info")
+    if isinstance(system_info, dict):
+        direct_gb = _safe_number(
+            system_info.get("ram_gb")
+            or system_info.get("memory_gb")
+        )
+        if direct_gb is not None:
+            return direct_gb
+
+        memory_mb = _safe_number(
+            system_info.get("memory_mb")
+            or system_info.get("ram_mb")
+            or system_info.get("total_memory_mb")
+        )
+        if memory_mb is not None:
+            return memory_mb / 1024.0
+
+    return None
+
+
+def worker_vram_gb(worker):
+    if not isinstance(worker, dict):
+        return None
+
+    direct_gb = _safe_number(
+        worker.get("vram_gb")
+        or worker.get("gpu_vram_gb")
+    )
+    if direct_gb is not None:
+        return direct_gb
+
+    direct_mb = _safe_number(
+        worker.get("vram_mb")
+        or worker.get("gpu_memory_mb")
+    )
+    if direct_mb is not None:
+        return direct_mb / 1024.0
+
+    system_info = worker.get("system_info")
+    if isinstance(system_info, dict):
+        direct_gb = _safe_number(
+            system_info.get("vram_gb")
+            or system_info.get("gpu_vram_gb")
+        )
+        if direct_gb is not None:
+            return direct_gb
+
+        direct_mb = _safe_number(
+            system_info.get("vram_mb")
+            or system_info.get("gpu_memory_mb")
+            or system_info.get("total_vram_mb")
+        )
+        if direct_mb is not None:
+            return direct_mb / 1024.0
+
+    return None
+
+
+def worker_gpu_text(worker):
+    if not isinstance(worker, dict):
+        return "—"
+
+    values = (
+        worker.get("gpu_models")
+        or worker.get("gpus")
+        or worker.get("gpu_model")
+        or []
+    )
+
+    if isinstance(values, str):
+        values = [values]
+
+    if isinstance(values, (list, tuple)):
+        labels = []
+        for value in values:
+            if isinstance(value, dict):
+                label = str(
+                    value.get("name")
+                    or value.get("model")
+                    or ""
+                ).strip()
+            else:
+                label = str(value or "").strip()
+
+            if label and label not in labels:
+                labels.append(label)
+
+        if labels:
+            return ", ".join(labels)
+
+    system_info = worker.get("system_info")
+    if isinstance(system_info, dict):
+        value = (
+            system_info.get("gpu_models")
+            or system_info.get("gpus")
+            or system_info.get("gpu")
+        )
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, (list, tuple)):
+            labels = [str(item).strip() for item in value if str(item).strip()]
+            if labels:
+                return ", ".join(labels)
+
+    return "—"
+
+
+def format_gb(value):
+    number = _safe_number(value)
+    if number is None:
+        return "—"
+
+    if abs(number - round(number)) < 0.05:
+        return "{} GB".format(int(round(number)))
+
+    return "{:.1f} GB".format(number)
+
+
+class WorkerStatusChip(QtWidgets.QLabel):
+    def __init__(self, text="", parent=None):
+        super(WorkerStatusChip, self).__init__(str(text), parent)
+        self.setObjectName("WorkerStatusChip")
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self.set_state(text or "Not Synced", COLORS["muted"])
+
+    def set_state(self, text, color):
+        color = str(color or COLORS["muted"])
+        self.setText(str(text or "—"))
+        self.setStyleSheet(
+            "QLabel#WorkerStatusChip {"
+            "background-color:%s;"
+            "border:1px solid %s;"
+            "color:%s;"
+            "border-radius:9px;"
+            "padding:3px 8px;"
+            "font-size:10px;"
+            "font-weight:600;"
+            "}" % (COLORS["surface2"], color, color)
+        )
+
+
+class SegmentedChoice(QtWidgets.QFrame):
+    currentTextChanged = QtCore.Signal(str)
+
+    def __init__(self, options, parent=None):
+        super(SegmentedChoice, self).__init__(parent)
+        self.setObjectName("SegmentedControl")
+        self._options = [str(value) for value in options]
+        self._buttons = []
+        self._current = self._options[0] if self._options else ""
+
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(2)
+
+        self._group = QtWidgets.QButtonGroup(self)
+        self._group.setExclusive(True)
+
+        for index, option in enumerate(self._options):
+            button = QtWidgets.QPushButton(option)
+            button.setObjectName("SegmentButton")
+            button.setCheckable(True)
+            button.setMinimumHeight(30)
+            button.clicked.connect(
+                lambda checked=False, value=option: self.setCurrentText(value)
+            )
+            self._group.addButton(button, index)
+            self._buttons.append(button)
+            layout.addWidget(button, 1)
+
+        if self._buttons:
+            self._buttons[0].setChecked(True)
+
+    def currentText(self):
+        return self._current
+
+    def setCurrentText(self, value):
+        value = str(value or "")
+        if value not in self._options:
+            return False
+
+        changed = value != self._current
+        self._current = value
+
+        for option, button in zip(self._options, self._buttons):
+            button.blockSignals(True)
+            button.setChecked(option == value)
+            button.blockSignals(False)
+
+        if changed:
+            self.currentTextChanged.emit(value)
+
+        return True
+
+    def findText(self, value):
+        try:
+            return self._options.index(str(value))
+        except ValueError:
+            return -1
+
+    def setCurrentIndex(self, index):
+        try:
+            value = self._options[int(index)]
+        except Exception:
+            return
+        self.setCurrentText(value)
+
+    def isEditable(self):
+        return False
+
+
+class CollapsibleSection(QtWidgets.QWidget):
+    toggled = QtCore.Signal(bool)
+
+    def __init__(self, title, parent=None):
+        super(CollapsibleSection, self).__init__(parent)
+
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(6)
+
+        self.header = QtWidgets.QToolButton()
+        self.header.setObjectName("CollapsibleHeader")
+        self.header.setText(str(title))
+        self.header.setCheckable(True)
+        self.header.setChecked(False)
+        self.header.setToolButtonStyle(
+            QtCore.Qt.ToolButtonTextBesideIcon
+        )
+        self.header.setArrowType(QtCore.Qt.RightArrow)
+        self.header.toggled.connect(self.setExpanded)
+        root.addWidget(self.header)
+
+        self.content = QtWidgets.QWidget()
+        self.content_layout = QtWidgets.QVBoxLayout(self.content)
+        self.content_layout.setContentsMargins(8, 0, 0, 0)
+        self.content_layout.setSpacing(7)
+        self.content.setVisible(False)
+        root.addWidget(self.content)
+
+    def setExpanded(self, expanded):
+        expanded = bool(expanded)
+        self.header.blockSignals(True)
+        self.header.setChecked(expanded)
+        self.header.setArrowType(
+            QtCore.Qt.DownArrow
+            if expanded
+            else QtCore.Qt.RightArrow
+        )
+        self.header.blockSignals(False)
+        self.content.setVisible(expanded)
+        self.toggled.emit(expanded)
+
+    def isExpanded(self):
+        return bool(self.header.isChecked())
+
+
 class WorkerSelectionDialog(QtWidgets.QDialog):
     def __init__(self, title, workers, selected_values, parent=None):
         super(WorkerSelectionDialog, self).__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.resize(430, 470)
+        self.resize(720, 500)
         self._workers = list(workers or [])
         self._selected = set(selected_values or [])
         self._items = []
 
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(8)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(9)
+
+        heading = QtWidgets.QLabel(title)
+        heading.setObjectName("PageTitle")
+        root.addWidget(heading)
 
         hint = QtWidgets.QLabel(
-            "Select one or more available workers. "
-            "Leaving the selection empty uses the field default."
+            "Select eligible workers from the active pool. "
+            "Offline workers remain visible but cannot be selected."
         )
         hint.setObjectName("MutedText")
         hint.setWordWrap(True)
         root.addWidget(hint)
 
         self.search = QtWidgets.QLineEdit()
-        self.search.setPlaceholderText("Search workers…")
+        self.search.setPlaceholderText("Search by worker, status or hardware…")
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.filter_items)
         root.addWidget(self.search)
 
-        self.list_widget = QtWidgets.QListWidget()
-        self.list_widget.setAlternatingRowColors(True)
-        self.list_widget.setSelectionMode(
+        self.tree = QtWidgets.QTreeWidget()
+        self.tree.setColumnCount(4)
+        self.tree.setHeaderLabels([
+            "Worker",
+            "Status",
+            "RAM",
+            "GPU",
+        ])
+        self.tree.setRootIsDecorated(False)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setSelectionMode(
             QtWidgets.QAbstractItemView.NoSelection
         )
-        root.addWidget(self.list_widget, 1)
+        self.tree.setUniformRowHeights(True)
+        self.tree.header().setStretchLastSection(False)
+        self.tree.header().setSectionResizeMode(
+            0,
+            QtWidgets.QHeaderView.Stretch,
+        )
+        self.tree.header().setSectionResizeMode(
+            1,
+            QtWidgets.QHeaderView.ResizeToContents,
+        )
+        self.tree.header().setSectionResizeMode(
+            2,
+            QtWidgets.QHeaderView.ResizeToContents,
+        )
+        self.tree.header().setSectionResizeMode(
+            3,
+            QtWidgets.QHeaderView.Stretch,
+        )
+        root.addWidget(self.tree, 1)
 
         for worker in self._workers:
-            worker_id = str(
-                worker.get("id")
-                or worker.get("worker_id")
-                or worker.get("hostname")
-                or worker.get("name")
-                or ""
-            ).strip()
-            hostname = str(
-                worker.get("hostname")
-                or worker.get("machine_name")
-                or worker.get("label")
-                or worker.get("display_name")
-                or worker.get("name")
-                or worker_id
-            ).strip()
-            status = str(worker.get("status") or "").strip()
-
+            worker_id = worker_identifier(worker)
             if not worker_id:
                 continue
 
-            # Display the actual machine hostname. The backend database ID and
-            # worker status are metadata, not the user-facing worker name.
-            item = QtWidgets.QListWidgetItem(hostname or worker_id)
-            item.setData(QtCore.Qt.UserRole, worker_id)
-            tooltip_parts = []
-            if status:
-                tooltip_parts.append("Status: {}".format(status))
-            if worker_id and worker_id != hostname:
-                tooltip_parts.append("Backend ID: {}".format(worker_id))
-            if tooltip_parts:
-                item.setToolTip(" | ".join(tooltip_parts))
-            item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
-            item.setCheckState(
-                QtCore.Qt.Checked
-                if worker_id in self._selected
-                else QtCore.Qt.Unchecked
+            status = worker_status(worker) or "UNKNOWN"
+            online = worker_is_online(worker)
+            item = QtWidgets.QTreeWidgetItem([
+                worker_display_name(worker),
+                status.replace("_", " ").title(),
+                format_gb(worker_memory_gb(worker)),
+                worker_gpu_text(worker),
+            ])
+            item.setData(0, QtCore.Qt.UserRole, worker_id)
+            item.setFlags(
+                item.flags() | QtCore.Qt.ItemIsUserCheckable
             )
-            self.list_widget.addItem(item)
+            item.setCheckState(
+                0,
+                QtCore.Qt.Checked
+                if online and worker_id in self._selected
+                else QtCore.Qt.Unchecked,
+            )
+
+            if not online:
+                item.setFlags(
+                    item.flags() & ~QtCore.Qt.ItemIsEnabled
+                )
+                item.setToolTip(
+                    0,
+                    "This worker is offline and cannot receive the job.",
+                )
+
+            status_color = (
+                COLORS["info"]
+                if status in ("RENDERING", "BUSY", "WORKING")
+                else (
+                    COLORS["success"]
+                    if online
+                    else COLORS["muted"]
+                )
+            )
+            item.setForeground(
+                1,
+                QtGui.QBrush(QtGui.QColor(status_color)),
+            )
+
+            worker_ip = str(worker.get("ip_address") or "").strip()
+            last_ping = str(worker.get("last_ping") or "").strip()
+            tooltip = []
+            if worker_ip:
+                tooltip.append("IP: {}".format(worker_ip))
+            if last_ping:
+                tooltip.append("Last ping: {}".format(last_ping))
+            if tooltip:
+                item.setToolTip(0, " | ".join(tooltip))
+
+            self.tree.addTopLevelItem(item)
             self._items.append(item)
 
         if not self._items:
-            item = QtWidgets.QListWidgetItem(
-                "No available workers were returned."
-            )
+            item = QtWidgets.QTreeWidgetItem([
+                "No workers were returned by the API.",
+                "—",
+                "—",
+                "—",
+            ])
             item.setFlags(QtCore.Qt.NoItemFlags)
             item.setForeground(
-                QtGui.QBrush(QtGui.QColor(COLORS["muted"]))
+                0,
+                QtGui.QBrush(QtGui.QColor(COLORS["muted"])),
             )
-            self.list_widget.addItem(item)
+            self.tree.addTopLevelItem(item)
 
         utility = QtWidgets.QHBoxLayout()
 
-        select_all = QtWidgets.QPushButton("Select All")
+        select_all = QtWidgets.QPushButton("Select Eligible")
         select_all.clicked.connect(self.select_all)
 
         clear = QtWidgets.QPushButton("Clear")
@@ -782,25 +1258,35 @@ class WorkerSelectionDialog(QtWidgets.QDialog):
         query = str(value or "").strip().lower()
 
         for item in self._items:
+            searchable = " ".join(
+                item.text(column)
+                for column in range(item.columnCount())
+            ).lower()
             item.setHidden(
-                bool(query and query not in item.text().lower())
+                bool(query and query not in searchable)
             )
 
     def select_all(self):
         for item in self._items:
-            if not item.isHidden():
-                item.setCheckState(QtCore.Qt.Checked)
+            if (
+                not item.isHidden()
+                and bool(item.flags() & QtCore.Qt.ItemIsEnabled)
+            ):
+                item.setCheckState(0, QtCore.Qt.Checked)
 
     def clear_all(self):
         for item in self._items:
-            item.setCheckState(QtCore.Qt.Unchecked)
+            item.setCheckState(0, QtCore.Qt.Unchecked)
 
     def selected_values(self):
         values = []
 
         for item in self._items:
-            if item.checkState() == QtCore.Qt.Checked:
-                value = item.data(QtCore.Qt.UserRole)
+            if (
+                bool(item.flags() & QtCore.Qt.ItemIsEnabled)
+                and item.checkState(0) == QtCore.Qt.Checked
+            ):
+                value = item.data(0, QtCore.Qt.UserRole)
                 if value and value not in values:
                     values.append(str(value))
 
@@ -828,8 +1314,10 @@ class WorkerMultiSelect(QtWidgets.QPushButton):
     def set_workers(self, workers):
         self._workers = list(workers or [])
         available_ids = {
-            str(worker.get("id") or worker.get("name") or "")
+            worker_identifier(worker)
             for worker in self._workers
+            if worker_identifier(worker)
+            and worker_is_online(worker)
         }
 
         # Keep saved scene selections while the API is unavailable or before
@@ -853,6 +1341,11 @@ class WorkerMultiSelect(QtWidgets.QPushButton):
             value = str(value).strip()
             if value and value not in clean:
                 clean.append(value)
+
+        if clean == self._selected_values:
+            self.update_summary()
+            return
+
         self._selected_values = clean
         self.update_summary()
         self.selectionChanged.emit()
@@ -895,21 +1388,8 @@ class WorkerMultiSelect(QtWidgets.QPushButton):
 
         labels = {}
         for worker in self._workers:
-            worker_id = str(
-                worker.get("id")
-                or worker.get("worker_id")
-                or worker.get("hostname")
-                or worker.get("name")
-                or ""
-            ).strip()
-            labels[worker_id] = str(
-                worker.get("hostname")
-                or worker.get("machine_name")
-                or worker.get("label")
-                or worker.get("display_name")
-                or worker.get("name")
-                or worker_id
-            ).strip()
+            worker_id = worker_identifier(worker)
+            labels[worker_id] = worker_display_name(worker)
 
         if count == 1:
             self.setText(labels.get(
@@ -1200,14 +1680,7 @@ class WorkerPoolManagerDialog(QtWidgets.QDialog):
 
 
 class ApiWorkerPoolManagerDialog(QtWidgets.QDialog):
-    """Manage pool records exposed by the RenderHive REST API.
-
-    The current OpenAPI schema exposes pool CRUD and read-only worker.pool
-    membership. Pool membership is therefore displayed but cannot be edited
-    from Maya until the backend adds an assignment endpoint.
-    """
-
-    RESERVED_NAMES = {"all", "all workers"}
+    """Read-only browser for worker pools supplied by the RenderHive API."""
 
     def __init__(self, api, workers, pools, parent=None):
         super(ApiWorkerPoolManagerDialog, self).__init__(parent)
@@ -1215,10 +1688,11 @@ class ApiWorkerPoolManagerDialog(QtWidgets.QDialog):
         self._workers = list(workers or [])
         self._pools = list(pools or [])
         self._loaded_id = ""
+        self._loaded_name = ""
 
-        self.setWindowTitle("Manage Backend Worker Pools")
+        self.setWindowTitle("Worker Pools")
         self.setModal(True)
-        self.resize(700, 500)
+        self.resize(720, 500)
         self.build_ui()
         self.refresh_pool_list()
 
@@ -1227,106 +1701,170 @@ class ApiWorkerPoolManagerDialog(QtWidgets.QDialog):
         root.setContentsMargins(14, 14, 14, 14)
         root.setSpacing(10)
 
-        title = QtWidgets.QLabel("Backend Worker Pools")
+        title = QtWidgets.QLabel("Worker Pools")
         title.setObjectName("PageTitle")
         root.addWidget(title)
 
         hint = QtWidgets.QLabel(
-            "Pool names and descriptions are stored in the RenderHive API. "
-            "Worker membership is read-only in the current API and must be "
-            "assigned from the backend/admin until an assignment endpoint is added."
+            "Select a backend pool and review its workers."
         )
         hint.setObjectName("MutedText")
-        hint.setWordWrap(True)
         root.addWidget(hint)
 
         center = QtWidgets.QHBoxLayout()
         center.setSpacing(10)
 
         left = QtWidgets.QVBoxLayout()
-        left_label = QtWidgets.QLabel("Backend Pools")
+        left_label = QtWidgets.QLabel("Available Pools")
         left_label.setObjectName("FieldLabel")
         left.addWidget(left_label)
 
         self.pool_list = QtWidgets.QListWidget()
         self.pool_list.setAlternatingRowColors(True)
-        self.pool_list.currentItemChanged.connect(self.load_selected_pool)
+        self.pool_list.setMinimumWidth(220)
+        self.pool_list.currentItemChanged.connect(
+            self.load_selected_pool
+        )
+        self.pool_list.itemDoubleClicked.connect(
+            lambda *_: self.use_selected_pool()
+        )
         left.addWidget(self.pool_list, 1)
 
-        left_buttons = QtWidgets.QHBoxLayout()
-        new_button = QtWidgets.QPushButton("New")
-        new_button.clicked.connect(self.new_pool)
         refresh_button = QtWidgets.QPushButton("Refresh")
-        refresh_button.clicked.connect(self.reload_pools)
-        delete_button = QtWidgets.QPushButton("Delete")
-        delete_button.setObjectName("GhostButton")
-        delete_button.clicked.connect(self.delete_pool)
-        left_buttons.addWidget(new_button)
-        left_buttons.addWidget(refresh_button)
-        left_buttons.addWidget(delete_button)
-        left.addLayout(left_buttons)
+        refresh_button.setObjectName("GhostButton")
+        refresh_button.clicked.connect(self.reload_data)
+        left.addWidget(refresh_button)
+
         center.addLayout(left, 1)
 
-        editor = QtWidgets.QFrame()
-        editor.setObjectName("Card")
-        editor_layout = QtWidgets.QVBoxLayout(editor)
-        editor_layout.setContentsMargins(12, 12, 12, 12)
-        editor_layout.setSpacing(8)
+        details = QtWidgets.QFrame()
+        details.setObjectName("Card")
+        details_layout = QtWidgets.QVBoxLayout(details)
+        details_layout.setContentsMargins(12, 12, 12, 12)
+        details_layout.setSpacing(8)
 
-        name_label = QtWidgets.QLabel("Pool Name")
+        details_title = QtWidgets.QLabel("Pool Details")
+        details_title.setObjectName("SectionTitle")
+        details_layout.addWidget(details_title)
+
+        name_label = QtWidgets.QLabel("Name")
         name_label.setObjectName("FieldLabel")
-        editor_layout.addWidget(name_label)
-        self.name_edit = QtWidgets.QLineEdit()
-        self.name_edit.setPlaceholderText("Example: FX")
-        self.name_edit.setClearButtonEnabled(True)
-        editor_layout.addWidget(self.name_edit)
+        details_layout.addWidget(name_label)
+
+        self.name_value = QtWidgets.QLabel("—")
+        self.name_value.setObjectName("SecondaryText")
+        self.name_value.setTextInteractionFlags(
+            QtCore.Qt.TextSelectableByMouse
+        )
+        details_layout.addWidget(self.name_value)
 
         description_label = QtWidgets.QLabel("Description")
         description_label.setObjectName("FieldLabel")
-        editor_layout.addWidget(description_label)
-        self.description_edit = QtWidgets.QPlainTextEdit()
-        self.description_edit.setPlaceholderText("Optional pool description")
-        self.description_edit.setMaximumHeight(90)
-        editor_layout.addWidget(self.description_edit)
+        details_layout.addWidget(description_label)
 
-        members_label = QtWidgets.QLabel("Current Members (Read Only)")
-        members_label.setObjectName("FieldLabel")
-        editor_layout.addWidget(members_label)
-        self.members_list = QtWidgets.QListWidget()
-        self.members_list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
-        self.members_list.setMinimumHeight(120)
-        editor_layout.addWidget(self.members_list)
-
-        note = QtWidgets.QLabel(
-            "Create, rename, describe, or delete a pool here. "
-            "Allowed and Denied Workers in Job Setup are automatically filtered "
-            "using the memberships returned by GET /api/workers/."
+        self.description_value = QtWidgets.QLabel("—")
+        self.description_value.setObjectName("MutedText")
+        self.description_value.setWordWrap(True)
+        self.description_value.setTextInteractionFlags(
+            QtCore.Qt.TextSelectableByMouse
         )
-        note.setObjectName("MutedText")
-        note.setWordWrap(True)
-        editor_layout.addWidget(note)
-        editor_layout.addStretch()
+        self.description_value.setMinimumHeight(42)
+        self.description_value.setAlignment(
+            QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop
+        )
+        details_layout.addWidget(self.description_value)
 
-        save_button = QtWidgets.QPushButton("Save Pool")
-        save_button.setObjectName("PrimaryButton")
-        save_button.clicked.connect(self.save_pool)
-        editor_layout.addWidget(save_button)
+        workers_header = QtWidgets.QHBoxLayout()
 
-        center.addWidget(editor, 2)
+        workers_label = QtWidgets.QLabel("Workers")
+        workers_label.setObjectName("FieldLabel")
+        workers_header.addWidget(workers_label)
+        workers_header.addStretch()
+
+        self.member_count = QtWidgets.QLabel("0")
+        self.member_count.setObjectName("MetaChip")
+        workers_header.addWidget(self.member_count)
+
+        details_layout.addLayout(workers_header)
+
+        self.members_tree = QtWidgets.QTreeWidget()
+        self.members_tree.setColumnCount(4)
+        self.members_tree.setHeaderLabels([
+            "Worker",
+            "Status",
+            "RAM",
+            "GPU",
+        ])
+        self.members_tree.setRootIsDecorated(False)
+        self.members_tree.setAlternatingRowColors(True)
+        self.members_tree.setSelectionMode(
+            QtWidgets.QAbstractItemView.NoSelection
+        )
+        self.members_tree.setMinimumHeight(210)
+        self.members_tree.header().setStretchLastSection(False)
+        self.members_tree.header().setSectionResizeMode(
+            0,
+            QtWidgets.QHeaderView.Stretch,
+        )
+        self.members_tree.header().setSectionResizeMode(
+            1,
+            QtWidgets.QHeaderView.ResizeToContents,
+        )
+        self.members_tree.header().setSectionResizeMode(
+            2,
+            QtWidgets.QHeaderView.ResizeToContents,
+        )
+        self.members_tree.header().setSectionResizeMode(
+            3,
+            QtWidgets.QHeaderView.Stretch,
+        )
+        details_layout.addWidget(self.members_tree, 1)
+
+        center.addWidget(details, 2)
         root.addLayout(center, 1)
 
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
-        buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.accept)
-        root.addWidget(buttons)
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.addStretch()
+
+        use_button = QtWidgets.QPushButton("Use Selected Pool")
+        use_button.setObjectName("PrimaryButton")
+        use_button.clicked.connect(self.use_selected_pool)
+        buttons.addWidget(use_button)
+
+        close_button = QtWidgets.QPushButton("Close")
+        close_button.setObjectName("GhostButton")
+        close_button.clicked.connect(self.reject)
+        buttons.addWidget(close_button)
+
+        root.addLayout(buttons)
 
     @staticmethod
     def _pool_id(pool):
-        return str(pool.get("id") or "") if isinstance(pool, dict) else ""
+        return (
+            str(pool.get("id") or "")
+            if isinstance(pool, dict)
+            else ""
+        )
 
     @staticmethod
     def _pool_name(pool):
-        return str(pool.get("name") or "") if isinstance(pool, dict) else ""
+        return (
+            str(pool.get("name") or "")
+            if isinstance(pool, dict)
+            else ""
+        )
+
+    def pools(self):
+        return list(self._pools)
+
+    def workers(self):
+        return list(self._workers)
+
+    def selected_pool_id(self):
+        return str(self._loaded_id or "")
+
+    def selected_pool_name(self):
+        return str(self._loaded_name or "")
 
     def pool_by_id(self, pool_id):
         for pool in self._pools:
@@ -1339,179 +1877,326 @@ class ApiWorkerPoolManagerDialog(QtWidgets.QDialog):
         self.pool_list.clear()
 
         ordered = sorted(
-            [pool for pool in self._pools if self._pool_name(pool)],
+            [
+                pool
+                for pool in self._pools
+                if self._pool_name(pool)
+            ],
             key=lambda pool: self._pool_name(pool).lower(),
         )
+
         for pool in ordered:
-            item = QtWidgets.QListWidgetItem(self._pool_name(pool))
-            item.setData(QtCore.Qt.UserRole, self._pool_id(pool))
-            description = str(pool.get("description") or "")
+            item = QtWidgets.QListWidgetItem(
+                self._pool_name(pool)
+            )
+            item.setData(
+                QtCore.Qt.UserRole,
+                self._pool_id(pool),
+            )
+
+            description = str(
+                pool.get("description") or ""
+            )
             if description:
                 item.setToolTip(description)
+
             self.pool_list.addItem(item)
 
         self.pool_list.blockSignals(False)
 
-        target = str(select_id or self._loaded_id)
+        target = str(
+            select_id or self._loaded_id
+        )
+
         if target:
-            for row in range(self.pool_list.count()):
+            for row in range(
+                self.pool_list.count()
+            ):
                 item = self.pool_list.item(row)
-                if str(item.data(QtCore.Qt.UserRole) or "") == target:
+
+                if str(
+                    item.data(QtCore.Qt.UserRole)
+                    or ""
+                ) == target:
                     self.pool_list.setCurrentRow(row)
                     return
 
         if self.pool_list.count():
             self.pool_list.setCurrentRow(0)
         else:
-            self.new_pool()
+            self.clear_details()
 
     def pool_members(self, pool_id):
         values = []
+
         for worker in self._workers:
+            if not isinstance(worker, dict):
+                continue
+
             worker_pools = worker.get("pools") or []
+
             for pool in worker_pools:
-                candidate_id = str(pool.get("id") or "") if isinstance(pool, dict) else ""
-                if candidate_id == str(pool_id):
+                if isinstance(pool, dict):
+                    candidate_id = str(
+                        pool.get("id") or ""
+                    )
+                    candidate_name = str(
+                        pool.get("name") or ""
+                    )
+                else:
+                    candidate_id = str(pool or "")
+                    candidate_name = ""
+
+                selected_pool = self.pool_by_id(
+                    pool_id
+                ) or {}
+                selected_name = self._pool_name(
+                    selected_pool
+                )
+
+                if (
+                    candidate_id == str(pool_id)
+                    or (
+                        selected_name
+                        and candidate_name == selected_name
+                    )
+                ):
                     values.append(worker)
                     break
-        return values
 
-    def refresh_members(self):
-        self.members_list.clear()
-        members = self.pool_members(self._loaded_id)
-        for worker in members:
-            hostname = str(
+        values.sort(
+            key=lambda worker: str(
                 worker.get("hostname")
                 or worker.get("label")
+                or worker.get("name")
                 or worker.get("id")
-                or "Unnamed Worker"
-            )
-            status = str(worker.get("status") or "").strip()
-            text = "{} — {}".format(hostname, status) if status else hostname
-            self.members_list.addItem(text)
+                or ""
+            ).lower()
+        )
+        return values
+
+    def worker_display_name(self, worker):
+        return str(
+            worker.get("hostname")
+            or worker.get("label")
+            or worker.get("machine_name")
+            or worker.get("display_name")
+            or worker.get("name")
+            or worker.get("id")
+            or "Unnamed Worker"
+        )
+
+    def refresh_members(self):
+        self.members_tree.clear()
+
+        members = self.pool_members(
+            self._loaded_id
+        )
+
+        for worker in members:
+            status = str(
+                worker.get("status")
+                or worker.get("state")
+                or "Unknown"
+            ).strip()
+
+            item = QtWidgets.QTreeWidgetItem([
+                self.worker_display_name(worker),
+                status,
+                format_gb(worker_memory_gb(worker)),
+                worker_gpu_text(worker),
+            ])
+
+            status_lower = status.lower()
+
+            if status_lower in (
+                "online",
+                "idle",
+                "available",
+            ):
+                item.setForeground(
+                    1,
+                    QtGui.QBrush(
+                        QtGui.QColor(
+                            COLORS["success"]
+                        )
+                    ),
+                )
+            elif status_lower in (
+                "rendering",
+                "busy",
+                "working",
+            ):
+                item.setForeground(
+                    1,
+                    QtGui.QBrush(
+                        QtGui.QColor(
+                            COLORS["info"]
+                        )
+                    ),
+                )
+            elif status_lower in (
+                "offline",
+                "disabled",
+                "disconnected",
+            ):
+                item.setForeground(
+                    1,
+                    QtGui.QBrush(
+                        QtGui.QColor(
+                            COLORS["muted"]
+                        )
+                    ),
+                )
+
+            self.members_tree.addTopLevelItem(item)
+
+        self.member_count.setText(
+            str(len(members))
+        )
 
         if not members:
-            item = QtWidgets.QListWidgetItem("No workers are assigned to this pool.")
-            item.setForeground(QtGui.QBrush(QtGui.QColor(COLORS["muted"])))
-            self.members_list.addItem(item)
+            item = QtWidgets.QTreeWidgetItem([
+                "No workers assigned",
+                "—",
+                "—",
+                "—",
+            ])
+            item.setForeground(
+                0,
+                QtGui.QBrush(
+                    QtGui.QColor(
+                        COLORS["muted"]
+                    )
+                ),
+            )
+            self.members_tree.addTopLevelItem(item)
 
-    def load_selected_pool(self, current, previous=None):
+    def clear_details(self):
+        self._loaded_id = ""
+        self._loaded_name = ""
+        self.name_value.setText("—")
+        self.description_value.setText("—")
+        self.members_tree.clear()
+        self.member_count.setText("0")
+
+        item = QtWidgets.QTreeWidgetItem([
+            "No pools available",
+            "—",
+            "—",
+            "—",
+        ])
+        item.setForeground(
+            0,
+            QtGui.QBrush(
+                QtGui.QColor(
+                    COLORS["muted"]
+                )
+            ),
+        )
+        self.members_tree.addTopLevelItem(item)
+
+    def load_selected_pool(
+        self,
+        current,
+        previous=None,
+    ):
         if current is None:
+            self.clear_details()
             return
 
-        pool_id = str(current.data(QtCore.Qt.UserRole) or "")
+        pool_id = str(
+            current.data(QtCore.Qt.UserRole)
+            or ""
+        )
         pool = self.pool_by_id(pool_id) or {}
+
         self._loaded_id = pool_id
-        self.name_edit.setText(str(pool.get("name") or ""))
-        self.description_edit.setPlainText(str(pool.get("description") or ""))
+        self._loaded_name = str(
+            pool.get("name") or current.text()
+        )
+
+        self.name_value.setText(
+            self._loaded_name or "—"
+        )
+        self.description_value.setText(
+            str(
+                pool.get("description")
+                or "No description."
+            )
+        )
         self.refresh_members()
 
-    def new_pool(self):
-        self.pool_list.clearSelection()
-        self._loaded_id = ""
-        self.name_edit.clear()
-        self.description_edit.clear()
-        self.members_list.clear()
-        self.members_list.addItem("Save the pool, then assign workers from the backend/admin.")
-        self.name_edit.setFocus()
+    def reload_data(self):
+        selected_id = self._loaded_id
 
-    def reload_pools(self):
         try:
-            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-            self._pools = list(self.api.get_api_pools() or [])
-        except Exception as error:
-            QtWidgets.QMessageBox.critical(
-                self,
-                "RenderHive Pools",
-                "Could not refresh pools:\n\n{}".format(error),
+            QtWidgets.QApplication.setOverrideCursor(
+                QtCore.Qt.WaitCursor
             )
-            return
-        finally:
-            QtWidgets.QApplication.restoreOverrideCursor()
 
-        self.refresh_pool_list()
-
-    def save_pool(self):
-        name = self.name_edit.text().strip()
-        description = self.description_edit.toPlainText().strip()
-
-        if not name:
-            QtWidgets.QMessageBox.warning(self, "RenderHive", "Enter a pool name first.")
-            return
-        if name.lower() in self.RESERVED_NAMES:
-            QtWidgets.QMessageBox.warning(
-                self,
-                "RenderHive",
-                "This name is reserved. Choose another pool name.",
+            provider = getattr(
+                self.api,
+                "get_worker_targeting_snapshot",
+                None,
             )
-            return
 
-        for pool in self._pools:
-            if self._pool_name(pool).lower() == name.lower() and self._pool_id(pool) != self._loaded_id:
-                QtWidgets.QMessageBox.warning(
-                    self,
-                    "RenderHive",
-                    "A pool with this name already exists.",
+            if callable(provider):
+                payload = provider() or {}
+                self._workers = list(
+                    payload.get("workers") or []
                 )
-                return
-
-        try:
-            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-            if self._loaded_id:
-                result = self.api.update_api_pool(
-                    self._loaded_id,
-                    name=name,
-                    description=description,
+                self._pools = list(
+                    payload.get("pools") or []
                 )
             else:
-                result = self.api.create_api_pool(name, description)
+                pool_provider = getattr(
+                    self.api,
+                    "get_api_pools",
+                    None,
+                )
+                worker_provider = getattr(
+                    self.api,
+                    "get_available_workers",
+                    None,
+                )
+
+                if callable(pool_provider):
+                    self._pools = list(
+                        pool_provider() or []
+                    )
+
+                if callable(worker_provider):
+                    self._workers = list(
+                        worker_provider() or []
+                    )
+
         except Exception as error:
             QtWidgets.QMessageBox.critical(
                 self,
                 "RenderHive Pools",
-                "Could not save pool:\n\n{}".format(error),
+                "Could not refresh worker pools:\n\n{}".format(
+                    error
+                ),
             )
             return
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
 
-        result_id = str(result.get("id") or self._loaded_id) if isinstance(result, dict) else self._loaded_id
-        self._loaded_id = result_id
-        self.reload_pools()
-        self.refresh_pool_list(select_id=result_id)
-
-    def delete_pool(self):
-        if not self._loaded_id:
-            return
-
-        pool = self.pool_by_id(self._loaded_id) or {}
-        name = str(pool.get("name") or self.name_edit.text() or "this pool")
-        answer = QtWidgets.QMessageBox.question(
-            self,
-            "Delete Worker Pool",
-            "Delete the '{}' backend pool?".format(name),
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No,
+        self.refresh_pool_list(
+            select_id=selected_id
         )
-        if answer != QtWidgets.QMessageBox.Yes:
-            return
 
-        try:
-            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-            self.api.delete_api_pool(self._loaded_id)
-        except Exception as error:
-            QtWidgets.QMessageBox.critical(
+    def use_selected_pool(self):
+        if not self._loaded_id or not self._loaded_name:
+            QtWidgets.QMessageBox.information(
                 self,
                 "RenderHive Pools",
-                "Could not delete pool:\n\n{}".format(error),
+                "Select a pool first.",
             )
             return
-        finally:
-            QtWidgets.QApplication.restoreOverrideCursor()
 
-        self._loaded_id = ""
-        self.reload_pools()
-
+        self.accept()
 
 
 class WorkerSyncThread(QtCore.QThread):
@@ -1611,6 +2296,9 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         self.page_stack = None
         self.available_workers = []
         self.worker_sync_thread = None
+        self.worker_target_last_sync = None
+        self.worker_target_has_sync = False
+        self.worker_target_sync_error = ""
         self.api_test_thread = None
         self.api_submit_thread = None
         self.worker_pools = self.load_worker_pools()
@@ -1646,6 +2334,12 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             self.flush_scene_state
         )
 
+        self.worker_stale_timer = QtCore.QTimer(self)
+        self.worker_stale_timer.setInterval(30000)
+        self.worker_stale_timer.timeout.connect(
+            self.update_worker_sync_chips
+        )
+
         self.setObjectName("RenderHiveWindow")
         self.setWindowTitle("RenderHive")
         self.setMinimumSize(680, 600)
@@ -1660,6 +2354,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         self.initialize_scene_state()
         self.report_state_storage_ready()
         self.scene_state_timer.start()
+        self.worker_stale_timer.start()
         QtCore.QTimer.singleShot(0, self.sync_available_workers)
 
     def closeEvent(self, event):
@@ -1669,8 +2364,16 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         if self.page_stack is not None:
             self.settings.setValue("page_v08", self.page_stack.currentIndex())
 
+        resources = _WIDGETS.get("resource_requirements_section")
+        if isinstance(resources, CollapsibleSection):
+            self.settings.setValue(
+                "worker_resources_expanded_v193",
+                resources.isExpanded(),
+            )
+
         self.scene_state_timer.stop()
         self.scene_state_save_timer.stop()
+        self.worker_stale_timer.stop()
         self.save_scene_state(force=True)
         self.save_worker_pools()
 
@@ -1689,6 +2392,21 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         if self.page_stack is not None:
             page_index = max(0, min(page_index, self.page_stack.count() - 1))
             self.select_page(page_index)
+
+        resources = _WIDGETS.get("resource_requirements_section")
+        if isinstance(resources, CollapsibleSection):
+            saved = self.settings.value(
+                "worker_resources_expanded_v193",
+                False,
+            )
+            expanded = saved in (
+                True,
+                1,
+                "1",
+                "true",
+                "True",
+            )
+            resources.setExpanded(expanded)
 
     def scene_identity_and_key(self):
         scene_path = cmds.file(
@@ -1747,6 +2465,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             ),
             "option": (
                 "rh_pool",
+                "rh_worker_assignment_mode",
                 "rh_submission_mode",
                 "rh_renderer",
                 "rh_camera",
@@ -1789,6 +2508,11 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             widget = _WIDGETS.get(name)
             if isinstance(widget, QtWidgets.QComboBox):
                 state["option"][name] = widget.currentText()
+            elif hasattr(widget, "currentText"):
+                try:
+                    state["option"][name] = widget.currentText()
+                except Exception:
+                    pass
 
         for name in fields["list"]:
             state["list"][name] = qt_get_list(name, [])
@@ -1836,16 +2560,22 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
                     continue
 
                 widget = _WIDGETS.get(name)
-                if not isinstance(widget, QtWidgets.QComboBox):
-                    continue
 
                 value = str(value or "")
-                index = widget.findText(value)
 
-                if index >= 0:
-                    widget.setCurrentIndex(index)
-                elif widget.isEditable() and value:
-                    widget.setEditText(value)
+                if isinstance(widget, QtWidgets.QComboBox):
+                    index = widget.findText(value)
+
+                    if index >= 0:
+                        widget.setCurrentIndex(index)
+                    elif widget.isEditable() and value:
+                        widget.setEditText(value)
+
+                elif hasattr(widget, "setCurrentText"):
+                    try:
+                        widget.setCurrentText(value)
+                    except Exception:
+                        pass
 
             lists = state.get("list") or {}
             self._pending_worker_scene_state = {
@@ -1857,6 +2587,32 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
                 ),
             }
             self.apply_pending_worker_scene_state()
+
+            assignment_widget = _WIDGETS.get(
+                "rh_worker_assignment_mode"
+            )
+            saved_assignment = str(
+                options.get("rh_worker_assignment_mode") or ""
+            )
+
+            # v1.9.1 scenes did not store an explicit strategy. Preserve the
+            # user's intent by inferring Selected Only when an Allowed list
+            # already exists; otherwise default to all pool members.
+            if (
+                assignment_widget is not None
+                and hasattr(assignment_widget, "setCurrentText")
+                and not saved_assignment
+            ):
+                inferred = (
+                    "Use Selected Workers Only"
+                    if lists.get("rh_allowed_workers")
+                    else "Use All Workers in Pool"
+                )
+                assignment_widget.setCurrentText(inferred)
+
+            self.on_worker_assignment_mode_changed(
+                self.worker_assignment_mode()
+            )
 
             return True
 
@@ -2299,39 +3055,52 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         targeting = Card(
             "Worker Targeting",
-            "Choose a reusable worker pool, then optionally limit the job to workers inside it.",
+            "Select a pool, then choose how this job can use its workers.",
         )
-        target_grid = QtWidgets.QGridLayout()
-        target_grid.setHorizontalSpacing(10)
-        target_grid.setVerticalSpacing(8)
 
         worker_status_row = QtWidgets.QHBoxLayout()
-        worker_status_row.setSpacing(7)
+        worker_status_row.setSpacing(6)
 
-        worker_status = register(
-            "worker_sync_status",
-            QtWidgets.QLabel(
-                "Waiting for available workers from the RenderHive API."
-            ),
+        api_chip = register(
+            "worker_api_chip",
+            WorkerStatusChip("Not Synced"),
         )
-        worker_status.setObjectName("MutedText")
-        worker_status.setWordWrap(True)
+        worker_chip = register(
+            "worker_count_chip",
+            WorkerStatusChip("0 Workers"),
+        )
+        pool_chip = register(
+            "worker_pool_count_chip",
+            WorkerStatusChip("0 Pools"),
+        )
+        sync_chip = register(
+            "worker_sync_time_chip",
+            WorkerStatusChip("Never"),
+        )
 
         sync_workers = register(
             "sync_workers_button",
-            QtWidgets.QPushButton("Sync Workers"),
+            QtWidgets.QPushButton("Refresh"),
         )
         sync_workers.setObjectName("InfoButton")
         sync_workers.setToolTip(
-            "Refresh the available worker list from RenderHive."
+            "Refresh workers and pools from RenderHive."
         )
         sync_workers.clicked.connect(
             self.sync_available_workers
         )
 
-        worker_status_row.addWidget(worker_status, 1)
+        worker_status_row.addWidget(api_chip)
+        worker_status_row.addWidget(worker_chip)
+        worker_status_row.addWidget(pool_chip)
+        worker_status_row.addWidget(sync_chip)
+        worker_status_row.addStretch()
         worker_status_row.addWidget(sync_workers)
         targeting.layout.addLayout(worker_status_row)
+
+        target_grid = QtWidgets.QGridLayout()
+        target_grid.setHorizontalSpacing(10)
+        target_grid.setVerticalSpacing(8)
 
         pool_row = QtWidgets.QHBoxLayout()
         pool_row.setSpacing(7)
@@ -2341,73 +3110,170 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             QtWidgets.QComboBox(),
         )
         pool.setToolTip(
-            "Choose a reusable named worker pool. "
-            "All Workers uses every synced worker."
+            "Choose a worker pool provided by the RenderHive backend."
         )
         pool.currentTextChanged.connect(
             self.on_pool_changed
         )
 
-        manage_pools = QtWidgets.QPushButton("Manage Pools")
-        manage_pools.setObjectName("InfoButton")
-        manage_pools.setToolTip(
-            "Create, rename, describe or delete backend pools. "
-            "Worker membership is read-only in the current API."
+        browse_pools = QtWidgets.QPushButton("Browse Pools")
+        browse_pools.setObjectName("InfoButton")
+        browse_pools.setToolTip(
+            "Review backend pools and select one for this job."
         )
-        manage_pools.clicked.connect(
+        browse_pools.clicked.connect(
             self.manage_worker_pools
         )
 
         pool_row.addWidget(pool, 1)
-        pool_row.addWidget(manage_pools)
+        pool_row.addWidget(browse_pools)
         pool_widget = QtWidgets.QWidget()
         pool_widget.setLayout(pool_row)
 
-        min_ram = register("rh_min_ram_gb", QtWidgets.QSpinBox())
-        min_ram.setRange(0, 2048)
-        min_ram.setSpecialValueText("Any")
-        min_ram.setSuffix(" GB")
+        assignment = register(
+            "rh_worker_assignment_mode",
+            SegmentedChoice([
+                "Use All Workers in Pool",
+                "Use Selected Workers Only",
+            ]),
+        )
+        assignment.setToolTip(
+            "Use every pool member with optional exclusions, or target only "
+            "specific workers."
+        )
+        assignment.currentTextChanged.connect(
+            self.on_worker_assignment_mode_changed
+        )
 
-        min_vram = register("rh_min_vram_gb", QtWidgets.QSpinBox())
-        min_vram.setRange(0, 256)
-        min_vram.setSpecialValueText("Any")
-        min_vram.setSuffix(" GB")
+        assignment_hint = register(
+            "worker_assignment_hint",
+            QtWidgets.QLabel(""),
+        )
+        assignment_hint.setObjectName("MutedText")
+        assignment_hint.setWordWrap(True)
 
         allowed = register(
             "rh_allowed_workers",
             WorkerMultiSelect(
-                "Allowed Workers",
-                "All Workers In Pool",
+                "Selected Workers",
+                "Select Workers",
             ),
         )
         allowed.setToolTip(
-            "Choose one or more workers inside the selected pool. "
-            "Leave empty to allow the entire pool."
+            "Only the selected workers can receive this job."
+        )
+        allowed.selectionChanged.connect(
+            self.on_allowed_workers_changed
         )
 
         denied = register(
             "rh_denied_workers",
             WorkerMultiSelect(
-                "Denied Workers",
+                "Excluded Workers",
                 "None",
             ),
         )
         denied.setToolTip(
-            "Optionally exclude workers from the selected pool. "
-            "Leave empty to deny none."
+            "All pool members can receive this job except the selected workers."
+        )
+        denied.selectionChanged.connect(
+            self.on_denied_workers_changed
+        )
+
+        selected_field = register(
+            "worker_selected_field",
+            LabeledField("Selected Workers", allowed),
+        )
+        excluded_field = register(
+            "worker_excluded_field",
+            LabeledField("Excluded Workers", denied),
         )
 
         target_grid.addWidget(
             LabeledField("Pool", pool_widget),
             0, 0, 1, 2,
         )
-        target_grid.addWidget(LabeledField("Minimum RAM", min_ram), 1, 0)
-        target_grid.addWidget(LabeledField("Minimum VRAM", min_vram), 1, 1)
-        target_grid.addWidget(LabeledField("Allowed Workers", allowed), 2, 0, 1, 2)
-        target_grid.addWidget(LabeledField("Denied Workers", denied), 3, 0, 1, 2)
+        target_grid.addWidget(
+            LabeledField("Worker Assignment", assignment),
+            1, 0, 1, 2,
+        )
+        target_grid.addWidget(
+            assignment_hint,
+            2, 0, 1, 2,
+        )
+        target_grid.addWidget(
+            selected_field,
+            3, 0, 1, 2,
+        )
+        target_grid.addWidget(
+            excluded_field,
+            4, 0, 1, 2,
+        )
         target_grid.setColumnStretch(0, 1)
         target_grid.setColumnStretch(1, 1)
         targeting.layout.addLayout(target_grid)
+
+        eligibility = register(
+            "worker_eligibility_summary",
+            QtWidgets.QLabel(
+                "No worker data has been synchronized yet."
+            ),
+        )
+        eligibility.setObjectName("EligibilitySummary")
+        eligibility.setWordWrap(True)
+        targeting.layout.addWidget(eligibility)
+
+        resources = register(
+            "resource_requirements_section",
+            CollapsibleSection(
+                "Advanced Resource Requirements"
+            ),
+        )
+
+        resource_hint = QtWidgets.QLabel(
+            "Optional minimum hardware requirements for eligible workers."
+        )
+        resource_hint.setObjectName("MutedText")
+        resource_hint.setWordWrap(True)
+        resources.content_layout.addWidget(resource_hint)
+
+        resource_grid = QtWidgets.QGridLayout()
+        resource_grid.setHorizontalSpacing(10)
+        resource_grid.setVerticalSpacing(8)
+
+        min_ram = register("rh_min_ram_gb", QtWidgets.QSpinBox())
+        min_ram.setRange(0, 2048)
+        min_ram.setSpecialValueText("Any")
+        min_ram.setSuffix(" GB")
+        min_ram.valueChanged.connect(
+            self.update_worker_targeting_summary
+        )
+
+        min_vram = register("rh_min_vram_gb", QtWidgets.QSpinBox())
+        min_vram.setRange(0, 256)
+        min_vram.setSpecialValueText("Any")
+        min_vram.setSuffix(" GB")
+        min_vram.valueChanged.connect(
+            self.update_worker_targeting_summary
+        )
+
+        resource_grid.addWidget(
+            LabeledField("Minimum RAM", min_ram),
+            0, 0,
+        )
+        resource_grid.addWidget(
+            LabeledField("Minimum VRAM", min_vram),
+            0, 1,
+        )
+        resource_grid.setColumnStretch(0, 1)
+        resource_grid.setColumnStretch(1, 1)
+        resources.content_layout.addLayout(resource_grid)
+        targeting.layout.addWidget(resources)
+
+        self.update_worker_assignment_ui()
+        self.update_worker_targeting_summary()
+        self.update_worker_sync_chips()
+        self.update_worker_targeting_summary()
         body.addWidget(targeting)
 
         delivery = Card("Submission & Failure Handling")
@@ -3558,6 +4424,311 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             if str(worker.get("id") or "") in selected_ids
         ]
 
+    def worker_assignment_mode(self):
+        widget = _WIDGETS.get("rh_worker_assignment_mode")
+
+        if isinstance(widget, QtWidgets.QComboBox):
+            return widget.currentText()
+
+        if hasattr(widget, "currentText"):
+            try:
+                return widget.currentText()
+            except Exception:
+                pass
+
+        return "Use All Workers in Pool"
+
+    def worker_data_is_stale(self, max_age_seconds=300):
+        if self.worker_target_last_sync is None:
+            return True
+
+        age = (
+            datetime.datetime.now()
+            - self.worker_target_last_sync
+        ).total_seconds()
+
+        return age > float(max_age_seconds)
+
+    def online_pool_workers(self):
+        return [
+            worker
+            for worker in self.active_pool_workers()
+            if worker_is_online(worker)
+        ]
+
+    def eligible_workers(self):
+        workers = self.online_pool_workers()
+        mode = self.worker_assignment_mode()
+        allowed = set(
+            qt_get_list("rh_allowed_workers", [])
+        )
+        denied = set(
+            qt_get_list("rh_denied_workers", [])
+        )
+
+        if mode == "Use Selected Workers Only":
+            workers = [
+                worker
+                for worker in workers
+                if worker_identifier(worker) in allowed
+            ]
+        else:
+            workers = [
+                worker
+                for worker in workers
+                if worker_identifier(worker) not in denied
+            ]
+
+        minimum_ram = qt_get_int("rh_min_ram_gb", 0)
+        minimum_vram = qt_get_int("rh_min_vram_gb", 0)
+        eligible = []
+
+        for worker in workers:
+            memory_gb = worker_memory_gb(worker)
+            vram_gb = worker_vram_gb(worker)
+
+            if minimum_ram:
+                if memory_gb is None or memory_gb < minimum_ram:
+                    continue
+
+            if minimum_vram:
+                if vram_gb is None or vram_gb < minimum_vram:
+                    continue
+
+            eligible.append(worker)
+
+        return eligible
+
+    def eligible_worker_ids(self):
+        return [
+            worker_identifier(worker)
+            for worker in self.eligible_workers()
+            if worker_identifier(worker)
+        ]
+
+    def update_worker_sync_chips(self):
+        api_chip = _WIDGETS.get("worker_api_chip")
+        worker_chip = _WIDGETS.get("worker_count_chip")
+        pool_chip = _WIDGETS.get("worker_pool_count_chip")
+        time_chip = _WIDGETS.get("worker_sync_time_chip")
+
+        total_workers = len(self.available_workers)
+        online_workers = len([
+            worker
+            for worker in self.available_workers
+            if worker_is_online(worker)
+        ])
+        pool_count = len(self.api_pools)
+
+        syncing = (
+            self.worker_sync_thread is not None
+            and self.worker_sync_thread.isRunning()
+        )
+
+        if isinstance(api_chip, WorkerStatusChip):
+            if syncing:
+                api_chip.set_state(
+                    "Connecting…",
+                    COLORS["info"],
+                )
+            elif self.worker_target_sync_error:
+                api_chip.set_state(
+                    "API Offline",
+                    COLORS["error"],
+                )
+            elif self.worker_target_has_sync:
+                api_chip.set_state(
+                    "API Online",
+                    COLORS["success"],
+                )
+            else:
+                api_chip.set_state(
+                    "Not Synced",
+                    COLORS["warning"],
+                )
+
+        if isinstance(worker_chip, WorkerStatusChip):
+            label = (
+                "{} Online / {}".format(
+                    online_workers,
+                    total_workers,
+                )
+                if total_workers
+                else "0 Workers"
+            )
+            worker_chip.set_state(
+                label,
+                COLORS["success"]
+                if online_workers
+                else COLORS["warning"],
+            )
+
+        if isinstance(pool_chip, WorkerStatusChip):
+            pool_chip.set_state(
+                "{} Pool{}".format(
+                    pool_count,
+                    "" if pool_count == 1 else "s",
+                ),
+                COLORS["info"]
+                if pool_count
+                else COLORS["muted"],
+            )
+
+        if isinstance(time_chip, WorkerStatusChip):
+            if self.worker_target_last_sync is None:
+                time_chip.set_state(
+                    "Never",
+                    COLORS["muted"],
+                )
+            else:
+                prefix = (
+                    "Cached"
+                    if self.worker_target_sync_error
+                    else (
+                        "Stale"
+                        if self.worker_data_is_stale()
+                        else "Synced"
+                    )
+                )
+                color = (
+                    COLORS["warning"]
+                    if prefix in ("Cached", "Stale")
+                    else COLORS["secondary"]
+                )
+                time_chip.set_state(
+                    "{} {}".format(
+                        prefix,
+                        self.worker_target_last_sync.strftime("%H:%M"),
+                    ),
+                    color,
+                )
+
+    def update_worker_targeting_summary(self, *args):
+        label = _WIDGETS.get("worker_eligibility_summary")
+        if not isinstance(label, QtWidgets.QLabel):
+            return
+
+        members = self.active_pool_workers()
+        online = [
+            worker
+            for worker in members
+            if worker_is_online(worker)
+        ]
+        eligible = self.eligible_workers()
+
+        member_count = len(members)
+        online_count = len(online)
+        eligible_count = len(eligible)
+
+        summary = (
+            "{} member{} · {} online · {} eligible".format(
+                member_count,
+                "" if member_count == 1 else "s",
+                online_count,
+                eligible_count,
+            )
+        )
+
+        if not self.worker_target_has_sync:
+            detail = "Refresh workers before submitting."
+            color = COLORS["warning"]
+        elif self.worker_target_sync_error:
+            detail = "Showing the last successful worker snapshot."
+            color = COLORS["warning"]
+        elif eligible_count == 0:
+            detail = "No online workers match the current targeting rules."
+            color = COLORS["error"]
+        else:
+            detail = "Ready for submission."
+            color = COLORS["success"]
+
+        label.setText("{}  —  {}".format(summary, detail))
+        label.setStyleSheet(
+            "QLabel#EligibilitySummary {"
+            "background-color:%s;"
+            "border:1px solid %s;"
+            "border-radius:6px;"
+            "color:%s;"
+            "padding:7px 9px;"
+            "font-weight:600;"
+            "}" % (
+                COLORS["surface2"],
+                color,
+                color,
+            )
+        )
+
+    def update_worker_assignment_ui(self):
+        selected_only = (
+            self.worker_assignment_mode()
+            == "Use Selected Workers Only"
+        )
+
+        selected_field = _WIDGETS.get("worker_selected_field")
+        excluded_field = _WIDGETS.get("worker_excluded_field")
+        hint = _WIDGETS.get("worker_assignment_hint")
+
+        if isinstance(selected_field, QtWidgets.QWidget):
+            selected_field.setVisible(selected_only)
+
+        if isinstance(excluded_field, QtWidgets.QWidget):
+            excluded_field.setVisible(not selected_only)
+
+        if isinstance(hint, QtWidgets.QLabel):
+            if selected_only:
+                hint.setText(
+                    "Only the selected online workers can receive this job."
+                )
+            else:
+                hint.setText(
+                    "All online workers in the pool can receive this job, "
+                    "except workers excluded below."
+                )
+
+        self.update_worker_targeting_summary()
+
+    def on_worker_assignment_mode_changed(self, mode=""):
+        selected_only = (
+            str(mode) == "Use Selected Workers Only"
+        )
+
+        # Clear the inactive strategy. This keeps Allowed and Denied mutually
+        # exclusive in the UI, restored scene state and final task payload.
+        if selected_only:
+            qt_set_list("rh_denied_workers", [])
+        else:
+            qt_set_list("rh_allowed_workers", [])
+
+        self.update_worker_assignment_ui()
+
+    def on_allowed_workers_changed(self):
+        allowed = set(qt_get_list("rh_allowed_workers", []))
+        denied = qt_get_list("rh_denied_workers", [])
+        clean_denied = [
+            value
+            for value in denied
+            if value not in allowed
+        ]
+
+        if clean_denied != denied:
+            qt_set_list("rh_denied_workers", clean_denied)
+
+        self.update_worker_targeting_summary()
+
+    def on_denied_workers_changed(self):
+        denied = set(qt_get_list("rh_denied_workers", []))
+        allowed = qt_get_list("rh_allowed_workers", [])
+        clean_allowed = [
+            value
+            for value in allowed
+            if value not in denied
+        ]
+
+        if clean_allowed != allowed:
+            qt_set_list("rh_allowed_workers", clean_allowed)
+
+        self.update_worker_targeting_summary()
+
     def on_pool_changed(self, pool_name=""):
         workers = self.active_pool_workers()
 
@@ -3566,61 +4737,79 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             if isinstance(widget, WorkerMultiSelect):
                 widget.set_workers(workers)
 
-        label = _WIDGETS.get("worker_sync_status")
-        if isinstance(label, QtWidgets.QLabel) and self.available_workers:
-            source = "Backend" if self.using_api_pools else "Local cache"
-            if pool_name and pool_name != "All Workers":
-                label.setText(
-                    "{} pool '{}': {} available member(s).".format(
-                        source,
-                        pool_name,
-                        len(workers),
-                    )
-                )
-            else:
-                label.setText(
-                    "{} available worker(s). Pool: All Workers.".format(
-                        len(self.available_workers)
-                    )
-                )
+        # Reconcile old or restored data after a pool change. A worker cannot
+        # remain selected once it leaves the active pool, and it can never be
+        # both selected and excluded.
+        self.on_allowed_workers_changed()
+        self.on_denied_workers_changed()
+        self.on_worker_assignment_mode_changed(
+            self.worker_assignment_mode()
+        )
+
+        self.update_worker_targeting_summary()
 
     def manage_worker_pools(self):
-        if self.api_enabled() and hasattr(self.api, "create_api_pool"):
-            dialog = ApiWorkerPoolManagerDialog(
-                self.api,
-                self.available_workers,
-                self.api_pools,
-                parent=self,
+        if not self.api_enabled():
+            QtWidgets.QMessageBox.information(
+                self,
+                "RenderHive Pools",
+                "Enable the RenderHive API to load worker pools.",
             )
-            dialog.exec_()
-            self.sync_available_workers()
-            self.append_activity("Backend worker pools refreshed.")
             return
 
-        current_combo = _WIDGETS.get("rh_pool")
-        current_name = (
-            current_combo.currentText()
-            if isinstance(current_combo, QtWidgets.QComboBox)
-            else "All Workers"
-        )
-
-        dialog = WorkerPoolManagerDialog(
-            self.available_workers,
-            self.worker_pools,
-            parent=self,
-        )
-        dialog.exec_()
-
-        self.worker_pools = dialog.pools()
-        self.using_api_pools = False
-        self.pool_records = {}
-        self.save_worker_pools()
-        self.refresh_pool_combo(preferred=current_name)
-        self.append_activity(
-            "Local worker pools updated: {} saved pool(s).".format(
-                len(self.worker_pools)
+        provider_available = (
+            hasattr(
+                self.api,
+                "get_worker_targeting_snapshot",
+            )
+            or hasattr(
+                self.api,
+                "get_api_pools",
             )
         )
+
+        if not provider_available:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "RenderHive Pools",
+                "The current API connection does not provide worker pools.",
+            )
+            return
+
+        dialog = ApiWorkerPoolManagerDialog(
+            self.api,
+            self.available_workers,
+            self.api_pools,
+            parent=self,
+        )
+
+        result = dialog.exec_()
+        selected_name = dialog.selected_pool_name()
+
+        # Keep the main Job page in sync with any data refreshed inside
+        # the browser, even when the dialog was closed without selection.
+        self.apply_available_workers(
+            dialog.workers(),
+            pools=dialog.pools(),
+        )
+
+        if (
+            result == QtWidgets.QDialog.Accepted
+            and selected_name
+        ):
+            self.refresh_pool_combo(
+                preferred=selected_name
+            )
+            self.append_activity(
+                "Worker pool selected: {}.".format(
+                    selected_name
+                )
+            )
+        else:
+            self.append_activity(
+                "Backend worker pools refreshed."
+            )
+
 
     def worker_provider(self):
         snapshot = getattr(self.api, "get_worker_targeting_snapshot", None)
@@ -3668,13 +4857,13 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         for entry in payload:
             if isinstance(entry, str):
                 worker_id = entry.strip()
+                hostname = worker_id
                 label = worker_id
-                status = ""
-                explicitly_available = True
+                status = "ONLINE"
+                available = True
+                raw = {}
             elif isinstance(entry, dict):
-                # WorkerNodeSerializer returns a database ID plus hostname.
-                # The ID is used internally for saved selections, while the
-                # hostname is the human-readable machine name shown in Maya.
+                raw = dict(entry)
                 backend_id = str(
                     entry.get("id")
                     or entry.get("worker_id")
@@ -3697,30 +4886,25 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
                     entry.get("status")
                     or entry.get("state")
                     or ""
-                ).strip()
+                ).strip().upper()
 
                 available_value = entry.get("available")
                 if available_value is None:
                     available_value = entry.get("online")
-                explicitly_available = (
-                    True
+
+                available = (
+                    status not in (
+                        "OFFLINE",
+                        "DISCONNECTED",
+                        "DISABLED",
+                    )
                     if available_value is None
                     else bool(available_value)
                 )
-
-                if status.lower() in (
-                    "offline",
-                    "disconnected",
-                    "disabled",
-                ):
-                    explicitly_available = False
             else:
                 continue
 
             if not worker_id or worker_id in seen:
-                continue
-
-            if not explicitly_available:
                 continue
 
             worker_pools = []
@@ -3733,21 +4917,71 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
                             worker_pools.append({
                                 "id": pool_id,
                                 "name": pool_name,
-                                "description": str(pool.get("description") or ""),
+                                "description": str(
+                                    pool.get("description") or ""
+                                ),
                             })
 
-            seen.add(worker_id)
-            workers.append({
+            normalized = {
                 "id": worker_id,
-                "hostname": (
-                    hostname
-                    if isinstance(entry, dict)
-                    else label
-                ),
+                "hostname": hostname or label,
                 "label": label or worker_id,
-                "status": status,
+                "status": status or (
+                    "ONLINE"
+                    if available
+                    else "OFFLINE"
+                ),
+                "available": bool(available),
                 "pools": worker_pools,
-            })
+                "ip_address": (
+                    str(raw.get("ip_address") or "")
+                    if isinstance(raw, dict)
+                    else ""
+                ),
+                "cores": (
+                    raw.get("cores")
+                    if isinstance(raw, dict)
+                    else None
+                ),
+                "memory_mb": (
+                    raw.get("memory_mb")
+                    if isinstance(raw, dict)
+                    else None
+                ),
+                "ram_gb": (
+                    raw.get("ram_gb")
+                    if isinstance(raw, dict)
+                    else None
+                ),
+                "vram_gb": (
+                    raw.get("vram_gb")
+                    if isinstance(raw, dict)
+                    else None
+                ),
+                "gpu_models": (
+                    raw.get("gpu_models") or []
+                    if isinstance(raw, dict)
+                    else []
+                ),
+                "system_info": (
+                    raw.get("system_info") or {}
+                    if isinstance(raw, dict)
+                    else {}
+                ),
+                "last_ping": (
+                    str(raw.get("last_ping") or "")
+                    if isinstance(raw, dict)
+                    else ""
+                ),
+                "tags": (
+                    list(raw.get("tags") or [])
+                    if isinstance(raw, dict)
+                    else []
+                ),
+            }
+
+            seen.add(worker_id)
+            workers.append(normalized)
 
         workers.sort(
             key=lambda item: item["label"].lower()
@@ -3757,15 +4991,13 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
     def sync_available_workers(self, *args):
         provider = self.worker_provider()
         button = _WIDGETS.get("sync_workers_button")
-        label = _WIDGETS.get("worker_sync_status")
 
         if provider is None:
-            if isinstance(label, QtWidgets.QLabel):
-                label.setText(
-                    "The current API does not expose an available-workers endpoint. "
-                    "Saved Pools remain local until that endpoint is added."
-                )
-            self.apply_available_workers([])
+            self.worker_target_sync_error = (
+                "The current API does not expose worker targeting endpoints."
+            )
+            self.update_worker_sync_chips()
+            self.update_worker_targeting_summary()
             return
 
         if self.worker_sync_thread is not None:
@@ -3774,10 +5006,11 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         if isinstance(button, QtWidgets.QPushButton):
             button.setEnabled(False)
-            button.setText("Syncing…")
+            button.setText("Refreshing…")
 
-        if isinstance(label, QtWidgets.QLabel):
-            label.setText("Syncing available workers…")
+        self.worker_target_sync_error = ""
+        self.update_worker_sync_chips()
+        self.update_worker_targeting_summary()
 
         self.worker_sync_thread = WorkerSyncThread(
             provider,
@@ -3805,53 +5038,58 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             pools_payload = payload.get("pools") or []
 
         workers = self.normalize_workers(workers_payload)
-        pools = self.normalize_pools(pools_payload) if pools_payload is not None else None
-        self.apply_available_workers(workers, pools=pools)
+        pools = (
+            self.normalize_pools(pools_payload)
+            if pools_payload is not None
+            else None
+        )
 
-        label = _WIDGETS.get("worker_sync_status")
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        self.worker_target_last_sync = datetime.datetime.now()
+        self.worker_target_has_sync = True
+        self.worker_target_sync_error = ""
 
-        if isinstance(label, QtWidgets.QLabel):
-            if workers:
-                pool_text = (
-                    " and {} backend pool(s)".format(len(self.api_pools))
-                    if self.using_api_pools
-                    else ""
-                )
-                label.setText(
-                    "{} available worker(s){}. Last sync: {}".format(
-                        len(workers),
-                        pool_text,
-                        timestamp,
-                    )
-                )
-            else:
-                label.setText(
-                    "No available workers were returned. "
-                    "Pool selections will remain cached for later sync."
-                )
+        self.apply_available_workers(
+            workers,
+            pools=pools,
+        )
+        self.update_worker_sync_chips()
+        self.update_worker_targeting_summary()
+
+        online_count = len([
+            worker
+            for worker in workers
+            if worker_is_online(worker)
+        ])
 
         self.append_activity(
-            "Worker target sync completed: {} worker(s), {} backend pool(s).".format(
+            "Worker target sync completed: {} online / {} total, "
+            "{} backend pool(s).".format(
+                online_count,
                 len(workers),
                 len(self.api_pools),
             )
         )
 
     def on_worker_sync_failed(self, error):
-        label = _WIDGETS.get("worker_sync_status")
+        self.worker_target_sync_error = str(error or "Unknown error")
+        self.update_worker_sync_chips()
+        self.update_worker_targeting_summary()
 
-        if isinstance(label, QtWidgets.QLabel):
-            label.setText(
-                "Worker sync failed: {}".format(error)
-            )
+        cached_note = (
+            " Showing the last successful snapshot."
+            if self.available_workers or self.api_pools
+            else ""
+        )
 
         self.set_status(
-            "Worker sync failed: {}".format(error),
+            "Worker sync failed.{}".format(cached_note),
             level="warning",
         )
         self.append_activity(
-            "Worker sync failed: {}".format(error)
+            "Worker sync failed: {}{}".format(
+                error,
+                cached_note,
+            )
         )
 
     def on_worker_sync_finished(self):
@@ -3859,7 +5097,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         if isinstance(button, QtWidgets.QPushButton):
             button.setEnabled(True)
-            button.setText("Sync Workers")
+            button.setText("Refresh")
 
         if self.worker_sync_thread is not None:
             self.worker_sync_thread.deleteLater()
@@ -3902,6 +5140,8 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         self.refresh_pool_combo(preferred=self._pending_pool_scene_name)
         self.apply_pending_worker_scene_state()
+        self.update_worker_sync_chips()
+        self.update_worker_targeting_summary()
         self.save_scene_state(force=True)
 
 
@@ -4170,14 +5410,40 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             )
             return None
 
-        if not self.available_workers:
+        if (
+            self.worker_target_has_sync
+            and self.worker_data_is_stale()
+        ):
             answer = QtWidgets.QMessageBox.question(
                 self,
-                "No Online Workers",
+                "Worker Data Is Stale",
                 (
-                    "No online RenderHive Workers are currently available.\n\n"
-                    "The Job can still be submitted, but it will remain PENDING "
-                    "until a Worker application connects and starts polling.\n\n"
+                    "Worker and pool data was last synchronized more than "
+                    "5 minutes ago.\n\n"
+                    "Submit using the cached snapshot?"
+                ),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No,
+            )
+
+            if answer != QtWidgets.QMessageBox.Yes:
+                self.set_status(
+                    "Submission cancelled: refresh worker targeting.",
+                    level="warning",
+                )
+                return None
+
+        eligible = self.eligible_workers()
+
+        if not eligible:
+            answer = QtWidgets.QMessageBox.question(
+                self,
+                "No Eligible Workers",
+                (
+                    "No online workers match the selected pool, assignment "
+                    "and hardware requirements.\n\n"
+                    "The Job can still be submitted, but it may remain PENDING "
+                    "until a compatible Worker becomes available.\n\n"
                     "Submit it anyway?"
                 ),
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
@@ -4186,7 +5452,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
             if answer != QtWidgets.QMessageBox.Yes:
                 self.set_status(
-                    "Submission cancelled: no online workers.",
+                    "Submission cancelled: no eligible workers.",
                     level="warning",
                 )
                 return None

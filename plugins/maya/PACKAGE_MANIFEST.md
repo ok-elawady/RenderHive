@@ -45,3 +45,8 @@ RenderHive_Maya/
 ├── renderhive_installer.py
 └── renderhive_maya_submitter.py
 ```
+
+
+## UI 1.9.2
+
+Includes mutually exclusive worker assignment strategies and scene-specific SQLite restore.
