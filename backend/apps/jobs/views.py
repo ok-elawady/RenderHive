@@ -10,6 +10,7 @@ ViewSets follow the serializer split pattern:
 
 import django_filters
 from django.db import transaction
+from django.db.models import Count, F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, mixins, status, viewsets
@@ -91,10 +92,17 @@ class JobViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        """Return the base queryset, optimized with prefetches for retrieve."""
+        """Return the base queryset, optimized with prefetches for retrieve and list.
+
+        Pool M2M relations are prefetched for both list and retrieve to avoid
+        N+1 queries — each job in a list would otherwise trigger 2 extra SQL
+        queries (one per pool relation) without prefetching.
+        """
         qs = super().get_queryset()
         if self.action == "retrieve":
-            qs = qs.prefetch_related("layers")
+            qs = qs.prefetch_related("layers", "included_pools", "excluded_pools")
+        elif self.action == "list":
+            qs = qs.prefetch_related("included_pools", "excluded_pools")
         return qs
 
     def get_serializer_class(self):
@@ -457,9 +465,48 @@ class FrameDispatchView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
         worker_name = serializer.validated_data["worker_name"]
 
+        # Find the worker. If the worker is not yet registered in WorkerNode (e.g. it
+        # hasn't sent a ping yet), worker_pools will be an empty list []. In that case:
+        #   - Q(included_pools__in=[])  → always FALSE  → restricted jobs are skipped
+        #   - Q(included_pools__isnull=True) → unrestricted jobs are still eligible
+        # This means unregistered workers can only pull unrestricted jobs, which is the
+        # correct and intentional behaviour — but it is implicit, hence this comment.
+        from apps.workers.models import WorkerNode
+        worker = WorkerNode.objects.filter(hostname=worker_name).prefetch_related("pools").first()
+        worker_pools = worker.pools.all() if worker else []
+
+        # Find jobs where this worker has reached the concurrency limit
+        maxed_jobs = Job.objects.annotate(
+            active_worker_frames=Count(
+                "frames",
+                filter=Q(frames__state=FrameState.RUNNING, frames__worker_name=worker_name)
+            )
+        ).filter(
+            active_worker_frames__gte=F("max_frames_per_worker")
+        ).values("pk")
+
+        # Determine which jobs are eligible based on state, pause flag, concurrency
+        # limit, and pool routing.
+        # Notes:
+        #   - `state__in` is defense-in-depth: FINISHED/FAILED jobs have no READY
+        #     frames anyway, but filtering here keeps the subquery semantically clean.
+        #   - `.distinct()` prevents duplicate PKs caused by the M2M JOIN when a job
+        #     belongs to multiple pools that all match the worker's pools.
+        allowed_jobs = Job.objects.filter(
+            is_paused=False,
+            state__in=[JobState.PENDING, JobState.RUNNING],
+        ).exclude(
+            pk__in=maxed_jobs
+        ).filter(
+            Q(included_pools__isnull=True) | Q(included_pools__in=worker_pools)
+        ).exclude(
+            excluded_pools__in=worker_pools
+        ).distinct().values("pk")
+
         # Find the highest priority READY frame and lock it
         frame = Frame.objects.select_for_update(skip_locked=True).filter(
-            state=FrameState.READY
+            state=FrameState.READY,
+            job_id__in=allowed_jobs
         ).order_by("job__priority", "dispatch_order").first()
 
         if not frame:

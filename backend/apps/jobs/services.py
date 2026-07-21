@@ -125,10 +125,25 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
     from apps.jobs.models import Frame, FrameState, Job, Layer
 
     layers_data = validated_data.pop("layers")
+    included_pools = validated_data.pop("included_pools", [])
+    excluded_pools = validated_data.pop("excluded_pools", [])
+
+    # Guard against overlapping pools. At the API layer this is caught by the
+    # serializer's validate() method, but this service may also be called
+    # programmatically (e.g. management commands, tests), so we validate here too.
+    included_pks = {getattr(p, "pk", p) for p in included_pools}
+    excluded_pks = {getattr(p, "pk", p) for p in excluded_pools}
+    if included_pks & excluded_pks:
+        raise ValueError("A pool cannot be both included and excluded.")
 
     # The Job model's save() method will auto-generate the name if not provided.
 
     job = Job.objects.create(submitted_by=submitted_by, **validated_data)
+
+    if included_pools:
+        job.included_pools.set(included_pools)
+    if excluded_pools:
+        job.excluded_pools.set(excluded_pools)
 
     for layer_data in layers_data:
         frame_range = layer_data["frame_range"]
