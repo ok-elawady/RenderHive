@@ -43,3 +43,20 @@ sync returns no online workers until those endpoints are added.
 ## API Pools & Workers — UI 1.8.0
 
 See `API_INTEGRATION_1_8_0.md`.
+
+
+## Worker Targeting — UI 1.9.2
+
+Backend pools are read-only in Maya. Use **Job > Browse Pools** to review
+pool details and workers, then apply the selected pool to the current job.
+Pool creation and membership management remain backend responsibilities.
+
+
+## Worker Assignment — UI 1.9.2
+
+The Worker Targeting card now provides two explicit strategies:
+
+- **Use All Workers in Pool**: every available pool member is eligible, with optional exclusions.
+- **Use Selected Workers Only**: only explicitly selected pool members are eligible.
+
+The active strategy clears the inactive list, so a worker can never be both selected and excluded. Worker selections remain scene-specific through SQLite restore.
