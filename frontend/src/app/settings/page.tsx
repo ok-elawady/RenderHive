@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Eye, EyeOff, Loader2, LockKeyhole, Save, ShieldCheck, UserCog } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock, LockKeyhole, ShieldCheck, UserCog } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/auth/AuthProvider";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormLabel, FormMessage } from "@/components/ui/form";
@@ -86,20 +87,28 @@ export default function SettingsPage() {
     }));
   };
 
+  // Derived validation — drives button disabled state and inline messages.
+  const allFieldsFilled =
+    passwords.currentPassword.trim() !== "" &&
+    passwords.newPassword.trim() !== "" &&
+    passwords.confirmPassword.trim() !== "";
+  const newPasswordLongEnough = passwords.newPassword === "" || passwords.newPassword.length >= 8;
+  const passwordsMatch =
+    passwords.confirmPassword === "" || passwords.newPassword === passwords.confirmPassword;
+  const canSubmit = allFieldsFilled && newPasswordLongEnough && passwordsMatch && !isChangingPassword;
+
   const handlePasswordSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
-    if (!passwords.currentPassword || !passwords.newPassword || !passwords.confirmPassword) {
+    if (!allFieldsFilled) {
       setPasswordError("All password fields are required.");
       return;
     }
-
-    if (passwords.newPassword.length < 8) {
+    if (!newPasswordLongEnough) {
       setPasswordError("New password must be at least 8 characters.");
       return;
     }
-
-    if (passwords.newPassword !== passwords.confirmPassword) {
+    if (!passwordsMatch) {
       setPasswordError("New password and confirmation do not match.");
       return;
     }
@@ -112,7 +121,7 @@ export default function SettingsPage() {
       });
       setPasswords(emptyPasswordState);
       toast.success("Password updated", {
-        description: "Your new password is active for Django Admin and RenderHive.",
+        description: "Your new password is now active across RenderHive.",
       });
     } catch (error) {
       setPasswordError(formatApiError(error));
@@ -140,9 +149,9 @@ export default function SettingsPage() {
                 <p className="mt-1 text-sm font-semibold text-muted-foreground">{role}</p>
               </div>
             </div>
-            <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-              Profile identity is managed by Django Admin.
-            </div>
+            <Badge variant="outline" className="border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground font-normal">
+              Profile identity is managed by Django Admin
+            </Badge>
           </CardContent>
         </Card>
 
@@ -174,7 +183,10 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            <Form onSubmit={(event) => void handlePasswordSubmit(event)} className="grid gap-5 md:grid-cols-3">
+            <Form
+              onSubmit={(event) => void handlePasswordSubmit(event)}
+              className="w-full space-y-4"
+            >
               <FormField>
                 <FormLabel>Current Password</FormLabel>
                 <PasswordInput
@@ -182,46 +194,49 @@ export default function SettingsPage() {
                   isVisible={visiblePasswords.currentPassword}
                   onToggleVisibility={() => togglePasswordVisibility("currentPassword")}
                   onChange={(value) => handlePasswordChange("currentPassword", value)}
-                  hasError={Boolean(passwordError)}
+                  hasError={Boolean(passwordError) && !passwords.currentPassword}
                   autoComplete="current-password"
                 />
               </FormField>
 
-              <FormField>
-                <FormLabel>New Password</FormLabel>
-                <PasswordInput
-                  value={passwords.newPassword}
-                  isVisible={visiblePasswords.newPassword}
-                  onToggleVisibility={() => togglePasswordVisibility("newPassword")}
-                  onChange={(value) => handlePasswordChange("newPassword", value)}
-                  hasError={Boolean(passwordError)}
-                  autoComplete="new-password"
-                />
-              </FormField>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField>
+                  <FormLabel>New Password</FormLabel>
+                  <PasswordInput
+                    value={passwords.newPassword}
+                    isVisible={visiblePasswords.newPassword}
+                    onToggleVisibility={() => togglePasswordVisibility("newPassword")}
+                    onChange={(value) => handlePasswordChange("newPassword", value)}
+                    hasError={!newPasswordLongEnough}
+                    autoComplete="new-password"
+                  />
+                  {!newPasswordLongEnough && (
+                    <FormMessage>Must be at least 8 characters.</FormMessage>
+                  )}
+                </FormField>
 
-              <FormField>
-                <FormLabel>Confirm New Password</FormLabel>
-                <PasswordInput
-                  value={passwords.confirmPassword}
-                  isVisible={visiblePasswords.confirmPassword}
-                  onToggleVisibility={() => togglePasswordVisibility("confirmPassword")}
-                  onChange={(value) => handlePasswordChange("confirmPassword", value)}
-                  hasError={Boolean(passwordError)}
-                  autoComplete="new-password"
-                />
-              </FormField>
-
-              {passwordError ? (
-                <FormMessage className="md:col-span-3">{passwordError}</FormMessage>
-              ) : null}
-
-              <div className="md:col-span-3">
-                <Button type="submit" disabled={isChangingPassword} className="h-10 px-5">
-                  {isChangingPassword ? <Loader2 className="animate-spin" /> : <LockKeyhole />}
-                  <Save />
-                  Update Password
-                </Button>
+                <FormField>
+                  <FormLabel>Confirm New Password</FormLabel>
+                  <PasswordInput
+                    value={passwords.confirmPassword}
+                    isVisible={visiblePasswords.confirmPassword}
+                    onToggleVisibility={() => togglePasswordVisibility("confirmPassword")}
+                    onChange={(value) => handlePasswordChange("confirmPassword", value)}
+                    hasError={!passwordsMatch}
+                    autoComplete="new-password"
+                  />
+                  {!passwordsMatch && (
+                    <FormMessage>Passwords do not match.</FormMessage>
+                  )}
+                </FormField>
               </div>
+
+              {passwordError ? <FormMessage>{passwordError}</FormMessage> : null}
+
+              <Button type="submit" disabled={!canSubmit} size="lg" className="mt-2 sm:w-auto">
+                {isChangingPassword ? <Loader2 className="animate-spin" /> : <LockKeyhole />}
+                Update Password
+              </Button>
             </Form>
           </CardContent>
         </Card>
@@ -271,16 +286,22 @@ function PasswordInput({
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="space-y-2">
-      <label className="text-xs font-black uppercase tracking-[0.12em] text-muted-foreground">
-        {label}
-      </label>
-      <Input
-        value={value || "-"}
-        readOnly
-        disabled
-        className="h-11 border-border bg-muted/45 text-foreground opacity-100 disabled:opacity-100"
-      />
-    </div>
+    <FormField>
+      <div className="flex items-center justify-between">
+        <FormLabel>{label}</FormLabel>
+        <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
+          <Lock size={11} />
+          Read-only
+        </span>
+      </div>
+      <FormControl>
+        <Input
+          value={value || "-"}
+          readOnly
+          tabIndex={-1}
+          className="bg-muted/40 text-muted-foreground border-border/50 cursor-not-allowed select-none focus-visible:ring-0"
+        />
+      </FormControl>
+    </FormField>
   );
 }

@@ -556,7 +556,7 @@ export async function fetchCurrentUserProfile(): Promise<CurrentUserProfile> {
 }
 
 export async function changePassword(payload: ChangePasswordPayload): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/auth/password/change/`, {
+  const response = await fetch(`${API_BASE_URL}/_allauth/app/v1/account/password/change`, {
     method: "POST",
     headers: getApiHeaders(),
     body: JSON.stringify({
@@ -568,6 +568,29 @@ export async function changePassword(payload: ChangePasswordPayload): Promise<vo
 
   if (!response.ok) {
     throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
+  }
+
+  try {
+    const headerSessionToken = response.headers.get("x-session-token");
+    const responseBody = await parseApiResponse<RawLoginResponse>(response);
+    const newSessionToken =
+      headerSessionToken ||
+      responseBody.session_token ||
+      responseBody.sessionToken ||
+      responseBody.meta?.session_token ||
+      responseBody.meta?.sessionToken;
+
+    if (newSessionToken) {
+      const currentSession = getStoredAuthSession();
+      if (currentSession) {
+        persistAuthSession({
+          ...currentSession,
+          xSessionToken: newSessionToken,
+        });
+      }
+    }
+  } catch {
+    // Ignore JSON parsing if allauth returned an empty 200/204 response
   }
 }
 
@@ -618,23 +641,56 @@ export async function login(credentials: LoginCredentials): Promise<AuthSession>
 }
 
 export function formatApiError(error: unknown): string {
+  if (!error) return "An unexpected error occurred.";
+
   try {
+    let payload: unknown = error;
     if (error instanceof Error) {
       try {
-        // Attempt to parse stringified JSON error payloads
-        const parsedError = JSON.parse(error.message);
-        const responseMessage = stringifyApiValue(parsedError);
-        if (responseMessage) return responseMessage;
+        payload = JSON.parse(error.message);
       } catch {
-        // Not a JSON string, fallback below
+        return error.message;
       }
-      return error.message;
+    }
+
+    if (isRecord(payload)) {
+      // 1. Allauth 410 Gone (Session Expired / Invalid Session Token)
+      if (payload.status === 410) {
+        return "Your session has expired. Please log in again.";
+      }
+
+      // 2. Allauth errors array: [{ message: "...", param: "..." }]
+      if (Array.isArray(payload.errors) && payload.errors.length > 0) {
+        const messages = payload.errors
+          .map((err) => (isRecord(err) && typeof err.message === "string" ? err.message : null))
+          .filter(Boolean);
+        if (messages.length > 0) return messages.join(" ");
+      }
+
+      // 3. Simple detail string
+      if (typeof payload.detail === "string") {
+        return payload.detail;
+      }
+
+      // 4. Object dictionary of field errors
+      const fieldMessages: string[] = [];
+      for (const [key, value] of Object.entries(payload)) {
+        if (key === "status" || key === "meta") continue;
+        if (typeof value === "string") {
+          fieldMessages.push(value);
+        } else if (Array.isArray(value)) {
+          const strValues = value.filter((v): v is string => typeof v === "string");
+          if (strValues.length > 0) fieldMessages.push(strValues.join(" "));
+        }
+      }
+      if (fieldMessages.length > 0) return fieldMessages.join(" ");
     }
   } catch {
-    // Ultimate fallback
+    // Fallback
   }
 
-  return "Unable to submit this job to the backend API.";
+  if (error instanceof Error) return error.message;
+  return "An error occurred while processing your request.";
 }
 
 export function deriveLogsFromJobs(jobs: RenderJob[]): LogEntry[] {
