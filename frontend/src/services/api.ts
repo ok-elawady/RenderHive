@@ -8,7 +8,9 @@ import type {
   TelemetryPoint,
 } from "@/types/dashboard";
 
-export const API_BASE_URL = "http://localhost:8000";
+export const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+).replace(/\/+$/, "");
 const AUTH_STORAGE_KEY = "renderhive-auth-session";
 
 export interface AuthUser {
