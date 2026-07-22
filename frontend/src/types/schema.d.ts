@@ -239,13 +239,13 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
          */
         get: operations["jobs_list"];
         put?: never;
@@ -253,13 +253,13 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
          */
         post: operations["jobs_create"];
         delete?: never;
@@ -279,8 +279,8 @@ export interface paths {
          * @description Read-only ViewSet for listing and retrieving layers scoped to a job.
          *
          *     Endpoints (nested under /api/jobs/{job_pk}/):
-         *         ``GET  /api/jobs/{job_pk}/layers/``         — list all layers for a job.
-         *         ``GET  /api/jobs/{job_pk}/layers/{id}/``    — retrieve a single layer.
+         *         ``GET  /api/jobs/{job_pk}/layers/``         ù list all layers for a job.
+         *         ``GET  /api/jobs/{job_pk}/layers/{id}/``    ù retrieve a single layer.
          *
          *     All endpoints require authentication. Layers are scoped to the parent job
          *     via the ``job_pk`` URL kwarg.
@@ -512,8 +512,8 @@ export interface paths {
          * @description Read-only ViewSet for listing and retrieving layers scoped to a job.
          *
          *     Endpoints (nested under /api/jobs/{job_pk}/):
-         *         ``GET  /api/jobs/{job_pk}/layers/``         — list all layers for a job.
-         *         ``GET  /api/jobs/{job_pk}/layers/{id}/``    — retrieve a single layer.
+         *         ``GET  /api/jobs/{job_pk}/layers/``         ù list all layers for a job.
+         *         ``GET  /api/jobs/{job_pk}/layers/{id}/``    ù retrieve a single layer.
          *
          *     All endpoints require authentication. Layers are scoped to the parent job
          *     via the ``job_pk`` URL kwarg.
@@ -538,13 +538,13 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
          */
         get: operations["jobs_retrieve"];
         put?: never;
@@ -553,13 +553,13 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
          */
         delete: operations["jobs_destroy"];
         options?: never;
@@ -568,13 +568,13 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
          */
         patch: operations["jobs_partial_update"];
         trace?: never;
@@ -592,7 +592,7 @@ export interface paths {
          * @description Pause a job, preventing new frames from being dispatched.
          *
          *     Sets ``is_paused=True`` on the job. Does not terminate currently
-         *     running frames — they will complete their current render.
+         *     running frames ù they will complete their current render.
          *
          *     Args:
          *         request: The HTTP request.
@@ -634,6 +634,44 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/pools/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ViewSet for listing, creating, and managing worker pools. */
+        get: operations["pools_list"];
+        put?: never;
+        /** @description ViewSet for listing, creating, and managing worker pools. */
+        post: operations["pools_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pools/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ViewSet for listing, creating, and managing worker pools. */
+        get: operations["pools_retrieve"];
+        /** @description ViewSet for listing, creating, and managing worker pools. */
+        put: operations["pools_update"];
+        post?: never;
+        /** @description ViewSet for listing, creating, and managing worker pools. */
+        delete: operations["pools_destroy"];
+        options?: never;
+        head?: never;
+        /** @description ViewSet for listing, creating, and managing worker pools. */
+        patch: operations["pools_partial_update"];
         trace?: never;
     };
     "/api/workers/": {
@@ -832,6 +870,10 @@ export interface components {
              * @description Limits how many frames from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
              */
             max_frames_per_worker?: number;
+            /** @description If specified, only workers in these pools can process this job. */
+            included_pools?: string[];
+            /** @description If specified, workers in these pools are strictly prevented from processing this job. */
+            excluded_pools?: string[];
             layers: components["schemas"]["LayerCreate"][];
         };
         /**
@@ -870,6 +912,10 @@ export interface components {
             readonly created_at: string;
             /** Format: date-time */
             readonly updated_at: string;
+            /** @description If specified, only workers in these pools can process this job. */
+            readonly included_pools: string[];
+            /** @description If specified, workers in these pools are strictly prevented from processing this job. */
+            readonly excluded_pools: string[];
             readonly layers: components["schemas"]["LayerDetail"][];
             readonly log_directory: string;
             /**
@@ -928,6 +974,10 @@ export interface components {
             readonly created_at: string;
             /** Format: date-time */
             readonly updated_at: string;
+            /** @description If specified, only workers in these pools can process this job. */
+            readonly included_pools: string[];
+            /** @description If specified, workers in these pools are strictly prevented from processing this job. */
+            readonly excluded_pools: string[];
         };
         /**
          * @description Write-only serializer for partial job updates.
@@ -948,6 +998,10 @@ export interface components {
              * @description Limits how many frames from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
              */
             max_frames_per_worker?: number;
+            /** @description If specified, only workers in these pools can process this job. */
+            included_pools?: string[];
+            /** @description If specified, workers in these pools are strictly prevented from processing this job. */
+            excluded_pools?: string[];
         };
         /**
          * @description Write-only serializer for layer data nested inside a job submission.
@@ -1152,6 +1206,21 @@ export interface components {
             previous?: string | null;
             results: components["schemas"]["WorkerNode"][];
         };
+        PaginatedWorkerPoolList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=4
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=2
+             */
+            previous?: string | null;
+            results: components["schemas"]["WorkerPool"][];
+        };
         /**
          * @description Write-only serializer for partial job updates.
          *
@@ -1171,6 +1240,20 @@ export interface components {
              * @description Limits how many frames from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
              */
             max_frames_per_worker?: number;
+            /** @description If specified, only workers in these pools can process this job. */
+            included_pools?: string[];
+            /** @description If specified, workers in these pools are strictly prevented from processing this job. */
+            excluded_pools?: string[];
+        };
+        PatchedWorkerPool: {
+            /** Format: uuid */
+            readonly id?: string;
+            name?: string;
+            description?: string;
+            /** Format: date-time */
+            readonly created_at?: string;
+            /** Format: date-time */
+            readonly updated_at?: string;
         };
         /**
          * @description * `PENDING` - Pending
@@ -1204,12 +1287,27 @@ export interface components {
             hostname: string;
             ip_address?: string | null;
             status?: components["schemas"]["StatusEnum"];
-            /** @description CPU, RAM, OS, and live utilization metrics. */
+            readonly pools: components["schemas"]["WorkerPool"][];
+            tags?: string[];
+            cores?: number;
+            memory_mb?: number;
+            gpu_models?: string[];
+            /** @description Transient and live utilization metrics. */
             system_info?: unknown;
             /** Format: date-time */
             readonly last_ping: string;
             /** Format: date-time */
             readonly created_at: string;
+        };
+        WorkerPool: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            description?: string;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
         };
     };
     responses: never;
@@ -1227,6 +1325,8 @@ export interface operations {
                 ordering?: string;
                 /** @description A page number within the paginated result set. */
                 page?: number;
+                /** @description A search term. */
+                search?: string;
                 /**
                  * @description * `WAITING` - Waiting
                  *     * `READY` - Ready
@@ -1450,6 +1550,8 @@ export interface operations {
                 /** @description A page number within the paginated result set. */
                 page?: number;
                 project?: string;
+                /** @description A search term. */
+                search?: string;
                 /**
                  * @description * `PENDING` - Pending
                  *     * `RUNNING` - Running
@@ -1508,6 +1610,8 @@ export interface operations {
                 ordering?: string;
                 /** @description A page number within the paginated result set. */
                 page?: number;
+                /** @description A search term. */
+                search?: string;
             };
             header?: never;
             path: {
@@ -1534,6 +1638,8 @@ export interface operations {
                 ordering?: string;
                 /** @description A page number within the paginated result set. */
                 page?: number;
+                /** @description A search term. */
+                search?: string;
                 /**
                  * @description * `WAITING` - Waiting
                  *     * `READY` - Ready
@@ -1887,6 +1993,156 @@ export interface operations {
             };
         };
     };
+    pools_list: {
+        parameters: {
+            query?: {
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                /** @description A search term. */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWorkerPoolList"];
+                };
+            };
+        };
+    };
+    pools_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerPool"];
+                "application/x-www-form-urlencoded": components["schemas"]["WorkerPool"];
+                "multipart/form-data": components["schemas"]["WorkerPool"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerPool"];
+                };
+            };
+        };
+    };
+    pools_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this worker pool. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerPool"];
+                };
+            };
+        };
+    };
+    pools_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this worker pool. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerPool"];
+                "application/x-www-form-urlencoded": components["schemas"]["WorkerPool"];
+                "multipart/form-data": components["schemas"]["WorkerPool"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerPool"];
+                };
+            };
+        };
+    };
+    pools_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this worker pool. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    pools_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this worker pool. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedWorkerPool"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedWorkerPool"];
+                "multipart/form-data": components["schemas"]["PatchedWorkerPool"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerPool"];
+                };
+            };
+        };
+    };
     workers_list: {
         parameters: {
             query?: {
@@ -1894,6 +2150,8 @@ export interface operations {
                 ordering?: string;
                 /** @description A page number within the paginated result set. */
                 page?: number;
+                /** @description A search term. */
+                search?: string;
             };
             header?: never;
             path?: never;

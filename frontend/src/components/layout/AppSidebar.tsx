@@ -16,6 +16,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { GlobalSearch } from "@/components/layout/GlobalSearch";
 
 import type { SidebarItem } from "@/types/dashboard";
 
@@ -70,6 +71,9 @@ export default function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel>Application</SidebarGroupLabel>
           <SidebarMenu>
+            <SidebarMenuItem className="mb-2 px-2">
+              <GlobalSearch />
+            </SidebarMenuItem>
             {sidebarItems.map((item) => {
               const isActive =
                 item.href === "/"
