@@ -163,6 +163,7 @@ class Job(models.Model):
     def save(self, *args, **kwargs):
         if not self.name:
             from apps.jobs.services import generate_job_name
+
             self.name = generate_job_name(
                 project=self.project or "unknown",
                 user=self.user or "unknown",
@@ -182,9 +183,7 @@ class Job(models.Model):
                 self.excluded_pools.values_list("pk", flat=True)
             )
             if intersection:
-                raise ValidationError(
-                    {"included_pools": "A pool cannot be both included and excluded."}
-                )
+                raise ValidationError({"included_pools": "A pool cannot be both included and excluded."})
 
     def __str__(self):
         return self.name

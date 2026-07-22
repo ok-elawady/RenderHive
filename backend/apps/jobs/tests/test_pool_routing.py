@@ -14,11 +14,11 @@ from django.core.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from apps.jobs.models import Frame, FrameState, Job, JobState
+from apps.jobs.models import FrameState, Job, JobState
 from apps.jobs.services import create_job_with_layers
 from apps.workers.models import WorkerNode, WorkerPool
 
-from .factories import FrameFactory, JobFactory, LayerFactory
+from .factories import FrameFactory, JobFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -48,6 +48,7 @@ def worker(pool_a):
 def farm_client(db):
     """API client authenticated as a farm agent."""
     from django.contrib.auth import get_user_model
+
     User = get_user_model()
     group, _ = Group.objects.get_or_create(name="farm_agents")
     agent = User.objects.create_user(username="farm_service_routing", password="!")
@@ -148,6 +149,7 @@ class TestJobPatchSerializerPoolValidation:
     def test_patch_that_creates_overlap_returns_400(self, pool_a, pool_b, db):
         """PATCHing pools so they overlap with the existing set is rejected with 400."""
         from django.contrib.auth import get_user_model
+
         User = get_user_model()
         user = User.objects.create_user(username="owner_patch", password="pass")
         job = JobFactory(submitted_by=user)

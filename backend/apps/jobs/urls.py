@@ -30,6 +30,11 @@ jobs_router.register(r"layers", LayerViewSet, basename="job-layer")
 layers_router = routers.NestedDefaultRouter(jobs_router, r"layers", lookup="layer")
 layers_router.register(r"frames", FrameViewSet, basename="layer-frame")
 
-urlpatterns = [
-    path("frames/dispatch/", FrameDispatchView.as_view(), name="frame-dispatch"),
-] + router.urls + jobs_router.urls + layers_router.urls
+urlpatterns = (
+    [
+        path("frames/dispatch/", FrameDispatchView.as_view(), name="frame-dispatch"),
+    ]
+    + router.urls
+    + jobs_router.urls
+    + layers_router.urls
+)

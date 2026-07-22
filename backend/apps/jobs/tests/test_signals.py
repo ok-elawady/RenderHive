@@ -136,7 +136,7 @@ class TestJobAndLayerStateTransitions:
         frame = FrameFactory(state=FrameState.READY)
         layer = frame.layer
         job = frame.job
-        
+
         # Initial state is PENDING
         assert job.state == JobState.PENDING
         assert layer.state == JobState.PENDING
@@ -204,7 +204,7 @@ class TestJobAndLayerStateTransitions:
     def test_paused_job_does_not_transition_to_running(self):
         frame = FrameFactory(state=FrameState.READY)
         job = frame.job
-        
+
         # Pause the job
         job.is_paused = True
         job.state = JobState.PAUSED
@@ -215,7 +215,7 @@ class TestJobAndLayerStateTransitions:
         frame.save()
 
         job.refresh_from_db()
-        
+
         # Job should remain PAUSED, not switch to RUNNING
         assert job.state == JobState.PAUSED
         assert job.is_paused is True

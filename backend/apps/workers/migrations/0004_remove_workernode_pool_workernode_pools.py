@@ -4,19 +4,18 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('workers', '0003_workerpool_workernode_cores_workernode_gpu_models_and_more'),
+        ("workers", "0003_workerpool_workernode_cores_workernode_gpu_models_and_more"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='workernode',
-            name='pool',
+            model_name="workernode",
+            name="pool",
         ),
         migrations.AddField(
-            model_name='workernode',
-            name='pools',
-            field=models.ManyToManyField(blank=True, related_name='workers', to='workers.workerpool'),
+            model_name="workernode",
+            name="pools",
+            field=models.ManyToManyField(blank=True, related_name="workers", to="workers.workerpool"),
         ),
     ]

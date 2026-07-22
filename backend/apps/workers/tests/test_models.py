@@ -16,12 +16,12 @@ class TestWorkerPoolModel:
 class TestWorkerNodeModel:
     def test_worker_node_creation(self):
         worker = WorkerNode.objects.create(
-            hostname="render-node-01", 
+            hostname="render-node-01",
             ip_address="192.168.1.100",
             cores=32,
             memory_mb=65536,
             tags=["cpu", "fast"],
-            gpu_models=["RTX 4090"]
+            gpu_models=["RTX 4090"],
         )
         assert worker.hostname == "render-node-01"
         assert worker.status == WorkerStatus.OFFLINE
@@ -35,7 +35,7 @@ class TestWorkerNodeModel:
         worker = WorkerNode.objects.create(hostname="node-with-pools")
         pool1 = WorkerPool.objects.create(name="pool1")
         pool2 = WorkerPool.objects.create(name="pool2")
-        
+
         worker.pools.add(pool1, pool2)
         assert worker.pools.count() == 2
         assert list(worker.pools.values_list("name", flat=True).order_by("name")) == ["pool1", "pool2"]
