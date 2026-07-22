@@ -200,6 +200,20 @@ class TestJobListAndDetail:
         assert resp.status_code == 200
         assert len(resp.data["results"]) == 1
 
+    def test_search_parameter(self, user_client):
+        """?search= filters jobs across multiple text fields."""
+        JobFactory(visible_name="Unique Beauty Render")
+        JobFactory(project="unique_proj_x")
+        JobFactory(department="Compositing")
+
+        # Search by visible_name
+        resp = user_client.get("/api/jobs/?search=Beauty")
+        assert len(resp.data["results"]) == 1
+
+        # Search by project
+        resp = user_client.get("/api/jobs/?search=unique_proj")
+        assert len(resp.data["results"]) == 1
+
     def test_retrieve_includes_nested_layers(self, user_client):
         """GET /api/jobs/{id}/ includes nested layers array."""
         layer = LayerFactory()

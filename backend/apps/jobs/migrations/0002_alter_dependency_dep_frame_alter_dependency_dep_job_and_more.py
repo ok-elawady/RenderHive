@@ -5,65 +5,126 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('jobs', '0001_initial'),
+        ("jobs", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='dependency',
-            name='dep_frame',
-            field=models.ForeignKey(blank=True, help_text='The specific frame that is WAITING (required for FRAME_ON_FRAME dependencies).', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='blocked_dependencies', to='jobs.frame', verbose_name='blocked frame'),
+            model_name="dependency",
+            name="dep_frame",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="The specific frame that is WAITING (required for FRAME_ON_FRAME dependencies).",
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="blocked_dependencies",
+                to="jobs.frame",
+                verbose_name="blocked frame",
+            ),
         ),
         migrations.AlterField(
-            model_name='dependency',
-            name='dep_job',
-            field=models.ForeignKey(help_text='The job that is WAITING. It cannot start until the blocking (parent) entity completes.', on_delete=django.db.models.deletion.CASCADE, related_name='blocked_dependencies', to='jobs.job', verbose_name='blocked job'),
+            model_name="dependency",
+            name="dep_job",
+            field=models.ForeignKey(
+                help_text="The job that is WAITING. It cannot start until the blocking (parent) entity completes.",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="blocked_dependencies",
+                to="jobs.job",
+                verbose_name="blocked job",
+            ),
         ),
         migrations.AlterField(
-            model_name='dependency',
-            name='dep_layer',
-            field=models.ForeignKey(blank=True, help_text='The specific layer that is WAITING (required for LAYER_ON_LAYER dependencies).', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='blocked_dependencies', to='jobs.layer', verbose_name='blocked layer'),
+            model_name="dependency",
+            name="dep_layer",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="The specific layer that is WAITING (required for LAYER_ON_LAYER dependencies).",
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="blocked_dependencies",
+                to="jobs.layer",
+                verbose_name="blocked layer",
+            ),
         ),
         migrations.AlterField(
-            model_name='dependency',
-            name='parent_frame',
-            field=models.ForeignKey(blank=True, help_text='The specific frame that must complete FIRST (required for FRAME_ON_FRAME dependencies).', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='blocking_dependencies', to='jobs.frame', verbose_name='blocking frame'),
+            model_name="dependency",
+            name="parent_frame",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="The specific frame that must complete FIRST (required for FRAME_ON_FRAME dependencies).",
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="blocking_dependencies",
+                to="jobs.frame",
+                verbose_name="blocking frame",
+            ),
         ),
         migrations.AlterField(
-            model_name='dependency',
-            name='parent_job',
-            field=models.ForeignKey(help_text='The job that must complete FIRST before the blocked entity is released.', on_delete=django.db.models.deletion.CASCADE, related_name='blocking_dependencies', to='jobs.job', verbose_name='blocking job'),
+            model_name="dependency",
+            name="parent_job",
+            field=models.ForeignKey(
+                help_text="The job that must complete FIRST before the blocked entity is released.",
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="blocking_dependencies",
+                to="jobs.job",
+                verbose_name="blocking job",
+            ),
         ),
         migrations.AlterField(
-            model_name='dependency',
-            name='parent_layer',
-            field=models.ForeignKey(blank=True, help_text='The specific layer that must complete FIRST (required for LAYER_ON_LAYER dependencies).', null=True, on_delete=django.db.models.deletion.CASCADE, related_name='blocking_dependencies', to='jobs.layer', verbose_name='blocking layer'),
+            model_name="dependency",
+            name="parent_layer",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="The specific layer that must complete FIRST (required for LAYER_ON_LAYER dependencies).",
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="blocking_dependencies",
+                to="jobs.layer",
+                verbose_name="blocking layer",
+            ),
         ),
         migrations.AlterField(
-            model_name='frame',
-            name='checkpoint_count',
-            field=models.PositiveIntegerField(default=0, help_text='How many times the worker has reported saving intermediate progress (useful for resuming aborted frames).'),
+            model_name="frame",
+            name="checkpoint_count",
+            field=models.PositiveIntegerField(
+                default=0,
+                help_text="How many times the worker has reported saving intermediate progress (useful for resuming aborted frames).",
+            ),
         ),
         migrations.AlterField(
-            model_name='frame',
-            name='dispatch_order',
-            field=models.IntegerField(db_index=True, default=0, help_text='Scheduler priority within the layer. Lower numbers are dispatched first.'),
+            model_name="frame",
+            name="dispatch_order",
+            field=models.IntegerField(
+                db_index=True,
+                default=0,
+                help_text="Scheduler priority within the layer. Lower numbers are dispatched first.",
+            ),
         ),
         migrations.AlterField(
-            model_name='frame',
-            name='exit_status',
-            field=models.IntegerField(default=-1, help_text='Raw process exit code returned by the worker. -1 means the frame has not completed.'),
+            model_name="frame",
+            name="exit_status",
+            field=models.IntegerField(
+                default=-1,
+                help_text="Raw process exit code returned by the worker. -1 means the frame has not completed.",
+            ),
         ),
         migrations.AlterField(
-            model_name='job',
-            name='max_frames_per_worker',
-            field=models.PositiveIntegerField(default=1, help_text='Limits how many frames from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.', verbose_name='max concurrent frames per worker'),
+            model_name="job",
+            name="max_frames_per_worker",
+            field=models.PositiveIntegerField(
+                default=1,
+                help_text="Limits how many frames from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.",
+                verbose_name="max concurrent frames per worker",
+            ),
         ),
         migrations.AlterField(
-            model_name='layer',
-            name='chunk_size',
-            field=models.PositiveIntegerField(default=1, help_text='Groups this many consecutive frames into a single worker task. High values reduce startup overhead for fast-rendering frames (e.g. comp, playblasts).', verbose_name='frames per chunk'),
+            model_name="layer",
+            name="chunk_size",
+            field=models.PositiveIntegerField(
+                default=1,
+                help_text="Groups this many consecutive frames into a single worker task. High values reduce startup overhead for fast-rendering frames (e.g. comp, playblasts).",
+                verbose_name="frames per chunk",
+            ),
         ),
     ]

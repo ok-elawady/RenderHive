@@ -4,21 +4,30 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('jobs', '0002_alter_dependency_dep_frame_alter_dependency_dep_job_and_more'),
-        ('workers', '0004_remove_workernode_pool_workernode_pools'),
+        ("jobs", "0002_alter_dependency_dep_frame_alter_dependency_dep_job_and_more"),
+        ("workers", "0004_remove_workernode_pool_workernode_pools"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='job',
-            name='excluded_pools',
-            field=models.ManyToManyField(blank=True, help_text='If specified, workers in these pools are strictly prevented from processing this job.', related_name='excluded_jobs', to='workers.workerpool'),
+            model_name="job",
+            name="excluded_pools",
+            field=models.ManyToManyField(
+                blank=True,
+                help_text="If specified, workers in these pools are strictly prevented from processing this job.",
+                related_name="excluded_jobs",
+                to="workers.workerpool",
+            ),
         ),
         migrations.AddField(
-            model_name='job',
-            name='included_pools',
-            field=models.ManyToManyField(blank=True, help_text='If specified, only workers in these pools can process this job.', related_name='included_jobs', to='workers.workerpool'),
+            model_name="job",
+            name="included_pools",
+            field=models.ManyToManyField(
+                blank=True,
+                help_text="If specified, only workers in these pools can process this job.",
+                related_name="included_jobs",
+                to="workers.workerpool",
+            ),
         ),
     ]

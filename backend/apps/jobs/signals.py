@@ -122,23 +122,21 @@ def frame_pre_save(sender, instance, update_fields=None, **kwargs):
 
         # Atomic state transitions for Job and Layer based on the newly updated counts
         if instance.state in (FrameState.RUNNING, FrameState.CHECKPOINT):
-            Job.objects.filter(id=instance.job_id, is_paused=False).exclude(
+            Job.objects.filter(id=instance.job_id, is_paused=False).exclude(state=JobState.RUNNING).update(
                 state=JobState.RUNNING
-            ).update(state=JobState.RUNNING)
-            Layer.objects.filter(id=instance.layer_id).exclude(
-                state=JobState.RUNNING
-            ).update(state=JobState.RUNNING)
+            )
+            Layer.objects.filter(id=instance.layer_id).exclude(state=JobState.RUNNING).update(state=JobState.RUNNING)
 
         elif instance.state in (FrameState.SUCCEEDED, FrameState.SKIPPED, FrameState.FAILED):
             now = timezone.now()
-            
+
             # Check if finished (all frames are succeeded or skipped)
             Job.objects.filter(
                 id=instance.job_id,
                 total_frames__gt=0,
                 total_frames=F("succeeded_frames") + F("skipped_frames"),
             ).exclude(state=JobState.FINISHED).update(state=JobState.FINISHED, stopped_at=now)
-            
+
             Layer.objects.filter(
                 id=instance.layer_id,
                 total_frames__gt=0,
@@ -152,7 +150,7 @@ def frame_pre_save(sender, instance, update_fields=None, **kwargs):
                 ready_frames=0,
                 failed_frames__gt=0,
             ).exclude(state__in=[JobState.FINISHED, JobState.FAILED]).update(state=JobState.FAILED, stopped_at=now)
-            
+
             Layer.objects.filter(
                 id=instance.layer_id,
                 running_frames=0,

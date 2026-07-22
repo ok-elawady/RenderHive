@@ -29,6 +29,7 @@ def generate_job_name(project: str, user: str, visible_name: str) -> str:
         A unique, filesystem-safe job name string.
     """
     import uuid
+
     epoch_ms = int(time.time() * 1000)
     uid = uuid.uuid4().hex[:4]
 
@@ -161,7 +162,7 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
             # Since dependencies are not passed in create_job, depend_count is 0
             # Initialize to READY immediately so workers can dispatch them
             initial_state = FrameState.READY
-            
+
             frames.append(
                 Frame(
                     layer=layer,
