@@ -146,24 +146,15 @@ def _scene_info(task):
             ),
         },
         "worker_targeting": {
-            "pool": farm.get("pool", task.get("pool", "All")),
-            "pool_id": farm.get("pool_id", task.get("pool_id", "")),
-            "pool_workers": farm.get(
-                "pool_workers",
-                task.get("pool_workers", [])
-            ),
-            "allowed_workers": farm.get(
-                "allowed_workers",
-                task.get("allowed_workers", [])
-            ),
-            "denied_workers": farm.get(
-                "denied_workers",
-                task.get("denied_workers", [])
-            ),
-            "machine_limit": farm.get(
-                "machine_limit",
-                task.get("machine_limit", 0)
-            ),
+            "strategy": farm.get("pool_strategy", task.get("pool_strategy", "all")),
+            "selected_pool_ids": farm.get("selected_pool_ids", task.get("selected_pool_ids", [])),
+            "selected_pool_names": farm.get("selected_pool_names", task.get("selected_pool_names", [])),
+            "excluded_pool_ids": farm.get("excluded_pool_ids", task.get("excluded_pool_ids", [])),
+            "excluded_pool_names": farm.get("excluded_pool_names", task.get("excluded_pool_names", [])),
+            "effective_pool_ids": farm.get("effective_pool_ids", task.get("effective_pool_ids", [])),
+            "effective_pool_names": farm.get("effective_pool_names", task.get("effective_pool_names", [])),
+            "pool_workers": farm.get("pool_workers", task.get("pool_workers", [])),
+            "machine_limit": farm.get("machine_limit", task.get("machine_limit", 0)),
         },
         "job_dependencies": task.get("job_dependencies", []),
         "comment": task.get("comment", ""),
@@ -212,22 +203,20 @@ def build_job_request(task, config):
         # absolute path, but local creation is not mandatory for submission.
         pass
 
-    pool_name = _text(
-        task.get("pool")
-        or (task.get("farm") or {}).get("pool"),
-        maximum=64,
-        default="All",
-    ) or "All"
-
+    effective_pool_names = list(
+        task.get("effective_pool_names")
+        or (task.get("farm") or {}).get("effective_pool_names")
+        or []
+    )
     tags = []
-    if (
-        bool(config.get("maya", {}).get("use_pool_as_tag", True))
-        and pool_name.lower() not in ("all", "all workers")
-    ):
-        tags.append(pool_name)
+    if bool(config.get("maya", {}).get("use_pool_as_tag", True)):
+        for pool_name in effective_pool_names:
+            clean_name = _text(pool_name, maximum=64)
+            if clean_name and clean_name not in tags:
+                tags.append(clean_name)
 
-    min_ram_gb = _integer(task.get("minimum_ram_gb"), 0, minimum=0)
-    min_vram_gb = _integer(task.get("minimum_vram_gb"), 0, minimum=0)
+    min_ram_gb = 0
+    min_vram_gb = 0
     timeout_minutes = _integer(task.get("task_timeout_minutes"), 0, minimum=0)
 
     layer_name = _text(
