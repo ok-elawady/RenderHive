@@ -60,9 +60,7 @@ class JobAdminForm(forms.ModelForm):
         excluded = cleaned_data.get("excluded_pools")
 
         if included and excluded:
-            intersection = set(included.values_list("pk", flat=True)) & set(
-                excluded.values_list("pk", flat=True)
-            )
+            intersection = set(included.values_list("pk", flat=True)) & set(excluded.values_list("pk", flat=True))
             if intersection:
                 raise ValidationError("A pool cannot be both included and excluded.")
         return cleaned_data

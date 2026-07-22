@@ -89,6 +89,7 @@ class JobViewSet(viewsets.ModelViewSet):
     queryset = Job.objects.all().order_by("-priority", "created_at")
     filterset_class = JobFilter
     ordering_fields = ["priority", "created_at", "updated_at", "state"]
+    search_fields = ["name", "visible_name", "user", "project", "department"]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
@@ -164,7 +165,7 @@ class JobViewSet(viewsets.ModelViewSet):
         """
         job = self.get_object()
         job.is_paused = False
-        
+
         # Recalculate state based on current counters
         if job.running_frames > 0:
             job.state = JobState.RUNNING
@@ -174,7 +175,7 @@ class JobViewSet(viewsets.ModelViewSet):
             job.state = JobState.FAILED
         else:
             job.state = JobState.PENDING
-            
+
         job.save(update_fields=["is_paused", "state", "updated_at"])
         return Response({"status": "resumed", "is_paused": False})
 
@@ -234,6 +235,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
     """
 
     filterset_class = FrameFilter
+    search_fields = ["name", "worker_name", "layer__job__name", "layer__job__visible_name"]
 
     def get_queryset(self):
         """Return frames, optionally scoped to a parent layer.
@@ -280,7 +282,6 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         if self.action == "skip":
             return [IsAuthenticated()]  # View enforces is_staff internally
         return [IsAuthenticated()]
-
 
     @action(detail=True, methods=["post"], serializer_class=FrameStartSerializer)
     @transaction.atomic
@@ -455,6 +456,7 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
 
 class FrameDispatchView(generics.GenericAPIView):
     """Atomically find, lock, and dispatch a READY frame to a worker."""
+
     permission_classes = [IsFarmAgent]
     serializer_class = FrameStartSerializer
 
@@ -472,18 +474,20 @@ class FrameDispatchView(generics.GenericAPIView):
         # This means unregistered workers can only pull unrestricted jobs, which is the
         # correct and intentional behaviour — but it is implicit, hence this comment.
         from apps.workers.models import WorkerNode
+
         worker = WorkerNode.objects.filter(hostname=worker_name).prefetch_related("pools").first()
         worker_pools = worker.pools.all() if worker else []
 
         # Find jobs where this worker has reached the concurrency limit
-        maxed_jobs = Job.objects.annotate(
-            active_worker_frames=Count(
-                "frames",
-                filter=Q(frames__state=FrameState.RUNNING, frames__worker_name=worker_name)
+        maxed_jobs = (
+            Job.objects.annotate(
+                active_worker_frames=Count(
+                    "frames", filter=Q(frames__state=FrameState.RUNNING, frames__worker_name=worker_name)
+                )
             )
-        ).filter(
-            active_worker_frames__gte=F("max_frames_per_worker")
-        ).values("pk")
+            .filter(active_worker_frames__gte=F("max_frames_per_worker"))
+            .values("pk")
+        )
 
         # Determine which jobs are eligible based on state, pause flag, concurrency
         # limit, and pool routing.
@@ -492,22 +496,25 @@ class FrameDispatchView(generics.GenericAPIView):
         #     frames anyway, but filtering here keeps the subquery semantically clean.
         #   - `.distinct()` prevents duplicate PKs caused by the M2M JOIN when a job
         #     belongs to multiple pools that all match the worker's pools.
-        allowed_jobs = Job.objects.filter(
-            is_paused=False,
-            state__in=[JobState.PENDING, JobState.RUNNING],
-        ).exclude(
-            pk__in=maxed_jobs
-        ).filter(
-            Q(included_pools__isnull=True) | Q(included_pools__in=worker_pools)
-        ).exclude(
-            excluded_pools__in=worker_pools
-        ).distinct().values("pk")
+        allowed_jobs = (
+            Job.objects.filter(
+                is_paused=False,
+                state__in=[JobState.PENDING, JobState.RUNNING],
+            )
+            .exclude(pk__in=maxed_jobs)
+            .filter(Q(included_pools__isnull=True) | Q(included_pools__in=worker_pools))
+            .exclude(excluded_pools__in=worker_pools)
+            .distinct()
+            .values("pk")
+        )
 
         # Find the highest priority READY frame and lock it
-        frame = Frame.objects.select_for_update(skip_locked=True).filter(
-            state=FrameState.READY,
-            job_id__in=allowed_jobs
-        ).order_by("job__priority", "dispatch_order").first()
+        frame = (
+            Frame.objects.select_for_update(skip_locked=True)
+            .filter(state=FrameState.READY, job_id__in=allowed_jobs)
+            .order_by("job__priority", "dispatch_order")
+            .first()
+        )
 
         if not frame:
             return Response({"detail": "No frames available."}, status=status.HTTP_404_NOT_FOUND)
@@ -521,22 +528,24 @@ class FrameDispatchView(generics.GenericAPIView):
         # Update worker status to RENDERING
         try:
             from apps.workers.models import WorkerNode, WorkerStatus
+
             WorkerNode.objects.filter(hostname=worker_name).update(
-                status=WorkerStatus.RENDERING,
-                last_ping=timezone.now()
+                status=WorkerStatus.RENDERING, last_ping=timezone.now()
             )
         except Exception:
             pass  # If worker app is not setup yet, just pass
 
         # Return consolidated payload
-        return Response({
-            "id": str(frame.id),
-            "name": frame.name,
-            "number": frame.number,
-            "job_id": str(frame.job_id),
-            "layer_id": str(frame.layer_id),
-            "command": frame.layer.command,
-            "scene_path": frame.layer.scene_path,
-            "env": frame.layer.env,
-            "chunk_size": frame.layer.chunk_size,
-        })
+        return Response(
+            {
+                "id": str(frame.id),
+                "name": frame.name,
+                "number": frame.number,
+                "job_id": str(frame.job_id),
+                "layer_id": str(frame.layer_id),
+                "command": frame.layer.command,
+                "scene_path": frame.layer.scene_path,
+                "env": frame.layer.env,
+                "chunk_size": frame.layer.chunk_size,
+            }
+        )

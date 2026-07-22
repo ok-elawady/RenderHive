@@ -5,28 +5,37 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='WorkerNode',
+            name="WorkerNode",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('hostname', models.CharField(db_index=True, max_length=255, unique=True)),
-                ('ip_address', models.GenericIPAddressField(blank=True, null=True)),
-                ('status', models.CharField(choices=[('ONLINE', 'Online'), ('OFFLINE', 'Offline'), ('RENDERING', 'Rendering')], db_index=True, default='OFFLINE', max_length=16)),
-                ('system_info', models.JSONField(blank=True, default=dict, help_text='CPU, RAM, OS, and live utilization metrics.')),
-                ('last_ping', models.DateTimeField(default=django.utils.timezone.now)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("hostname", models.CharField(db_index=True, max_length=255, unique=True)),
+                ("ip_address", models.GenericIPAddressField(blank=True, null=True)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[("ONLINE", "Online"), ("OFFLINE", "Offline"), ("RENDERING", "Rendering")],
+                        db_index=True,
+                        default="OFFLINE",
+                        max_length=16,
+                    ),
+                ),
+                (
+                    "system_info",
+                    models.JSONField(blank=True, default=dict, help_text="CPU, RAM, OS, and live utilization metrics."),
+                ),
+                ("last_ping", models.DateTimeField(default=django.utils.timezone.now)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
             ],
             options={
-                'verbose_name': 'worker node',
-                'verbose_name_plural': 'worker nodes',
-                'ordering': ['-last_ping'],
+                "verbose_name": "worker node",
+                "verbose_name_plural": "worker nodes",
+                "ordering": ["-last_ping"],
             },
         ),
     ]

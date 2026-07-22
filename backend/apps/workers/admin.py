@@ -24,21 +24,22 @@ class WorkerNodeAdmin(admin.ModelAdmin):
     filter_horizontal = ("pools",)
 
     fieldsets = (
-        ("Basic Information", {
-            "fields": ("hostname", "ip_address", "status")
-        }),
-        ("Capabilities", {
-            "fields": ("pools", "cores", "memory_mb", "gpu_models", "tags"),
-            "description": "Hardware specifications and pool assignments."
-        }),
-        ("Telemetry", {
-            "fields": ("pretty_system_info",),
-            "description": "Transient and live utilization metrics reported by the worker."
-        }),
-        ("Timestamps", {
-            "fields": ("last_ping", "created_at"),
-            "classes": ("collapse",)
-        }),
+        ("Basic Information", {"fields": ("hostname", "ip_address", "status")}),
+        (
+            "Capabilities",
+            {
+                "fields": ("pools", "cores", "memory_mb", "gpu_models", "tags"),
+                "description": "Hardware specifications and pool assignments.",
+            },
+        ),
+        (
+            "Telemetry",
+            {
+                "fields": ("pretty_system_info",),
+                "description": "Transient and live utilization metrics reported by the worker.",
+            },
+        ),
+        ("Timestamps", {"fields": ("last_ping", "created_at"), "classes": ("collapse",)}),
     )
 
     def pretty_system_info(self, instance):
@@ -48,9 +49,8 @@ class WorkerNodeAdmin(admin.ModelAdmin):
         formatted_json = json.dumps(instance.system_info, indent=4)
         # Use <pre> for monospaced font and preserved whitespace
         return format_html(
-            "<pre style='margin: 0; padding: 10px; "
-            "background-color: #f8f8f8; border-radius: 4px;'>{}</pre>",
-            formatted_json
+            "<pre style='margin: 0; padding: 10px; background-color: #f8f8f8; border-radius: 4px;'>{}</pre>",
+            formatted_json,
         )
-    
+
     pretty_system_info.short_description = "System Info"
