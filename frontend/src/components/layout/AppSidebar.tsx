@@ -96,7 +96,11 @@ export default function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg">
+            <SidebarMenuButton
+              size="lg"
+              render={<Link href="/settings" className="cursor-pointer" />}
+              tooltip="Account Settings"
+            >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white shrink-0">
                 {initials}
               </div>

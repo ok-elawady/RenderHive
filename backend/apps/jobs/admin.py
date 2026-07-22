@@ -6,7 +6,9 @@ auto-managed fields (counter caches, timestamps, UUIDs) for all four
 jobs models: Job, Layer, Frame, and Dependency.
 """
 
+from django import forms
 from django.contrib import admin
+from django.core.exceptions import ValidationError
 
 from .models import Dependency, Frame, Job, Layer
 
@@ -45,6 +47,27 @@ class LayerInline(admin.TabularInline):
     can_delete = False
 
 
+class JobAdminForm(forms.ModelForm):
+    """Custom form for JobAdmin to validate many-to-many pool fields before save."""
+
+    class Meta:
+        model = Job
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        included = cleaned_data.get("included_pools")
+        excluded = cleaned_data.get("excluded_pools")
+
+        if included and excluded:
+            intersection = set(included.values_list("pk", flat=True)) & set(
+                excluded.values_list("pk", flat=True)
+            )
+            if intersection:
+                raise ValidationError("A pool cannot be both included and excluded.")
+        return cleaned_data
+
+
 @admin.register(Job)
 class JobAdmin(admin.ModelAdmin):
     """Admin view for the Job model.
@@ -70,6 +93,8 @@ class JobAdmin(admin.ModelAdmin):
     list_filter = ("state", "is_paused", "project", "department")
     search_fields = ("name", "visible_name", "project", "user")
     ordering = ("-priority", "created_at")
+    filter_horizontal = ("included_pools", "excluded_pools")
+    form = JobAdminForm
     readonly_fields = (
         "id",
         "name",
@@ -105,6 +130,13 @@ class JobAdmin(admin.ModelAdmin):
             "State",
             {
                 "fields": ("state", "is_paused", "priority", "max_frames_per_worker"),
+            },
+        ),
+        (
+            "Routing",
+            {
+                "fields": ("included_pools", "excluded_pools"),
+                "description": "Control which worker pools can or cannot process this job.",
             },
         ),
         (

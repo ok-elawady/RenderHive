@@ -219,3 +219,26 @@ body {
   transform-origin: center;
   animation: telemetryAreaSweep 1.5s ease-out forwards;
 }
+
+/* Sonner Toast Surface Override */
+[data-sonner-toaster] {
+  --normal-bg: var(--card) !important;
+  --normal-border: var(--border) !important;
+  --normal-text: var(--card-foreground) !important;
+}
+
+[data-sonner-toast] {
+  background-color: var(--card) !important;
+  color: var(--card-foreground) !important;
+  border-color: var(--border) !important;
+}
+
+/* Fix browser autofill yellow background override */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--foreground) !important;
+  box-shadow: 0 0 0 1000px var(--input) inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
