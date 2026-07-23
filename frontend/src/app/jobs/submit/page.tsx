@@ -108,7 +108,9 @@ export default function SubmitJobPage() {
     );
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> => {
     event.preventDefault();
     setIsSubmitting(true);
 
@@ -133,7 +135,9 @@ export default function SubmitJobPage() {
       router.push("/jobs");
       router.refresh();
     } catch (error) {
-      toast.error("Submission failed", { description: formatApiError(error) });
+      toast.error("Submission failed", {
+        description: formatApiError(error),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -157,7 +161,8 @@ export default function SubmitJobPage() {
               Submit Render Job
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Configure the job envelope, then add one or more executable render layers.
+              Configure the job envelope, then add one or more executable render
+              layers.
             </p>
           </div>
           <Button type="submit" disabled={isSubmitting}>
@@ -252,7 +257,9 @@ export default function SubmitJobPage() {
 
                     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(10rem,0.8fr)_minmax(12rem,2fr)_minmax(8rem,0.7fr)]">
                       <div className="space-y-2">
-                        <Label htmlFor={`layer-name-${layer.id}`}>Layer Name</Label>
+                        <Label htmlFor={`layer-name-${layer.id}`}>
+                          Layer Name
+                        </Label>
                         <Input
                           id={`layer-name-${layer.id}`}
                           value={layer.name}
@@ -276,7 +283,9 @@ export default function SubmitJobPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor={`layer-range-${layer.id}`}>Frame Range</Label>
+                        <Label htmlFor={`layer-range-${layer.id}`}>
+                          Frame Range
+                        </Label>
                         <Input
                           id={`layer-range-${layer.id}`}
                           value={layer.frameRange}

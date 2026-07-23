@@ -3,7 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Cpu, LayoutDashboard, ListOrdered, LogOut, Settings } from "lucide-react";
+import {
+  Bot,
+  Cpu,
+  LayoutDashboard,
+  ListOrdered,
+  LogOut,
+  Settings,
+  UsersRound,
+} from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import {
   Sidebar,
@@ -19,9 +27,25 @@ import {
 
 import type { SidebarItem } from "@/types/dashboard";
 
-const sidebarItems: SidebarItem[] = [
-  { icon: <LayoutDashboard size={18} />, label: "Dashboard", href: "/" },
-  { icon: <ListOrdered size={18} />, label: "Active Queue", href: "/jobs" },
+const dashboardItem: SidebarItem = {
+  icon: <LayoutDashboard size={18} />,
+  label: "Dashboard",
+  href: "/",
+};
+
+const queueItem: SidebarItem = {
+  icon: <ListOrdered size={18} />,
+  label: "Active Queue",
+  href: "/jobs",
+};
+
+const adminUsersItem: SidebarItem = {
+  icon: <UsersRound size={18} />,
+  label: "Active Users",
+  href: "/active-users",
+};
+
+const remainingSidebarItems: SidebarItem[] = [
   { icon: <Cpu size={18} />, label: "Node Pool", href: "/nodes" },
   { icon: <Bot size={18} />, label: "AI Rules", href: "/logs" },
   { icon: <Settings size={18} />, label: "Settings", href: "/settings" },
@@ -33,6 +57,12 @@ export default function AppSidebar() {
   const displayName = user?.displayName ?? "RenderHive User";
   const role = user?.role ?? "Authenticated";
   const initials = user?.initials ?? "RH";
+  const sidebarItems: SidebarItem[] = [
+    dashboardItem,
+    queueItem,
+    ...(user?.isSuperuser ? [adminUsersItem] : []),
+    ...remainingSidebarItems,
+  ];
 
   return (
     <Sidebar className="border-r-0">

@@ -163,11 +163,11 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-5 p-6 md:grid-cols-2">
-            <ReadOnlyField label="First Name" value={profile?.firstName || user?.firstName || ""} />
-            <ReadOnlyField label="Last Name" value={profile?.lastName || user?.lastName || ""} />
-            <ReadOnlyField label="Username" value={profile?.username || user?.username || ""} />
-            <ReadOnlyField label="Email Address" value={profile?.email || user?.email || ""} />
-            <ReadOnlyField label="Title / Role" value={role} />
+            <ReadOnlyField label="First Name" value={profile?.firstName ?? user?.firstName} />
+            <ReadOnlyField label="Last Name" value={profile?.lastName ?? user?.lastName} />
+            <ReadOnlyField label="Username" value={profile?.username ?? user?.username} />
+            <ReadOnlyField label="Email Address" value={profile?.email ?? user?.email} />
+            <ReadOnlyField label="Title / Role" value={profile?.role ?? user?.role} />
             <ReadOnlyField
               label="Access Level"
               value={profile?.isSuperuser ? "Superuser" : profile?.isStaff ? "Staff" : "User"}
@@ -284,7 +284,22 @@ function PasswordInput({
   );
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
+function getDisplayValue(value: string | null | undefined): string {
+  if (value == null) return "N/A";
+
+  const normalizedValue = value.trim();
+  return normalizedValue === "" || normalizedValue === "-" ? "N/A" : normalizedValue;
+}
+
+function ReadOnlyField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null | undefined;
+}) {
+  const displayValue = getDisplayValue(value);
+
   return (
     <FormField>
       <div className="flex items-center justify-between">
@@ -296,10 +311,10 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
       </div>
       <FormControl>
         <Input
-          value={value || "-"}
+          value={displayValue}
           readOnly
           tabIndex={-1}
-          className="bg-muted/40 text-muted-foreground border-border/50 cursor-not-allowed select-none focus-visible:ring-0"
+          className="cursor-not-allowed select-none border-border/50 bg-muted/40 text-muted-foreground focus-visible:ring-0"
         />
       </FormControl>
     </FormField>

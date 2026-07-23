@@ -37,8 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggingOut, setIsLoggingOut] = useState<boolean>(false);
 
   useEffect(() => {
-    setSession(readAuthSession());
-    setIsHydrating(false);
+    const timer = window.setTimeout(() => {
+      setSession(readAuthSession());
+      setIsHydrating(false);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   const loginUser = useCallback(async (credentials: LoginCredentials): Promise<void> => {
