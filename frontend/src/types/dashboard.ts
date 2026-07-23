@@ -21,7 +21,8 @@ export type JobStatus =
   | "Rendering"
   | "Queued"
   | "Completed"
-  | "Failed";
+  | "Failed"
+  | "Paused";
 
 export interface RenderJob {
   id: string;

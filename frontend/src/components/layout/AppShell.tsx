@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import LoginPage from "@/components/auth/LoginPage";
 import { NavigationProvider } from "@/components/common/NavigationProvider";
 import AppSidebar from "@/components/layout/AppSidebar";
+import TopNav from "@/components/layout/TopNav";
 import { SidebarProvider } from "@/components/ui/sidebar";
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -28,7 +29,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <NavigationProvider>
       <SidebarProvider>
         <AppSidebar />
-        <main className="flex flex-1 flex-col min-w-0">{children}</main>
+        <main className="flex flex-1 flex-col min-w-0">
+          <TopNav />
+          {children}
+        </main>
         {isLoggingOut && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/90 text-foreground backdrop-blur-md">
             <div className="flex flex-col items-center gap-4 rounded-xl border border-border bg-card px-8 py-7 shadow-2xl shadow-black/40">

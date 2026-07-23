@@ -8,7 +8,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormLabel, FormMessage } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
   changePassword,
@@ -16,6 +16,7 @@ import {
   formatApiError,
   type CurrentUserProfile,
 } from "@/services/api";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 interface PasswordState {
   currentPassword: string;
@@ -131,39 +132,41 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="h-screen overflow-y-auto bg-background p-4 text-foreground font-mono md:p-6">
-      <div className="mx-auto flex max-w-6xl flex-col gap-5">
-        <Card className="border-border bg-card/95 shadow-2xl shadow-black/10 dark:shadow-black/30">
-          <CardContent className="flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-              <div className="flex size-24 items-center justify-center rounded-2xl border border-primary/40 bg-gradient-to-br from-primary/30 to-[#d01fc7]/20 text-3xl font-black text-primary shadow-[0_0_24px_rgba(90,31,166,0.22)]">
-                {initials}
+    <div className="flex h-full flex-col bg-background font-sans text-foreground">
+      <PageHeader
+        title="Account Settings"
+        description="Manage your profile identity, security, and preferences."
+      />
+      
+      <div className="flex-1 overflow-y-auto p-6 font-mono">
+        <div className="space-y-6">
+          <Card className="border-border bg-card/95">
+            <CardHeader className="border-b border-border pb-4">
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-3 text-base font-black">
+                  <UserCog className="text-primary" size={18} />
+                  Personal Information
+                </div>
+                <Badge variant="outline" className="border-border bg-muted/30 px-3 py-1 font-normal text-muted-foreground">
+                  Managed by Admin
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-6 p-6">
+              <div className="flex items-center gap-5">
+                <div className="flex aspect-square size-16 items-center justify-center rounded-xl bg-gradient-to-br from-[#d01fc7] to-primary text-xl font-bold text-white shrink-0 shadow-inner">
+                  {initials}
+                </div>
+                <div>
+                  <h2 className="text-xl font-black tracking-tight text-foreground">
+                    {isLoadingProfile ? "Loading profile..." : fullName}
+                  </h2>
+                  <p className="mt-1 text-sm font-semibold text-muted-foreground">{role}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-primary">
-                  My Profile
-                </p>
-                <h1 className="mt-2 text-2xl font-black tracking-tight text-foreground">
-                  {isLoadingProfile ? "Loading profile..." : fullName}
-                </h1>
-                <p className="mt-1 text-sm font-semibold text-muted-foreground">{role}</p>
-              </div>
-            </div>
-            <Badge variant="outline" className="border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground font-normal">
-              Profile identity is managed by Django Admin
-            </Badge>
-          </CardContent>
-        </Card>
 
-        <Card className="border-border bg-card/95">
-          <CardHeader className="border-b border-border pb-4">
-            <CardTitle className="flex items-center gap-3 text-base font-black">
-              <UserCog className="text-primary" size={18} />
-              Personal Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-5 p-6 md:grid-cols-2">
-            <ReadOnlyField label="First Name" value={profile?.firstName || user?.firstName || ""} />
+              <div className="grid gap-5 md:grid-cols-2">
+                <ReadOnlyField label="First Name" value={profile?.firstName || user?.firstName || ""} />
             <ReadOnlyField label="Last Name" value={profile?.lastName || user?.lastName || ""} />
             <ReadOnlyField label="Username" value={profile?.username || user?.username || ""} />
             <ReadOnlyField label="Email Address" value={profile?.email || user?.email || ""} />
@@ -172,6 +175,7 @@ export default function SettingsPage() {
               label="Access Level"
               value={profile?.isSuperuser ? "Superuser" : profile?.isStaff ? "Staff" : "User"}
             />
+              </div>
           </CardContent>
         </Card>
 
@@ -183,12 +187,12 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            <Form
+            <form
               onSubmit={(event) => void handlePasswordSubmit(event)}
               className="w-full space-y-4"
             >
-              <FormField>
-                <FormLabel>Current Password</FormLabel>
+              <div className="space-y-2">
+                <Label>Current Password</Label>
                 <PasswordInput
                   value={passwords.currentPassword}
                   isVisible={visiblePasswords.currentPassword}
@@ -197,11 +201,11 @@ export default function SettingsPage() {
                   hasError={Boolean(passwordError) && !passwords.currentPassword}
                   autoComplete="current-password"
                 />
-              </FormField>
+              </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField>
-                  <FormLabel>New Password</FormLabel>
+                <div className="space-y-2">
+                  <Label>New Password</Label>
                   <PasswordInput
                     value={passwords.newPassword}
                     isVisible={visiblePasswords.newPassword}
@@ -211,12 +215,12 @@ export default function SettingsPage() {
                     autoComplete="new-password"
                   />
                   {!newPasswordLongEnough && (
-                    <FormMessage>Must be at least 8 characters.</FormMessage>
+                    <p className="text-[0.8rem] font-medium text-destructive">Must be at least 8 characters.</p>
                   )}
-                </FormField>
+                </div>
 
-                <FormField>
-                  <FormLabel>Confirm New Password</FormLabel>
+                <div className="space-y-2">
+                  <Label>Confirm New Password</Label>
                   <PasswordInput
                     value={passwords.confirmPassword}
                     isVisible={visiblePasswords.confirmPassword}
@@ -226,20 +230,21 @@ export default function SettingsPage() {
                     autoComplete="new-password"
                   />
                   {!passwordsMatch && (
-                    <FormMessage>Passwords do not match.</FormMessage>
+                    <p className="text-[0.8rem] font-medium text-destructive">Passwords do not match.</p>
                   )}
-                </FormField>
+                </div>
               </div>
 
-              {passwordError ? <FormMessage>{passwordError}</FormMessage> : null}
+              {passwordError ? <p className="text-[0.8rem] font-medium text-destructive">{passwordError}</p> : null}
 
               <Button type="submit" disabled={!canSubmit} size="lg" className="mt-2 sm:w-auto">
                 {isChangingPassword ? <Loader2 className="animate-spin" /> : <LockKeyhole />}
                 Update Password
               </Button>
-            </Form>
+            </form>
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   );
@@ -263,7 +268,7 @@ function PasswordInput({
   const Icon = isVisible ? EyeOff : Eye;
 
   return (
-    <FormControl>
+    <div className="relative">
       <Input
         type={isVisible ? "text" : "password"}
         value={value}
@@ -280,28 +285,26 @@ function PasswordInput({
       >
         <Icon size={16} />
       </button>
-    </FormControl>
+    </div>
   );
 }
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
-    <FormField>
+    <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <FormLabel>{label}</FormLabel>
+        <Label>{label}</Label>
         <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
           <Lock size={11} />
           Read-only
         </span>
       </div>
-      <FormControl>
-        <Input
-          value={value || "-"}
+      <Input
+        value={value || "-"}
           readOnly
           tabIndex={-1}
-          className="bg-muted/40 text-muted-foreground border-border/50 cursor-not-allowed select-none focus-visible:ring-0"
-        />
-      </FormControl>
-    </FormField>
+        className="bg-muted/40 text-muted-foreground border-border/50 cursor-not-allowed select-none focus-visible:ring-0"
+      />
+    </div>
   );
 }
