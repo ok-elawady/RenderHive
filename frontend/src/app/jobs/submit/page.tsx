@@ -86,7 +86,7 @@ export default function SubmitJobPage() {
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
 
   const form = useForm<JobFormValues>({
-    resolver: zodResolver(jobFormSchema),
+    resolver: zodResolver(jobFormSchema) as any,
     mode: "onChange",
     defaultValues: {
       visibleName: "",
