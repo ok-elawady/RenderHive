@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import "@/styles/globals.css";
 import { AuthProvider } from "@/components/auth/AuthProvider";
@@ -32,13 +33,23 @@ const themeScript = `
 })();
 `;
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+});
+
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="flex min-h-screen bg-background text-foreground">
+      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans flex min-h-screen bg-background text-foreground`}>
         <ThemeProvider>
           <AuthProvider>
             <TooltipProvider>

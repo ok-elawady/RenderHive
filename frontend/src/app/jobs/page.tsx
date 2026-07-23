@@ -7,7 +7,7 @@ import { Pause, Play, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -143,9 +143,6 @@ export default function JobsPage() {
               <RefreshCw size={15} />
               Refresh
             </Button>
-            <Link href="/jobs/submit" className={buttonVariants()}>
-              Submit Job
-            </Link>
           </div>
         </div>
 

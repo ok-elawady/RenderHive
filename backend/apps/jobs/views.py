@@ -50,6 +50,10 @@ class JobFilter(django_filters.FilterSet):
         user: Exact match on user field.
     """
 
+    project = django_filters.CharFilter(lookup_expr="icontains")
+    department = django_filters.CharFilter(lookup_expr="icontains")
+    user = django_filters.CharFilter(lookup_expr="icontains")
+
     class Meta:
         model = Job
         fields = ["state", "project", "department", "user"]

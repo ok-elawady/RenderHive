@@ -51,7 +51,6 @@ function getFarmEfficiency(jobs: RenderJob[]): number {
 
 export default function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>("");
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [telemetry, setTelemetry] = useState<TelemetryMetrics>(emptyTelemetry);
@@ -90,9 +89,6 @@ export default function DashboardPage() {
     });
   };
 
-  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    setSearchQuery(event.target.value);
-  };
 
   useEffect(() => {
     initialFetchTimerRef.current = window.setTimeout(() => {
@@ -131,7 +127,7 @@ export default function DashboardPage() {
   const renderJobQueue = (): React.ReactNode => (
     <JobQueue
       jobs={jobs}
-      searchQuery={searchQuery}
+      searchQuery=""
       onJobRemoved={refreshJobsData}
     />
   );
@@ -167,7 +163,7 @@ export default function DashboardPage() {
     }
 
     if (activeView === "AI Rules") {
-      return <AgenticLogs logs={logs} searchQuery={searchQuery} />;
+      return <AgenticLogs logs={logs} searchQuery="" />;
     }
 
     if (activeView === "Settings") {
@@ -198,76 +194,13 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <AgenticLogs logs={logs} searchQuery={searchQuery} />
+        <AgenticLogs logs={logs} searchQuery="" />
       </>
     );
   };
 
   return (
-    <div className="p-6 space-y-6 overflow-y-auto h-screen bg-background text-foreground w-full font-mono">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-surface border border-border p-4 rounded-xl">
-        <div className="flex items-center gap-6 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-primary animate-pulse"></span>
-            API:{" "}
-            <span className="text-foreground">
-              localhost:8000
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#9E8EFF]"></span>
-            Polling:{" "}
-            <span className="text-foreground">7s</span>
-          </div>
-        </div>
-
-        <div className="relative flex-1 max-w-md mx-0 md:mx-6">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            size={16}
-          />
-          <Input
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            placeholder="Search users, jobs, logs..."
-            className="pl-10 h-10 w-full"
-          />
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={toggleTheme}
-            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-            className="group hover:border-primary"
-          >
-            {isDark ? (
-              <Sun
-                key="sun"
-                size={17}
-                className="transition-transform duration-500 group-hover:rotate-45 text-primary"
-              />
-            ) : (
-              <Moon
-                key="moon"
-                size={17}
-                className="transition-transform duration-500 group-hover:-rotate-12 text-primary"
-              />
-            )}
-          </Button>
-
-          <Button
-            onClick={() => setIsModalOpen(true)}
-            className="font-bold px-4"
-          >
-            <Plus size={16} />
-            New Job
-          </Button>
-        </div>
-      </header>
+    <div className="flex-1 p-6 space-y-6 font-mono">
 
       {renderDashboardContent()}
 

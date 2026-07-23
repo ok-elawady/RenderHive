@@ -1,4 +1,4 @@
-openapi: 3.0.3
+﻿openapi: 3.0.3
 info:
   title: RenderHive API
   version: 0.1.0
@@ -34,6 +34,12 @@ paths:
         description: A page number within the paginated result set.
         schema:
           type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
       - in: query
         name: state
         schema:
@@ -378,13 +384,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         — list all jobs, supports filtering.
-            ``POST   /api/jobs/``         — submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  — pause the job.
-            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+            ``POST   /api/jobs/``         ù submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
       parameters:
       - in: query
         name: department
@@ -404,6 +410,12 @@ paths:
           type: integer
       - in: query
         name: project
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
         schema:
           type: string
       - in: query
@@ -445,13 +457,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         — list all jobs, supports filtering.
-            ``POST   /api/jobs/``         — submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  — pause the job.
-            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+            ``POST   /api/jobs/``         ù submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
       tags:
       - jobs
       requestBody:
@@ -484,8 +496,8 @@ paths:
         Read-only ViewSet for listing and retrieving layers scoped to a job.
 
         Endpoints (nested under /api/jobs/{job_pk}/):
-            ``GET  /api/jobs/{job_pk}/layers/``         — list all layers for a job.
-            ``GET  /api/jobs/{job_pk}/layers/{id}/``    — retrieve a single layer.
+            ``GET  /api/jobs/{job_pk}/layers/``         ù list all layers for a job.
+            ``GET  /api/jobs/{job_pk}/layers/{id}/``    ù retrieve a single layer.
 
         All endpoints require authentication. Layers are scoped to the parent job
         via the ``job_pk`` URL kwarg.
@@ -507,6 +519,12 @@ paths:
         description: A page number within the paginated result set.
         schema:
           type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
       tags:
       - jobs
       security:
@@ -562,6 +580,12 @@ paths:
         description: A page number within the paginated result set.
         schema:
           type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
       - in: query
         name: state
         schema:
@@ -949,8 +973,8 @@ paths:
         Read-only ViewSet for listing and retrieving layers scoped to a job.
 
         Endpoints (nested under /api/jobs/{job_pk}/):
-            ``GET  /api/jobs/{job_pk}/layers/``         — list all layers for a job.
-            ``GET  /api/jobs/{job_pk}/layers/{id}/``    — retrieve a single layer.
+            ``GET  /api/jobs/{job_pk}/layers/``         ù list all layers for a job.
+            ``GET  /api/jobs/{job_pk}/layers/{id}/``    ù retrieve a single layer.
 
         All endpoints require authentication. Layers are scoped to the parent job
         via the ``job_pk`` URL kwarg.
@@ -985,13 +1009,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         — list all jobs, supports filtering.
-            ``POST   /api/jobs/``         — submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  — pause the job.
-            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+            ``POST   /api/jobs/``         ù submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
       parameters:
       - in: path
         name: id
@@ -1019,13 +1043,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         — list all jobs, supports filtering.
-            ``POST   /api/jobs/``         — submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  — pause the job.
-            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+            ``POST   /api/jobs/``         ù submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
       parameters:
       - in: path
         name: id
@@ -1064,13 +1088,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         — list all jobs, supports filtering.
-            ``POST   /api/jobs/``         — submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  — pause the job.
-            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
+            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
+            ``POST   /api/jobs/``         ù submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
+            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
+            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
       parameters:
       - in: path
         name: id
@@ -1095,7 +1119,7 @@ paths:
         Pause a job, preventing new frames from being dispatched.
 
         Sets ``is_paused=True`` on the job. Does not terminate currently
-        running frames — they will complete their current render.
+        running frames ù they will complete their current render.
 
         Args:
             request: The HTTP request.
@@ -1181,6 +1205,186 @@ paths:
               schema:
                 $ref: '#/components/schemas/JobDetail'
           description: ''
+  /api/pools/:
+    get:
+      operationId: pools_list
+      description: ViewSet for listing, creating, and managing worker pools.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - pools
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedWorkerPoolList'
+          description: ''
+    post:
+      operationId: pools_create
+      description: ViewSet for listing, creating, and managing worker pools.
+      tags:
+      - pools
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerPool'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WorkerPool'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WorkerPool'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPool'
+          description: ''
+  /api/pools/{id}/:
+    get:
+      operationId: pools_retrieve
+      description: ViewSet for listing, creating, and managing worker pools.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this worker pool.
+        required: true
+      tags:
+      - pools
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPool'
+          description: ''
+    put:
+      operationId: pools_update
+      description: ViewSet for listing, creating, and managing worker pools.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this worker pool.
+        required: true
+      tags:
+      - pools
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerPool'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/WorkerPool'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/WorkerPool'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPool'
+          description: ''
+    patch:
+      operationId: pools_partial_update
+      description: ViewSet for listing, creating, and managing worker pools.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this worker pool.
+        required: true
+      tags:
+      - pools
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedWorkerPool'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedWorkerPool'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedWorkerPool'
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPool'
+          description: ''
+    delete:
+      operationId: pools_destroy
+      description: ViewSet for listing, creating, and managing worker pools.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this worker pool.
+        required: true
+      tags:
+      - pools
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/workers/:
     get:
       operationId: workers_list
@@ -1198,6 +1402,12 @@ paths:
         description: A page number within the paginated result set.
         schema:
           type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
       tags:
       - workers
       security:
@@ -1521,6 +1731,20 @@ components:
           description: Limits how many frames from this job a single machine can run
             at once. Used to prevent a single job from monopolizing nodes with high
             core counts.
+        included_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: If specified, only workers in these pools can process this
+            job.
+        excluded_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: If specified, workers in these pools are strictly prevented
+            from processing this job.
         layers:
           type: array
           items:
@@ -1607,6 +1831,22 @@ components:
           type: string
           format: date-time
           readOnly: true
+        included_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          readOnly: true
+          description: If specified, only workers in these pools can process this
+            job.
+        excluded_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          readOnly: true
+          description: If specified, workers in these pools are strictly prevented
+            from processing this job.
         layers:
           type: array
           items:
@@ -1631,8 +1871,10 @@ components:
       - created_at
       - department
       - depend_frames
+      - excluded_pools
       - failed_frames
       - id
+      - included_pools
       - is_paused
       - layers
       - log_directory
@@ -1740,12 +1982,30 @@ components:
           type: string
           format: date-time
           readOnly: true
+        included_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          readOnly: true
+          description: If specified, only workers in these pools can process this
+            job.
+        excluded_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          readOnly: true
+          description: If specified, workers in these pools are strictly prevented
+            from processing this job.
       required:
       - created_at
       - department
       - depend_frames
+      - excluded_pools
       - failed_frames
       - id
+      - included_pools
       - is_paused
       - name
       - priority
@@ -1788,6 +2048,20 @@ components:
           description: Limits how many frames from this job a single machine can run
             at once. Used to prevent a single job from monopolizing nodes with high
             core counts.
+        included_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: If specified, only workers in these pools can process this
+            job.
+        excluded_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: If specified, workers in these pools are strictly prevented
+            from processing this job.
     LayerCreate:
       type: object
       description: |-
@@ -2181,6 +2455,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WorkerNode'
+    PaginatedWorkerPoolList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerPool'
     PatchedJobPatch:
       type: object
       description: |-
@@ -2209,6 +2506,40 @@ components:
           description: Limits how many frames from this job a single machine can run
             at once. Used to prevent a single job from monopolizing nodes with high
             core counts.
+        included_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: If specified, only workers in these pools can process this
+            job.
+        excluded_pools:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: If specified, workers in these pools are strictly prevented
+            from processing this job.
+    PatchedWorkerPool:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 128
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
     State1dfEnum:
       enum:
       - PENDING
@@ -2265,8 +2596,31 @@ components:
           nullable: true
         status:
           $ref: '#/components/schemas/StatusEnum'
+        pools:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerPool'
+          readOnly: true
+        tags:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+        cores:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        memory_mb:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        gpu_models:
+          type: array
+          items:
+            type: string
+            maxLength: 128
         system_info:
-          description: CPU, RAM, OS, and live utilization metrics.
+          description: Transient and live utilization metrics.
         last_ping:
           type: string
           format: date-time
@@ -2280,6 +2634,32 @@ components:
       - hostname
       - id
       - last_ping
+      - pools
+    WorkerPool:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 128
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - updated_at
   securitySchemes:
     XSessionTokenAuth:
       type: apiKey
