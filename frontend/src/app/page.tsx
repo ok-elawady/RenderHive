@@ -13,7 +13,6 @@ import AgenticLogs from "@/components/dashboard/AgenticLogs";
 import HardwareTelemetry from "@/components/dashboard/HardwareTelemetry";
 import JobQueue from "@/components/dashboard/JobQueue";
 import KpiCards from "@/components/dashboard/KpiCards";
-import NewJobModal from "@/components/dashboard/NewJobModal";
 import { PageSkeleton } from "@/components/ui/SkeletonLoaders";
 import {
   deriveLogsFromJobs,
@@ -51,7 +50,6 @@ function getFarmEfficiency(jobs: RenderJob[]): number {
 }
 
 export default function DashboardPage() {
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [telemetry, setTelemetry] = useState<TelemetryMetrics>(emptyTelemetry);
@@ -83,12 +81,6 @@ export default function DashboardPage() {
     await fetchJobsData();
   }, [fetchJobsData]);
 
-  const handleJobSubmitted = async (jobName: string): Promise<void> => {
-    await refreshJobsData();
-    toast.success("Saved Successfully", {
-      description: `Job "${jobName}" successfully queued!`,
-    });
-  };
 
 
   useEffect(() => {
@@ -204,12 +196,6 @@ export default function DashboardPage() {
     <div className="flex-1 p-6 space-y-6 font-mono">
 
       {renderDashboardContent()}
-
-      <NewJobModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={handleJobSubmitted}
-      />
     </div>
   );
 }
