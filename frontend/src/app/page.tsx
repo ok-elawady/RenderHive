@@ -20,6 +20,7 @@ import {
   deriveTelemetryFromJobs,
   fetchJobs,
   mapBackendJobToRenderJob,
+  API_BASE_URL,
 } from "@/services/api";
 import { useNavigation } from "@/components/common/NavigationProvider";
 import { useTheme } from "@/components/common/ThemeProvider";
@@ -176,7 +177,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-1">
             <h2 className="text-xl font-bold text-foreground">
-              API base URL: http://localhost:8000/api
+              API base URL: {API_BASE_URL}
             </h2>
           </CardContent>
         </Card>
