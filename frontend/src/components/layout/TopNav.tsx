@@ -5,6 +5,7 @@ import Link from "next/link";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useTheme } from "@/components/common/ThemeProvider";
+import { API_BASE_URL } from "@/services/api";
 
 export default function TopNav() {
   const { theme, toggleTheme } = useTheme();
@@ -16,7 +17,7 @@ export default function TopNav() {
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-primary animate-pulse"></span>
             <span className="hidden sm:inline">API:</span>{" "}
-            <span className="text-foreground">localhost:8000</span>
+            <span className="text-foreground">{API_BASE_URL.replace(/^https?:\/\//, "")}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-[#9E8EFF]"></span>
