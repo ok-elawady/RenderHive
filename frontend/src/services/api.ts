@@ -237,24 +237,6 @@ export interface JobFilters {
   user?: string;
 }
 
-function stringifyApiValue(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map(stringifyApiValue).filter(Boolean).join(", ");
-  }
-  if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([key, nestedValue]) => `${key}: ${stringifyApiValue(nestedValue)}`)
-      .filter((entry) => !entry.endsWith(": "))
-      .join(" | ");
-  }
-
-  return "";
-}
-
 
 
 function mapStatus(state: BackendJobState): RenderJob["status"] {

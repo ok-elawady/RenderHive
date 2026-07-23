@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, type FieldErrors } from "react-hook-form";
 import * as z from "zod";
 
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -86,6 +86,7 @@ export default function SubmitJobPage() {
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
 
   const form = useForm<JobFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(jobFormSchema as any),
     mode: "onChange",
     defaultValues: {
@@ -106,8 +107,8 @@ export default function SubmitJobPage() {
   });
 
   // Watch for engine/frameRange changes to auto-update command
-  const watchLayers = form.watch("layers");
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/incompatible-library
     const subscription = form.watch((value, { name, type }) => {
       if (type === "change" && name?.startsWith("layers.")) {
         const parts = name.split(".");
@@ -131,7 +132,7 @@ export default function SubmitJobPage() {
       }
     });
     return () => subscription.unsubscribe();
-  }, [form.watch]);
+  }, [form]);
 
   const addLayer = () => {
     append(createLayerDraft(fields.length));
@@ -188,10 +189,10 @@ export default function SubmitJobPage() {
     }
   };
 
-  const onInvalid = (errors: any) => {
+  const onInvalid = (errors: FieldErrors<JobFormValues>) => {
     // If there are layer errors, jump to the first invalid layer tab automatically
-    if (errors.layers) {
-      const firstErrorIndex = errors.layers.findIndex((l: any) => l !== undefined);
+    if (errors.layers && Array.isArray(errors.layers)) {
+      const firstErrorIndex = errors.layers.findIndex((l) => l !== undefined);
       if (firstErrorIndex !== -1) {
         setSelectedLayerIndex(firstErrorIndex);
         toast.error("Layer Validation Error", {

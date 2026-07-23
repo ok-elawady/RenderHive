@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Search, Trash2, MoreHorizontal, Play, Pause, Loader2, CheckCircle2, XCircle, PauseCircle, Clock } from "lucide-react";
+import { Play, Pause, MoreHorizontal, Loader2, CheckCircle2, XCircle, Clock, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { deleteJob, pauseJob, resumeJob, formatApiError } from "@/services/api";
 import type { RenderJob } from "@/types/dashboard";
@@ -151,14 +151,8 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                 </TableRow>
               </TableHeader>
               <TableBody className="text-xs font-mono">
-                {filteredJobs.length > 0 || true ? (
-                  [
-                    { id: "9991", displayId: "DEMO-FAIL", priority: 1, user: "admin", backendState: "FAILED", progress: 32, frameCounts: "32/100" } as any,
-                    { id: "9992", displayId: "DEMO-PAUSE", priority: 50, user: "omara", backendState: "PAUSED", progress: 75, frameCounts: "75/100" } as any,
-                    { id: "9993", displayId: "DEMO-PEND", priority: 100, user: "jdoe", backendState: "PENDING", progress: 0, frameCounts: "0/100" } as any,
-                    { id: "9994", displayId: "DEMO-DONE", priority: 20, user: "admin", backendState: "FINISHED", progress: 100, frameCounts: "100/100" } as any,
-                    ...filteredJobs
-                  ].map((job) => (
+                {filteredJobs.length > 0 ? (
+                  filteredJobs.map((job) => (
                     <TableRow key={job.id} className="hover:bg-muted/40 group transition-colors">
                       <TableCell className="font-medium text-foreground py-4">
                         <Link

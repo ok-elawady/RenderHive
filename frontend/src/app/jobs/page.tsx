@@ -95,7 +95,6 @@ function getJobStateBadge(state: BackendJob["state"]) {
 }
 
 export default function JobsPage() {
-  const router = useRouter();
   const [jobs, setJobs] = useState<BackendJob[]>([]);
   const [filters, setFilters] = useState<JobFilters>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -265,14 +264,8 @@ export default function JobsPage() {
                         <TableCell className="pr-6 py-4"><Skeleton className="h-8 w-16 ml-auto" /></TableCell>
                       </TableRow>
                     ))
-                  ) : jobs.length > 0 || true ? (
-                    [
-                      { id: "9991", name: "Failed Demo", visible_name: "Failed Demo", priority: 1, project: "Project A", department: "Lighting", user: "admin", state: "FAILED", total_frames: 100, succeeded_frames: 32, skipped_frames: 0 } as any,
-                      { id: "9992", name: "Paused Demo", visible_name: "Paused Demo", priority: 50, project: "Project B", department: "FX", user: "omara", state: "PAUSED", total_frames: 100, succeeded_frames: 75, skipped_frames: 0 } as any,
-                      { id: "9993", name: "Pending Demo", visible_name: "Pending Demo", priority: 100, project: "Project C", department: "Animation", user: "jdoe", state: "PENDING", total_frames: 100, succeeded_frames: 0, skipped_frames: 0 } as any,
-                      { id: "9994", name: "Finished Demo", visible_name: "Finished Demo", priority: 20, project: "Project A", department: "Lighting", user: "admin", state: "FINISHED", total_frames: 100, succeeded_frames: 100, skipped_frames: 0 } as any,
-                      ...jobs
-                    ].map((job) => {
+                  ) : jobs.length > 0 ? (
+                    jobs.map((job) => {
                       const completed = job.succeeded_frames + job.skipped_frames;
                       const total = job.total_frames || 1;
                       const percentage = Math.round((completed / total) * 100);

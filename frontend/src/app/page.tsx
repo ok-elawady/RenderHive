@@ -6,9 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
 } from "react";
-import { Moon, Plus, Search, Sun } from "lucide-react";
 import AgenticLogs from "@/components/dashboard/AgenticLogs";
 import HardwareTelemetry from "@/components/dashboard/HardwareTelemetry";
 import JobQueue from "@/components/dashboard/JobQueue";
@@ -24,9 +22,6 @@ import {
 import { useNavigation } from "@/components/common/NavigationProvider";
 import { useTheme } from "@/components/common/ThemeProvider";
 import type { LogEntry, RenderJob, TelemetryMetrics } from "@/types/dashboard";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 const emptyTelemetry: TelemetryMetrics = {
@@ -57,9 +52,7 @@ export default function DashboardPage() {
   const initialFetchTimerRef = useRef<number | null>(null);
   const pollingTimerRef = useRef<number | null>(null);
   const { activeView } = useNavigation();
-  const { theme, toggleTheme } = useTheme();
-  const isDark = theme === "dark";
-
+  const { theme } = useTheme();
   const activeJobCount = useMemo<number>(
     () => jobs.filter((job) => job.status === "Rendering").length,
     [jobs],
