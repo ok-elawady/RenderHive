@@ -4,6 +4,7 @@ import type { components } from "./schema";
 export type DashboardView =
   | "Dashboard"
   | "Active Queue"
+  | "Active Users"
   | "Node Pool"
   | "AI Rules"
   | "Settings";

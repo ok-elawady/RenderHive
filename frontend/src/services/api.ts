@@ -85,6 +85,53 @@ export interface ChangePasswordPayload {
   newPassword: string;
 }
 
+export const USER_TITLE_ROLES = [
+  "Technical Director",
+  "Animator",
+  "Pipeline Engineer",
+  "FX Artist",
+  "Lighting Lead",
+] as const;
+
+export const USER_ACCESS_LEVELS = ["Superuser", "Staff", "Client"] as const;
+
+export type UserTitleRole = (typeof USER_TITLE_ROLES)[number];
+export type UserAccessLevel = (typeof USER_ACCESS_LEVELS)[number];
+
+export interface AdminUser {
+  id: number;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  username: string;
+  email: string;
+  title_role: string;
+  access_level: UserAccessLevel;
+  is_active: boolean;
+  is_staff: boolean;
+  is_superuser: boolean;
+  date_joined: string;
+  last_login: string | null;
+}
+
+export interface CreateAdminUserPayload {
+  first_name: string;
+  last_name: string;
+  username: string;
+  email: string;
+  title_role: UserTitleRole;
+  access_level: UserAccessLevel;
+  password: string;
+}
+
+export interface UpdateAdminUserPayload {
+  first_name: string;
+  last_name: string;
+  email: string;
+  title_role: UserTitleRole;
+  access_level: UserAccessLevel;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -101,9 +148,39 @@ function getInitials(name: string): string {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
+function getRawUser(payload: RawLoginResponse): RawLoginUser | undefined {
+  return payload.user ?? payload.data?.user;
+}
+
+function getNameParts(
+  rawUser: RawLoginUser | undefined,
+  fallbackUser?: AuthUser | null,
+): { firstName: string; lastName: string } {
+  const displayName =
+    rawUser?.display_name?.trim() ||
+    rawUser?.display?.trim() ||
+    fallbackUser?.displayName.trim() ||
+    "";
+  const displayParts = displayName.split(/\s+/).filter(Boolean);
+  const displayFirstName = displayParts.at(0) ?? "";
+  const displayLastName = displayParts.slice(1).join(" ");
+
+  return {
+    firstName:
+      rawUser?.first_name?.trim() ||
+      rawUser?.firstName?.trim() ||
+      fallbackUser?.firstName?.trim() ||
+      displayFirstName,
+    lastName:
+      rawUser?.last_name?.trim() ||
+      rawUser?.lastName?.trim() ||
+      fallbackUser?.lastName?.trim() ||
+      displayLastName,
+  };
+}
+
 function normalizeUser(rawUser: RawLoginUser | undefined, username: string): AuthUser {
-  const firstName = rawUser?.first_name || rawUser?.firstName || "";
-  const lastName = rawUser?.last_name || rawUser?.lastName || "";
+  const { firstName, lastName } = getNameParts(rawUser);
   const displayName =
     rawUser?.display_name ||
     rawUser?.display ||
@@ -128,8 +205,7 @@ function normalizeUser(rawUser: RawLoginUser | undefined, username: string): Aut
 }
 
 function normalizeProfile(rawUser: RawLoginUser | undefined, fallbackUser: AuthUser | null): CurrentUserProfile {
-  const firstName = rawUser?.first_name || rawUser?.firstName || fallbackUser?.firstName || "";
-  const lastName = rawUser?.last_name || rawUser?.lastName || fallbackUser?.lastName || "";
+  const { firstName, lastName } = getNameParts(rawUser, fallbackUser);
   const isStaff = Boolean(rawUser?.is_staff ?? rawUser?.isStaff ?? fallbackUser?.isStaff);
   const isSuperuser = Boolean(rawUser?.is_superuser ?? rawUser?.isSuperuser ?? fallbackUser?.isSuperuser);
   const username = rawUser?.username || fallbackUser?.username || "";
@@ -487,6 +563,63 @@ export async function deleteJob(jobId: string): Promise<void> {
   }
 }
 
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/users/`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
+  }
+
+  return parseApiResponse<AdminUser[]>(response);
+}
+
+export async function createAdminUser(
+  payload: CreateAdminUserPayload,
+): Promise<AdminUser> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/users/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
+  }
+
+  return parseApiResponse<AdminUser>(response);
+}
+
+export async function updateAdminUser(
+  userId: number,
+  payload: UpdateAdminUserPayload,
+): Promise<AdminUser> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/users/${userId}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
+  }
+
+  return parseApiResponse<AdminUser>(response);
+}
+
+export async function deleteAdminUser(userId: number): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/admin/users/${userId}/`, {
+    method: "DELETE",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
+  }
+}
+
 export async function fetchCurrentUserProfile(): Promise<CurrentUserProfile> {
   const fallbackSession = readAuthSession();
   const response = await fetch(`${API_BASE_URL}/_allauth/app/v1/auth/session`, {
@@ -504,7 +637,7 @@ export async function fetchCurrentUserProfile(): Promise<CurrentUserProfile> {
   }
 
   const payload = await parseApiResponse<RawLoginResponse>(response);
-  return normalizeProfile(payload.user || payload.data?.user, fallbackSession?.user ?? null);
+  return normalizeProfile(getRawUser(payload), fallbackSession?.user ?? null);
 }
 
 export async function changePassword(payload: ChangePasswordPayload): Promise<void> {
@@ -585,7 +718,7 @@ export async function login(credentials: LoginCredentials): Promise<AuthSession>
   const session: AuthSession = {
     token,
     xSessionToken,
-    user: normalizeUser(rawPayload.user || rawPayload.data?.user, credentials.username),
+    user: normalizeUser(getRawUser(rawPayload), credentials.username),
   };
 
   persistAuthSession(session);

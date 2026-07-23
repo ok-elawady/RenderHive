@@ -183,7 +183,9 @@ export default function SubmitJobPage() {
       router.push("/jobs");
       router.refresh();
     } catch (error) {
-      toast.error("Submission failed", { description: formatApiError(error) });
+      toast.error("Submission failed", {
+        description: formatApiError(error),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -209,10 +211,10 @@ export default function SubmitJobPage() {
 
   return (
     <div className="flex h-full flex-col bg-background font-sans text-foreground">
-      <PageHeader 
-        title="Submit Render Job" 
-        description="Configure job metadata and setup executable render layers." 
-        backTo="/jobs" 
+      <PageHeader
+        title="Submit Render Job"
+        description="Configure job metadata and setup executable render layers."
+        backTo="/jobs"
       />
 
       <div className="flex-1 overflow-y-auto px-6 py-6 pb-28">
