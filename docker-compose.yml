@@ -58,6 +58,7 @@ services:
     restart: unless-stopped
 
   frontend:
+    profiles: ["frontend"]
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -75,6 +76,7 @@ services:
     restart: unless-stopped
 
   nginx:
+    profiles: ["frontend"]
     image: nginx:alpine
     ports:
       - "80:80"
