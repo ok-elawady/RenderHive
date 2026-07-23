@@ -11,12 +11,14 @@ import {
 } from "lucide-react";
 
 import {
+  Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSeparator,
 } from "@/components/ui/command";
 import { useUnifiedSearch } from "@/hooks/useUnifiedSearch";
 
@@ -52,22 +54,24 @@ export function GlobalSearch() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-muted/50 px-3 text-sm text-muted-foreground shadow-sm transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex h-9 w-full cursor-pointer items-center gap-2 rounded-md border border-transparent bg-input/40 px-3 text-sm text-muted-foreground transition-all hover:bg-input/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group"
       >
-        <Search className="h-4 w-4 shrink-0 opacity-50" />
-        <span className="flex-1 text-left">Search...</span>
-        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+        <Search className="h-4 w-4 shrink-0 opacity-50 transition-colors group-hover:text-primary group-hover:opacity-100" />
+        <span className="flex-1 text-left transition-colors group-hover:text-foreground">Search...</span>
+        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border-transparent bg-background/50 px-1.5 font-mono text-[10px] font-medium text-muted-foreground/70 transition-colors group-hover:text-primary">
           <span className="text-xs">⌘</span>K
         </kbd>
       </button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput
-          placeholder="Search jobs, workers, or pools..."
-          value={query}
-          onValueChange={setQuery}
-        />
-        <CommandList>
+        <Command shouldFilter={false} className="bg-transparent">
+          <CommandInput
+            placeholder="Search jobs, workers, or pools..."
+            value={query}
+            onValueChange={setQuery}
+            className="h-12 text-base px-2"
+          />
+          <CommandList>
           {isLoading && (
             <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -75,7 +79,15 @@ export function GlobalSearch() {
             </div>
           )}
           {!isLoading && !hasResults && query.trim() !== "" && (
-            <CommandEmpty>No results found for &quot;{query}&quot;.</CommandEmpty>
+            <CommandEmpty className="py-6 text-center text-sm">No results found for &quot;{query}&quot;.</CommandEmpty>
+          )}
+
+          {!isLoading && query.trim() === "" && (
+            <div className="py-14 px-6 text-center text-sm text-muted-foreground">
+              <Search className="mx-auto h-10 w-10 opacity-20 mb-4" />
+              <p className="text-base font-medium text-foreground/80 mb-1">Search the Render Farm</p>
+              <p>Type above to find active jobs, worker nodes, and hardware pools instantly.</p>
+            </div>
           )}
 
           {!isLoading && results.jobs.length > 0 && (
@@ -99,6 +111,10 @@ export function GlobalSearch() {
               ))}
             </CommandGroup>
           )}
+          
+          {!isLoading && results.jobs.length > 0 && (results.workers.length > 0 || results.pools.length > 0) && (
+            <CommandSeparator className="my-2" />
+          )}
 
           {!isLoading && results.workers.length > 0 && (
             <CommandGroup heading="Worker Nodes">
@@ -120,6 +136,10 @@ export function GlobalSearch() {
                 </CommandItem>
               ))}
             </CommandGroup>
+          )}
+          
+          {!isLoading && results.workers.length > 0 && results.pools.length > 0 && (
+            <CommandSeparator className="my-2" />
           )}
 
           {!isLoading && results.pools.length > 0 && (
@@ -146,6 +166,7 @@ export function GlobalSearch() {
             </CommandGroup>
           )}
         </CommandList>
+        </Command>
       </CommandDialog>
     </>
   );
