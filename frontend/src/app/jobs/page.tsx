@@ -306,7 +306,7 @@ export default function JobsPage() {
                             </div>
                           </TableCell>
                           <TableCell className="text-right pr-6 align-middle py-4">
-                            <TooltipProvider delayDuration={150}>
+                            <TooltipProvider delay={150}>
                               <div className="flex justify-end gap-1.5 transition-opacity">
                                 <Tooltip>
                                   <TooltipTrigger render={
