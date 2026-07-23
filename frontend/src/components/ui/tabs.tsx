@@ -58,7 +58,7 @@ function TabsList({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="tabs-list"
       className={cn(
-        "inline-flex h-10 items-center justify-center rounded-3xl bg-muted p-1 text-muted-foreground",
+        "inline-flex h-10 items-center justify-center rounded-md border border-border bg-card p-1 text-muted-foreground",
         className,
       )}
       {...props}
@@ -80,8 +80,9 @@ function TabsTrigger({
       data-slot="tabs-trigger"
       data-state={isActive ? "active" : "inactive"}
       className={cn(
-        "inline-flex h-8 items-center justify-center rounded-3xl px-4 text-sm font-medium transition-all cursor-pointer",
-        "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+        "inline-flex h-8 items-center justify-center rounded-sm px-4 text-sm font-medium transition-all cursor-pointer",
+        "data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md",
+        "hover:text-foreground data-[state=active]:hover:text-primary-foreground",
         className,
       )}
       onClick={() => onValueChange(value)}

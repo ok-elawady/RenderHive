@@ -1,6 +1,5 @@
 import createClient from "openapi-fetch";
 import type { paths, components } from "@/types/schema";
-import type { JobFormValues } from "@/types/api";
 import type {
   LogEntry,
   RenderJob,
@@ -260,7 +259,8 @@ function stringifyApiValue(value: unknown): string {
 
 function mapStatus(state: BackendJobState): RenderJob["status"] {
   if (state === "RUNNING") return "Rendering";
-  if (state === "PENDING" || state === "PAUSED") return "Queued";
+  if (state === "PAUSED") return "Paused";
+  if (state === "PENDING") return "Queued";
   if (state === "FINISHED") return "Completed";
   return "Failed";
 }
@@ -471,39 +471,7 @@ export function getDefaultRenderCommand(
   return `render --renderer ${renderer} --frames ${frameRange}`;
 }
 
-export function buildJobRequest(
-  formData: JobFormValues,
-): components["schemas"]["JobCreate"] {
 
-
-  const frameRange = `${formData.startFrame}-${formData.endFrame}`;
-  const sanitizedName = formData.jobName.trim();
-  const renderer = getRendererName(formData.engine);
-
-  let layerType: components["schemas"]["LayerTypeEnum"] = "RENDER";
-  if (renderer.includes("comp") || renderer.includes("nuke")) {
-    layerType = "POST";
-  }
-
-  return {
-    visible_name: sanitizedName,
-    project: "test",
-    department: "td",
-    priority: formData.priority,
-    max_frames_per_worker: 0,
-    user: formData.user,
-    log_directory: formData.logDirectory.trim(),
-    layers: [
-      {
-        name: "default_layer",
-        layer_type: layerType,
-        frame_range: frameRange,
-        chunk_size: 1,
-        command: formData.renderCommand.trim(),
-      },
-    ],
-  };
-}
 
 export async function createJob(
   payload: components["schemas"]["JobCreate"],
