@@ -1,16 +1,5 @@
 "use client";
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-
-function SkeletonBlock({ className }: { className: string }) {
-  return (
-    <div
-      className={`animate-pulse rounded bg-input ${className}`}
-    />
-  );
-}
-
 export function PageSkeleton() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center min-h-[500px] w-full p-6">

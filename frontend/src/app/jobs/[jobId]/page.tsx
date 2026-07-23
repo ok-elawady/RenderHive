@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { ArrowLeft, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageHeader } from "@/components/layout/PageHeader";
 import {
   Table,
   TableBody,
@@ -128,38 +129,28 @@ export default function JobDetailPage() {
   };
 
   return (
-    <div className="h-screen overflow-y-auto bg-background p-6 text-foreground font-mono">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <Button nativeButton={false} variant="ghost" size="sm" render={<Link href="/jobs" />}>
-              <ArrowLeft size={14} />
-              Back to jobs
-            </Button>
-            <h1 className="mt-3 text-2xl font-black tracking-tight">
-              {job?.visible_name ?? "Loading job..."}
-            </h1>
-            {job && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {job.project} / {job.department} / {job.user}
-              </p>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => void loadJob()}>
-              <RefreshCw size={15} />
-              Refresh
-            </Button>
-            <Button variant="outline" onClick={() => setIsEditOpen(true)} disabled={!job}>
-              <Pencil size={15} />
-              Edit
-            </Button>
-            <Button variant="destructive" onClick={() => void handleAbort()} disabled={!job}>
-              <Trash2 size={15} />
-              Abort
-            </Button>
-          </div>
-        </div>
+    <div className="flex h-full flex-col bg-background font-sans text-foreground">
+      <PageHeader
+        title={job?.visible_name ?? "Loading job..."}
+        description={job ? `${job.project} / ${job.department} / ${job.user}` : "Fetching details..."}
+        backTo="/jobs"
+      >
+        <Button variant="outline" size="sm" onClick={() => void loadJob()} className="gap-2">
+          <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+          Refresh
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)} disabled={!job} className="gap-2">
+          <Pencil size={14} />
+          Edit
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => void handleAbort()} disabled={!job} className="gap-2 border-destructive/30 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive">
+          <Trash2 size={14} />
+          Abort
+        </Button>
+      </PageHeader>
+
+      <div className="flex-1 overflow-y-auto p-6 font-mono">
+        <div className="space-y-6">
 
         {isLoading || !job ? (
           <Card className="border-border">
@@ -291,6 +282,7 @@ export default function JobDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

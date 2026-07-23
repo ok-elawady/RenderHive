@@ -3,15 +3,25 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Search, Trash2 } from "lucide-react";
+import { Play, Pause, MoreHorizontal, Loader2, CheckCircle2, XCircle, Clock, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
-import { deleteJob, formatApiError } from "@/services/api";
+import { deleteJob, pauseJob, resumeJob, formatApiError } from "@/services/api";
 import type { RenderJob } from "@/types/dashboard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface JobQueueProps {
   jobs: RenderJob[];
@@ -23,30 +33,61 @@ interface JobQueueProps {
 function matchesJobSearch(job: RenderJob, normalizedQuery: string): boolean {
   if (!normalizedQuery) return true;
 
-  return [job.id, job.displayId, job.user, job.status, job.backendState].some((value) =>
+  return [job.id, job.displayId, job.user, job.backendState].some((value) =>
     value.toLowerCase().includes(normalizedQuery),
   );
 }
 
-function getStatusBadgeProps(status: RenderJob["status"]): {
-  variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info";
-  className?: string;
-} {
-  if (status === "Rendering") {
-    return { variant: "info" };
+const getJobStateBadge = (state: string) => {
+  switch (state) {
+    case "RUNNING":
+      return (
+        <Badge variant="info" className="gap-1.5 font-medium pr-2">
+          <Loader2 className="animate-spin" size={12} /> {state}
+        </Badge>
+      );
+    case "FINISHED":
+    case "COMPLETED":
+      return (
+        <Badge variant="success" className="gap-1.5 font-medium pr-2 bg-success/15 text-success hover:bg-success/20">
+          <CheckCircle2 size={12} /> {state}
+        </Badge>
+      );
+    case "FAILED":
+    case "ERROR":
+      return (
+        <Badge variant="destructive" className="gap-1.5 font-medium pr-2 bg-destructive/15 text-destructive hover:bg-destructive/20">
+          <XCircle size={12} /> {state}
+        </Badge>
+      );
+    case "PAUSED":
+      return (
+        <Badge variant="warning" className="gap-1.5 font-medium pr-2 bg-warning/15 text-warning hover:bg-warning/20">
+          <Pause size={12} /> {state}
+        </Badge>
+      );
+    case "PENDING":
+      return (
+        <Badge variant="secondary" className="gap-1.5 font-medium pr-2 bg-muted/60 text-muted-foreground hover:bg-muted">
+          <Clock size={12} /> {state}
+        </Badge>
+      );
+    default:
+      return (
+        <Badge variant="secondary" className="gap-1.5 font-medium pr-2">
+          <Clock size={12} /> {state}
+        </Badge>
+      );
   }
-  if (status === "Queued") {
-    return { variant: "secondary" };
-  }
-  if (status === "Completed") {
-    return { variant: "success" };
-  }
-  return { variant: "destructive" };
-}
+};
+
 
 export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueueProps) {
   const router = useRouter();
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
+  const [actionJobId, setActionJobId] = useState<string | null>(null);
+  const [jobToDelete, setJobToDelete] = useState<RenderJob | null>(null);
+  
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredJobs = useMemo<RenderJob[]>(
     () => jobs.filter((job) => matchesJobSearch(job, normalizedQuery)),
@@ -70,22 +111,41 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
     }
   };
 
+  const handleTransition = async (jobId: string, action: "pause" | "resume") => {
+    setActionJobId(jobId);
+    try {
+      if (action === "pause") {
+        await pauseJob(jobId);
+        toast.success("Job paused");
+      } else {
+        await resumeJob(jobId);
+        toast.success("Job resumed");
+      }
+      await onJobRemoved(); // Refresh dashboard data
+    } catch (error) {
+      toast.error(`Failed to ${action} job`, { description: formatApiError(error) });
+    } finally {
+      setActionJobId(null);
+    }
+  };
+
   return (
-    <Card className="flex flex-col justify-between h-full border-border">
+    <>
+      <Card className="flex flex-col justify-between h-full border-border">
       <CardHeader>
         <CardTitle className="text-base font-bold text-foreground">Live Job Queue</CardTitle>
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col">
-        <div className="rounded-lg border border-border overflow-hidden flex-1 flex flex-col">
+        <div className="rounded-md border border-border overflow-hidden flex-1 flex flex-col">
           <div className="flex-1 overflow-auto">
             <Table>
-              <TableHeader className="bg-surface-deep">
+              <TableHeader className="bg-muted/30">
                 <TableRow>
                   <TableHead className="w-[20%]">Job ID</TableHead>
                   <TableHead className="w-[10%] text-center">Priority</TableHead>
                   <TableHead className="w-[15%] text-center">User</TableHead>
-                  <TableHead className="w-[15%] text-center">Status</TableHead>
+                  <TableHead className="w-[15%] text-center">State</TableHead>
                   <TableHead className="w-[30%] text-center">Progress</TableHead>
                   <TableHead className="w-[10%] text-right">Actions</TableHead>
                 </TableRow>
@@ -93,40 +153,66 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
               <TableBody className="text-xs font-mono">
                 {filteredJobs.length > 0 ? (
                   filteredJobs.map((job) => (
-                    <TableRow key={job.id} className="hover:bg-surface-hover group transition-colors">
-                      <TableCell className="font-medium text-foreground group-hover:text-primary transition-colors py-3">
+                    <TableRow key={job.id} className="hover:bg-muted/40 group transition-colors">
+                      <TableCell className="font-medium text-foreground py-4">
                         <Link
-                          className="text-purple-400 transition-all hover:text-purple-300 hover:underline"
+                          className="text-primary hover:text-primary/80 transition-colors"
                           href={`/jobs/${job.id}`}
                         >
                           {job.displayId}
                         </Link>
                       </TableCell>
-                      <TableCell className="text-center font-bold text-foreground">
+                      <TableCell className="text-center font-bold text-foreground py-4">
                         {job.priority}
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-center">{job.user}</TableCell>
-                      <TableCell className="text-center">
-                        <Badge {...getStatusBadgeProps(job.status)}>{job.status}</Badge>
+                      <TableCell className="text-muted-foreground text-center py-4">{job.user}</TableCell>
+                      <TableCell className="text-center py-4">
+                        {getJobStateBadge(job.backendState)}
                       </TableCell>
-                      <TableCell className="text-center py-3">
-                        <div className="flex items-center justify-center gap-3 translate-y-[1px]">
-                          <span className="text-muted-foreground w-8 text-right font-medium">{job.progress}%</span>
-                          <Progress value={job.progress} className="w-20 h-[6px] rounded-full" />
-                          <span className="text-[11px] text-muted-foreground text-left whitespace-nowrap">{job.frameCounts}</span>
+                      <TableCell className="text-center py-4">
+                        <div className="flex items-center justify-center gap-3 w-full max-w-[200px] mx-auto">
+                          <span className="text-xs text-muted-foreground w-8 text-right font-medium">{job.progress}%</span>
+                          <Progress value={job.progress} className="h-[6px] flex-1 bg-input/50 rounded-full" />
+                          <span className="text-[11px] text-muted-foreground text-left whitespace-nowrap w-12">
+                            {job.frameCounts}
+                          </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right py-3">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="h-7 px-2 text-[10px]"
-                          onClick={() => void handleRemoveJob(job.id)}
-                          disabled={deletingJobId === job.id}
-                          aria-label={`Kill or remove ${job.displayId}`}
-                        >
-                          <Trash2 size={13} />
-                        </Button>
+                      <TableCell className="text-right py-4 pr-4">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          } />
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              {job.backendState !== "FINISHED" && job.backendState !== "FAILED" && (
+                                <>
+                                  <DropdownMenuItem
+                                    onClick={() => void handleTransition(job.id, job.backendState === "PAUSED" ? "resume" : "pause")}
+                                    disabled={actionJobId === job.id}
+                                    className="cursor-pointer"
+                                  >
+                                    {job.backendState === "PAUSED" ? <Play className="mr-2 h-4 w-4" /> : <Pause className="mr-2 h-4 w-4" />}
+                                    {job.backendState === "PAUSED" ? "Resume job" : "Pause job"}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                </>
+                              )}
+                              <DropdownMenuItem
+                                className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
+                                onClick={() => setJobToDelete(job)}
+                                disabled={deletingJobId === job.id}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete job
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -149,5 +235,34 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
         </div>
       </CardContent>
     </Card>
+
+    <Dialog open={!!jobToDelete} onOpenChange={(open) => !open && setJobToDelete(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete Render Job</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete <strong className="text-foreground">{jobToDelete?.displayId}</strong>? 
+            This will permanently delete the job and all associated layers and frames. This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setJobToDelete(null)}>
+            Cancel
+          </Button>
+          <Button 
+            variant="destructive" 
+            onClick={() => {
+              if (jobToDelete) {
+                void handleRemoveJob(jobToDelete.id);
+                setJobToDelete(null);
+              }
+            }}
+          >
+            Delete Job
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>
   );
 }

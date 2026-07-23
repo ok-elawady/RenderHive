@@ -6,14 +6,11 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
 } from "react";
-import { Moon, Plus, Search, Sun } from "lucide-react";
 import AgenticLogs from "@/components/dashboard/AgenticLogs";
 import HardwareTelemetry from "@/components/dashboard/HardwareTelemetry";
 import JobQueue from "@/components/dashboard/JobQueue";
 import KpiCards from "@/components/dashboard/KpiCards";
-import NewJobModal from "@/components/dashboard/NewJobModal";
 import { PageSkeleton } from "@/components/ui/SkeletonLoaders";
 import {
   deriveLogsFromJobs,
@@ -25,9 +22,6 @@ import {
 import { useNavigation } from "@/components/common/NavigationProvider";
 import { useTheme } from "@/components/common/ThemeProvider";
 import type { LogEntry, RenderJob, TelemetryMetrics } from "@/types/dashboard";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 const emptyTelemetry: TelemetryMetrics = {
@@ -51,7 +45,6 @@ function getFarmEfficiency(jobs: RenderJob[]): number {
 }
 
 export default function DashboardPage() {
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [telemetry, setTelemetry] = useState<TelemetryMetrics>(emptyTelemetry);
@@ -59,9 +52,7 @@ export default function DashboardPage() {
   const initialFetchTimerRef = useRef<number | null>(null);
   const pollingTimerRef = useRef<number | null>(null);
   const { activeView } = useNavigation();
-  const { theme, toggleTheme } = useTheme();
-  const isDark = theme === "dark";
-
+  const { theme } = useTheme();
   const activeJobCount = useMemo<number>(
     () => jobs.filter((job) => job.status === "Rendering").length,
     [jobs],
@@ -83,12 +74,6 @@ export default function DashboardPage() {
     await fetchJobsData();
   }, [fetchJobsData]);
 
-  const handleJobSubmitted = async (jobName: string): Promise<void> => {
-    await refreshJobsData();
-    toast.success("Saved Successfully", {
-      description: `Job "${jobName}" successfully queued!`,
-    });
-  };
 
 
   useEffect(() => {
@@ -204,12 +189,6 @@ export default function DashboardPage() {
     <div className="flex-1 p-6 space-y-6 font-mono">
 
       {renderDashboardContent()}
-
-      <NewJobModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={handleJobSubmitted}
-      />
     </div>
   );
 }

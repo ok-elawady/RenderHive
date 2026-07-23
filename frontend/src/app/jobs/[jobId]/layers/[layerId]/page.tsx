@@ -1,15 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, RefreshCw, SkipForward } from "lucide-react";
+import { RefreshCw, SkipForward } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/layout/PageHeader";
 import {
   API_BASE_URL,
   formatApiError,
@@ -187,33 +187,20 @@ export default function LayerInspectorPage() {
   };
 
   return (
-    <div className="h-screen overflow-y-auto bg-background p-6 text-foreground font-mono">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <Button
-              nativeButton={false}
-              variant="ghost"
-              size="sm"
-              render={<Link href={`/jobs/${params.jobId}`} />}
-            >
-              <ArrowLeft size={14} />
-              Back to job
-            </Button>
-            <h1 className="mt-3 text-2xl font-black tracking-tight">
-              {layer?.name ?? "Layer Inspector"}
-            </h1>
-            {layer && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {layer.layer_type} / {layer.frame_range} / {layer.command}
-              </p>
-            )}
-          </div>
-          <Button variant="outline" onClick={() => void loadLayer()}>
-            <RefreshCw size={15} />
-            Refresh
-          </Button>
-        </div>
+    <div className="flex h-full flex-col bg-background font-sans text-foreground">
+      <PageHeader
+        title={layer?.name ?? "Layer Inspector"}
+        description={layer ? `${layer.layer_type} / ${layer.frame_range} / ${layer.command}` : "Fetching frames..."}
+        backTo={`/jobs/${params.jobId}`}
+      >
+        <Button variant="outline" size="sm" onClick={() => void loadLayer()} className="gap-2">
+          <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
+          Refresh
+        </Button>
+      </PageHeader>
+
+      <div className="flex-1 overflow-y-auto p-6 font-mono">
+        <div className="space-y-6">
 
         <Tabs
           value={stateFilter}
@@ -297,6 +284,7 @@ export default function LayerInspectorPage() {
             </Card>
           </TabsContent>
         </Tabs>
+        </div>
       </div>
     </div>
   );
