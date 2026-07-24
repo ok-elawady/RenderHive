@@ -183,7 +183,9 @@ export default function SubmitJobPage() {
       router.push("/jobs");
       router.refresh();
     } catch (error) {
-      toast.error("Submission failed", { description: formatApiError(error) });
+      toast.error("Submission failed", {
+        description: formatApiError(error),
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -209,10 +211,10 @@ export default function SubmitJobPage() {
 
   return (
     <div className="flex h-full flex-col bg-background font-sans text-foreground">
-      <PageHeader 
-        title="Submit Render Job" 
-        description="Configure job metadata and setup executable render layers." 
-        backTo="/jobs" 
+      <PageHeader
+        title="Submit Render Job"
+        description="Configure job metadata and setup executable render layers."
+        backTo="/jobs"
       />
 
       <div className="flex-1 overflow-y-auto px-6 py-6 pb-28">
@@ -268,19 +270,22 @@ export default function SubmitJobPage() {
                         <FormItem>
                           <FormLabel>Department</FormLabel>
                           <FormControl>
-                            <select
-                              {...field}
-                              className="flex h-9 w-full items-center justify-between rounded-lg border border-transparent bg-input/50 px-3 py-2 text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-                            >
-                              <option value="" disabled>
-                                Select
-                              </option>
-                              {departmentOptions.map((dep) => (
-                                <option key={dep} value={dep}>
-                                  {dep}
+                            <div className="relative">
+                              <select
+                                {...field}
+                                className="flex h-9 w-full appearance-none rounded-lg border border-transparent bg-input/50 pl-3 pr-8 py-2 text-sm outline-none transition-all hover:bg-input/80 hover:border-border/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                              >
+                                <option value="" disabled>
+                                  Select
                                 </option>
-                              ))}
-                            </select>
+                                {departmentOptions.map((dep) => (
+                                  <option key={dep} value={dep}>
+                                    {dep}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+                            </div>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -453,14 +458,17 @@ export default function SubmitJobPage() {
                             <FormItem>
                               <FormLabel>Layer Type</FormLabel>
                               <FormControl>
-                                <select
-                                  {...field}
-                                  className="flex h-9 w-full items-center justify-between rounded-lg border border-transparent bg-input/50 px-3 py-2 text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-                                >
-                                  <option value="RENDER">RENDER</option>
-                                  <option value="UTIL">UTIL</option>
-                                  <option value="POST">POST</option>
-                                </select>
+                                <div className="relative">
+                                  <select
+                                    {...field}
+                                    className="flex h-9 w-full appearance-none rounded-lg border border-transparent bg-input/50 pl-3 pr-8 py-2 text-sm outline-none transition-all hover:bg-input/80 hover:border-border/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                                  >
+                                    <option value="RENDER">RENDER</option>
+                                    <option value="UTIL">UTIL</option>
+                                    <option value="POST">POST</option>
+                                  </select>
+                                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+                                </div>
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -475,15 +483,18 @@ export default function SubmitJobPage() {
                           <FormItem>
                             <FormLabel>Engine Environment</FormLabel>
                             <FormControl>
-                              <select
-                                {...field}
-                                className="flex h-9 w-full items-center justify-between rounded-lg border border-transparent bg-input/50 px-3 py-2 text-sm outline-none transition-all focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
-                              >
-                                <option value="Houdini (Mantra/Karma)">Houdini (Mantra/Karma)</option>
-                                <option value="Maya (Arnold/V-Ray)">Maya (Arnold/V-Ray)</option>
-                                <option value="Unreal Engine 5 (MRQ)">Unreal Engine 5 (MRQ)</option>
-                                <option value="Blender (Cycles)">Blender (Cycles)</option>
-                              </select>
+                              <div className="relative">
+                                <select
+                                  {...field}
+                                  className="flex h-9 w-full appearance-none rounded-lg border border-transparent bg-input/50 pl-3 pr-8 py-2 text-sm outline-none transition-all hover:bg-input/80 hover:border-border/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                                >
+                                  <option value="Houdini (Mantra/Karma)">Houdini (Mantra/Karma)</option>
+                                  <option value="Maya (Arnold/V-Ray)">Maya (Arnold/V-Ray)</option>
+                                  <option value="Unreal Engine 5 (MRQ)">Unreal Engine 5 (MRQ)</option>
+                                  <option value="Blender (Cycles)">Blender (Cycles)</option>
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+                              </div>
                             </FormControl>
                             <FormMessage />
                           </FormItem>
