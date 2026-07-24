@@ -4,6 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 User = get_user_model()
 
@@ -13,6 +14,7 @@ TITLE_ROLE_CHOICES = (
     ("Pipeline Engineer", "Pipeline Engineer"),
     ("FX Artist", "FX Artist"),
     ("Lighting Lead", "Lighting Lead"),
+    ("Render User", "Render User"),
 )
 
 ACCESS_LEVEL_CHOICES = (
@@ -22,7 +24,7 @@ ACCESS_LEVEL_CHOICES = (
 )
 
 
-class AdminUserSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     title_role = serializers.SerializerMethodField()
     access_level = serializers.SerializerMethodField()
@@ -65,13 +67,16 @@ class AdminUserSerializer(serializers.ModelSerializer):
         return "Client"
 
 
-class AdminUserCreateSerializer(serializers.ModelSerializer):
+class UserCreateSerializer(serializers.ModelSerializer):
     title_role = serializers.ChoiceField(choices=TITLE_ROLE_CHOICES)
     access_level = serializers.ChoiceField(choices=ACCESS_LEVEL_CHOICES)
     password = serializers.CharField(
         write_only=True,
         trim_whitespace=False,
         style={"input_type": "password"},
+    )
+    email = serializers.EmailField(
+        validators=[UniqueValidator(queryset=User.objects.all(), lookup='iexact')]
     )
 
     class Meta:
@@ -85,12 +90,6 @@ class AdminUserCreateSerializer(serializers.ModelSerializer):
             "access_level",
             "password",
         )
-
-    def validate_email(self, value):
-        email = value.strip().lower()
-        if User.objects.filter(email__iexact=email).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
-        return email
 
     def validate(self, attrs):
         candidate = User(
@@ -125,12 +124,15 @@ class AdminUserCreateSerializer(serializers.ModelSerializer):
         return user
 
     def to_representation(self, instance):
-        return AdminUserSerializer(instance, context=self.context).data
+        return UserSerializer(instance, context=self.context).data
 
 
-class AdminUserUpdateSerializer(serializers.ModelSerializer):
+class UserUpdateSerializer(serializers.ModelSerializer):
     title_role = serializers.ChoiceField(choices=TITLE_ROLE_CHOICES)
     access_level = serializers.ChoiceField(choices=ACCESS_LEVEL_CHOICES)
+    email = serializers.EmailField(
+        validators=[UniqueValidator(queryset=User.objects.all(), lookup='iexact')]
+    )
 
     class Meta:
         model = User
@@ -142,14 +144,6 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
             "access_level",
         )
 
-    def validate_email(self, value):
-        email = value.strip().lower()
-        if not email:
-            return email
-        if User.objects.exclude(pk=self.instance.pk).filter(email__iexact=email).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
-        return email
-
     def validate_access_level(self, value):
         request = self.context.get("request")
         if request and self.instance == request.user and value != "Superuser":
@@ -158,18 +152,19 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, instance, validated_data):
-        title_role = validated_data.pop("title_role")
-        access_level = validated_data.pop("access_level")
-        instance.is_superuser = access_level == "Superuser"
-        instance.is_staff = access_level in {"Superuser", "Staff"}
+        title_role = validated_data.pop("title_role", None)
+        access_level = validated_data.pop("access_level", None)
+        
+        if access_level:
+            instance.is_superuser = access_level == "Superuser"
+            instance.is_staff = access_level in {"Superuser", "Staff"}
 
-        for field, value in validated_data.items():
-            setattr(instance, field, value)
-
+        if title_role:
+            group, _ = Group.objects.get_or_create(name=title_role)
+            instance.groups.set([group])
+            
         instance.save()
-        group, _ = Group.objects.get_or_create(name=title_role)
-        instance.groups.set([group])
-        return instance
+        return super().update(instance, validated_data)
 
     def to_representation(self, instance):
-        return AdminUserSerializer(instance, context=self.context).data
+        return UserSerializer(instance, context=self.context).data

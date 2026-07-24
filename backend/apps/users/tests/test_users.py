@@ -23,7 +23,7 @@ def test_superuser_can_list_active_users():
     )
     User.objects.create_user(username="artist", password="StrongPass!234")
 
-    response = authenticated_client(admin).get("/api/admin/users/")
+    response = authenticated_client(admin).get("/api/users/")
 
     assert response.status_code == 200
     assert {user["username"] for user in response.json()} == {"admin", "artist"}
@@ -36,7 +36,7 @@ def test_staff_user_cannot_access_user_administration():
         is_staff=True,
     )
 
-    response = authenticated_client(staff).get("/api/admin/users/")
+    response = authenticated_client(staff).get("/api/users/")
 
     assert response.status_code == 403
 
@@ -58,7 +58,7 @@ def test_superuser_can_create_user_with_hashed_password_and_role():
     }
 
     response = authenticated_client(admin).post(
-        "/api/admin/users/",
+        "/api/users/",
         payload,
         format="json",
     )
@@ -85,7 +85,7 @@ def test_superuser_can_update_and_delete_another_user():
     client = authenticated_client(admin)
 
     update_response = client.patch(
-        f"/api/admin/users/{artist.pk}/",
+        f"/api/users/{artist.pk}/",
         {
             "first_name": "Updated",
             "last_name": "Artist",
@@ -102,10 +102,23 @@ def test_superuser_can_update_and_delete_another_user():
     assert artist.is_staff is True
     assert artist.groups.filter(name="Lighting Lead").exists()
 
-    delete_response = client.delete(f"/api/admin/users/{artist.pk}/")
+    # True partial update test (no title_role or access_level)
+    partial_update_response = client.patch(
+        f"/api/users/{artist.pk}/",
+        {"first_name": "PartialUpdateName"},
+        format="json",
+    )
+    
+    assert partial_update_response.status_code == 200
+    artist.refresh_from_db()
+    assert artist.first_name == "PartialUpdateName"
+    assert artist.is_staff is True  # Did not lose previous staff access
+
+    delete_response = client.delete(f"/api/users/{artist.pk}/")
 
     assert delete_response.status_code == 204
-    assert not User.objects.filter(pk=artist.pk).exists()
+    artist.refresh_from_db()
+    assert not artist.is_active
 
 
 def test_superuser_cannot_delete_own_account():
@@ -115,7 +128,8 @@ def test_superuser_cannot_delete_own_account():
         password="StrongPass!234",
     )
 
-    response = authenticated_client(admin).delete(f"/api/admin/users/{admin.pk}/")
+    response = authenticated_client(admin).delete(f"/api/users/{admin.pk}/")
 
     assert response.status_code == 400
-    assert User.objects.filter(pk=admin.pk).exists()
+    admin.refresh_from_db()
+    assert admin.is_active
