@@ -24,6 +24,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 import type { SidebarItem } from "@/types/dashboard";
 
@@ -35,14 +36,14 @@ const dashboardItem: SidebarItem = {
 
 const queueItem: SidebarItem = {
   icon: <ListOrdered size={18} />,
-  label: "Active Queue",
+  label: "Job Queue",
   href: "/jobs",
 };
 
-const adminUsersItem: SidebarItem = {
+const usersItem: SidebarItem = {
   icon: <UsersRound size={18} />,
-  label: "Active Users",
-  href: "/active-users",
+  label: "User Management",
+  href: "/users",
 };
 
 const remainingSidebarItems: SidebarItem[] = [
@@ -60,7 +61,7 @@ export default function AppSidebar() {
   const sidebarItems: SidebarItem[] = [
     dashboardItem,
     queueItem,
-    ...(user?.isSuperuser ? [adminUsersItem] : []),
+    ...(user?.isSuperuser ? [usersItem] : []),
     ...remainingSidebarItems,
   ];
 
@@ -131,9 +132,11 @@ export default function AppSidebar() {
               render={<Link href="/settings" className="cursor-pointer" />}
               tooltip="Account Settings"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white shrink-0">
-                {initials}
-              </div>
+              <Avatar className="size-8 rounded-lg">
+                <AvatarFallback className="rounded-lg bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="font-semibold text-foreground text-sm">{displayName}</span>
                 <span className="text-[10px] text-primary font-mono">{role}</span>

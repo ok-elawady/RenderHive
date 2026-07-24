@@ -193,7 +193,7 @@ export default function LayerInspectorPage() {
         description={layer ? `${layer.layer_type} / ${layer.frame_range} / ${layer.command}` : "Fetching frames..."}
         backTo={`/jobs/${params.jobId}`}
       >
-        <Button variant="outline" size="sm" onClick={() => void loadLayer()} className="gap-2">
+        <Button variant="outline" onClick={() => void loadLayer()} className="gap-2">
           <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
           Refresh
         </Button>

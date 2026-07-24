@@ -135,15 +135,15 @@ export default function JobDetailPage() {
         description={job ? `${job.project} / ${job.department} / ${job.user}` : "Fetching details..."}
         backTo="/jobs"
       >
-        <Button variant="outline" size="sm" onClick={() => void loadJob()} className="gap-2">
+        <Button variant="outline" onClick={() => void loadJob()} className="gap-2">
           <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
           Refresh
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)} disabled={!job} className="gap-2">
+        <Button variant="outline" onClick={() => setIsEditOpen(true)} disabled={!job} className="gap-2">
           <Pencil size={14} />
           Edit
         </Button>
-        <Button variant="outline" size="sm" onClick={() => void handleAbort()} disabled={!job} className="gap-2 border-destructive/30 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive">
+        <Button variant="outline" onClick={() => void handleAbort()} disabled={!job} className="gap-2 border-destructive/30 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive">
           <Trash2 size={14} />
           Abort
         </Button>
