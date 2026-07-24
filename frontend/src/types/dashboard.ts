@@ -3,8 +3,8 @@ import type { components } from "./schema";
 
 export type DashboardView =
   | "Dashboard"
-  | "Active Queue"
-  | "Active Users"
+  | "Job Queue"
+  | "User Management"
   | "Node Pool"
   | "AI Rules"
   | "Settings";

@@ -126,11 +126,15 @@ export interface CreateUserPayload {
 }
 
 export interface UpdateUserPayload {
-  first_name: string;
-  last_name: string;
-  email: string;
-  title_role: UserTitleRole;
-  access_level: UserAccessLevel;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  title_role?: UserTitleRole;
+  access_level?: UserAccessLevel;
+}
+
+export interface ResetPasswordPayload {
+  password?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -564,8 +568,9 @@ export async function deleteJob(jobId: string): Promise<void> {
   }
 }
 
-export async function getUsers(): Promise<User[]> {
-  const response = await apiFetch(`${API_BASE_URL}/api/users/`, {
+export async function getUsers(ordering?: string): Promise<User[]> {
+  const query = ordering ? `?ordering=${encodeURIComponent(ordering)}` : "";
+  const response = await apiFetch(`${API_BASE_URL}/api/users/${query}`, {
     method: "GET",
     cache: "no-store",
   });
@@ -599,6 +604,23 @@ export async function updateUser(
 ): Promise<User> {
   const response = await apiFetch(`${API_BASE_URL}/api/users/${userId}/`, {
     method: "PATCH",
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
+  }
+
+  return parseApiResponse<User>(response);
+}
+
+export async function resetUserPassword(
+  userId: number,
+  payload: ResetPasswordPayload,
+): Promise<User> {
+  const response = await apiFetch(`${API_BASE_URL}/api/users/${userId}/password/`, {
+    method: "PUT",
     body: JSON.stringify(payload),
     cache: "no-store",
   });

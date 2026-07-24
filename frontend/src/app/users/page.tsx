@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  type ChangeEvent,
-  type FormEvent,
   type KeyboardEvent,
   useCallback,
   useEffect,
@@ -10,14 +8,10 @@ import {
   useState,
 } from "react";
 import {
-  BadgeCheck,
   CalendarDays,
-  Eye,
-  EyeOff,
   Handshake,
   ChevronRight,
   Loader2,
-  Lock,
   Mail,
   Pencil,
   Plus,
@@ -27,7 +21,12 @@ import {
   Trash2,
   UserRound,
   UsersRound,
-  WandSparkles,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  KeyRound,
+  BadgeCheck,
+  Lock,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -50,23 +49,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -87,54 +69,16 @@ import {
   formatApiError,
   getUsers,
   updateUser,
-  USER_ACCESS_LEVELS,
-  USER_TITLE_ROLES,
+  resetUserPassword,
   type User,
-  type CreateUserPayload,
-  type UpdateUserPayload,
   type UserAccessLevel,
   type UserTitleRole,
 } from "@/services/api";
 
-interface NewUserFormState {
-  firstName: string;
-  lastName: string;
-  username: string;
-  email: string;
-  titleRole: UserTitleRole;
-  accessLevel: UserAccessLevel;
-  password: string;
-}
-
-interface EditUserFormState {
-  firstName: string;
-  lastName: string;
-  email: string;
-  titleRole: UserTitleRole;
-  accessLevel: UserAccessLevel;
-}
-
-const initialFormState: NewUserFormState = {
-  firstName: "",
-  lastName: "",
-  username: "",
-  email: "",
-  titleRole: "Animator",
-  accessLevel: "Client",
-  password: "",
-};
-
-function getEditFormState(user: User): EditUserFormState {
-  return {
-    firstName: user.first_name || "",
-    lastName: user.last_name || "",
-    email: user.email || "",
-    titleRole: USER_TITLE_ROLES.includes(user.title_role as UserTitleRole)
-      ? (user.title_role as UserTitleRole)
-      : "Render User",
-    accessLevel: user.access_level || "Client",
-  };
-}
+import { CreateUserForm } from "@/components/users/CreateUserForm";
+import { EditUserForm } from "@/components/users/EditUserForm";
+import { ResetPasswordForm } from "@/components/users/ResetPasswordForm";
+import type { CreateUserFormValues, UpdateUserFormValues, ResetPasswordFormValues } from "@/components/users/schema";
 
 function getInitials(user: User): string {
   const initials = `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`;
@@ -143,8 +87,8 @@ function getInitials(user: User): string {
 
 function getAccessBadgeVariant(
   accessLevel: UserAccessLevel,
-): "default" | "info" | "secondary" {
-  if (accessLevel === "Superuser") return "default";
+): "default" | "info" | "secondary" | "destructive" {
+  if (accessLevel === "Superuser") return "destructive";
   if (accessLevel === "Staff") return "info";
   return "secondary";
 }
@@ -157,28 +101,24 @@ function formatDate(value: string | null): string {
   }).format(new Date(value));
 }
 
-function generateSecurePassword(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+";
-  let pwd = "";
-  for (let i = 0; i < 16; i++) {
-    pwd += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return pwd;
-}
-
 export default function ActiveUsersPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const userIdParam = searchParams.get("userId");
   const { user } = useAuth();
+  
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  
   const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
   const [isCreating, setIsCreating] = useState<boolean>(false);
-  const [isEditingSheet, setIsEditingSheet] = useState<boolean>(false);
-  const [editForm, setEditForm] = useState<EditUserFormState | null>(null);
+  
+  const [sheetMode, setSheetMode] = useState<"view" | "edit" | "resetPassword">("view");
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
+  const [isResettingPassword, setIsResettingPassword] = useState<boolean>(false);
+  const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
 
   const selectedUser = useMemo(() => {
     if (!userIdParam || users.length === 0) return null;
@@ -192,12 +132,9 @@ export default function ActiveUsersPage() {
     } else {
       params.delete("userId");
     }
-    setIsEditingSheet(false);
+    setSheetMode("view");
     router.replace(`?${params.toString()}`, { scroll: false });
   };
-  const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [form, setForm] = useState<NewUserFormState>(initialFormState);
 
   const canAccess = user?.isSuperuser === true;
 
@@ -225,11 +162,40 @@ export default function ActiveUsersPage() {
     }
 
     const timer = window.setTimeout(() => {
-      void loadUsers();
+      void loadUsers(users.length === 0);
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [canAccess, loadUsers, router]);
+  }, [canAccess, loadUsers, router, users.length]);
+
+  const handleSort = (key: string) => {
+    setSortConfig(current => {
+      if (current?.key === key) {
+        if (current.direction === "asc") return { key, direction: "desc" };
+        return null;
+      }
+      return { key, direction: "asc" };
+    });
+  };
+
+  const renderSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown className="ml-2 size-4 opacity-50 group-hover:opacity-100 transition-opacity" />;
+    if (sortConfig.direction === "asc") return <ArrowUp className="ml-2 size-4 text-primary" />;
+    return <ArrowDown className="ml-2 size-4 text-primary" />;
+  };
+
+  const sortedUsers = useMemo(() => {
+    if (!sortConfig) return users;
+
+    return [...users].sort((a, b) => {
+      const aValue = String(a[sortConfig.key as keyof User] || "").toLowerCase();
+      const bValue = String(b[sortConfig.key as keyof User] || "").toLowerCase();
+
+      if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [users, sortConfig]);
 
   const counts = useMemo(
     () => ({
@@ -241,17 +207,6 @@ export default function ActiveUsersPage() {
     [users],
   );
 
-  const updateField =
-    (
-      field: keyof Pick<
-        NewUserFormState,
-        "firstName" | "lastName" | "username" | "email" | "password"
-      >,
-    ) =>
-    (event: ChangeEvent<HTMLInputElement>): void => {
-      setForm((current) => ({ ...current, [field]: event.target.value }));
-    };
-
   const handleRowKeyDown = (
     event: KeyboardEvent<HTMLTableRowElement>,
     selected: User,
@@ -262,40 +217,29 @@ export default function ActiveUsersPage() {
     }
   };
 
-  const handleCreate = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-
-    const payload: CreateUserPayload = {
-      first_name: form.firstName.trim(),
-      last_name: form.lastName.trim(),
-      username: form.username.trim(),
-      email: form.email.trim(),
-      title_role: form.titleRole,
-      access_level: form.accessLevel,
-      password: form.password,
-    };
-
-    if (
-      !payload.first_name ||
-      !payload.last_name ||
-      !payload.username ||
-      !payload.email ||
-      !payload.password
-    ) {
-      toast.error("Complete all required fields");
-      return;
-    }
-
+  const handleCreateSubmit = async (data: CreateUserFormValues): Promise<void> => {
     setIsCreating(true);
+    
+    // Split full name on the first space to satisfy backend requirements
+    const nameParts = data.fullName.trim().split(" ");
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(" ");
+    
     try {
-      const createdUser = await createUser(payload);
+      const createdUser = await createUser({
+        first_name: firstName,
+        last_name: lastName,
+        username: data.username.trim(),
+        email: data.email.trim(),
+        title_role: data.titleRole as UserTitleRole,
+        access_level: data.accessLevel as UserAccessLevel,
+        password: data.password,
+      });
       setUsers((current) =>
         [...current, createdUser].sort((left, right) =>
           left.username.localeCompare(right.username),
         ),
       );
-      setForm(initialFormState);
-      setShowPassword(false);
       setIsCreateOpen(false);
       handleUserSelect(createdUser);
       toast.success("User provisioned", {
@@ -310,32 +254,27 @@ export default function ActiveUsersPage() {
     }
   };
 
-  const toggleEditMode = (): void => {
+  const handleEditSubmit = async (data: UpdateUserFormValues): Promise<void> => {
     if (!selectedUser) return;
-    setEditForm(getEditFormState(selectedUser));
-    setIsEditingSheet(true);
-  };
-
-  const handleEdit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    if (!selectedUser || !editForm) return;
-
-    const payload: UpdateUserPayload = {
-      first_name: editForm.firstName.trim(),
-      last_name: editForm.lastName.trim(),
-      email: editForm.email.trim(),
-      title_role: editForm.titleRole,
-      access_level: editForm.accessLevel,
-    };
-
     setIsUpdating(true);
+    
+    // Split full name on the first space
+    const nameParts = data.fullName.trim().split(" ");
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(" ");
+
     try {
-      const updatedUser = await updateUser(selectedUser.id, payload);
+      const updatedUser = await updateUser(selectedUser.id as number, {
+        first_name: firstName,
+        last_name: lastName,
+        email: data.email.trim(),
+        title_role: data.titleRole as UserTitleRole,
+        access_level: data.accessLevel as UserAccessLevel,
+      });
       setUsers((current) =>
         current.map((entry) => (entry.id === updatedUser.id ? updatedUser : entry)),
       );
-      setIsEditingSheet(false);
-      setEditForm(null);
+      setSheetMode("view");
       toast.success("Profile updated", {
         description: `${updatedUser.username}'s access profile is synchronized.`,
       });
@@ -348,12 +287,31 @@ export default function ActiveUsersPage() {
     }
   };
 
+  const handleResetPasswordSubmit = async (data: ResetPasswordFormValues): Promise<void> => {
+    if (!selectedUser) return;
+    setIsResettingPassword(true);
+    
+    try {
+      await resetUserPassword(selectedUser.id as number, data);
+      setSheetMode("view");
+      toast.success("Password reset successful", {
+        description: `A new secure password has been set for ${selectedUser.username}.`,
+      });
+    } catch (error) {
+      toast.error("Unable to reset password", {
+        description: formatApiError(error),
+      });
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
   const handleDelete = async (selected: User): Promise<void> => {
     setDeletingUserId(selected.id);
     try {
       await deleteUser(selected.id);
       setUsers((current) => current.filter((entry) => entry.id !== selected.id));
-      setSelectedUser(null);
+      handleUserSelect(null);
       toast.success("User deleted", {
         description: `${selected.username} was permanently removed.`,
       });
@@ -402,9 +360,9 @@ export default function ActiveUsersPage() {
                   Total Users
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-1">
-                <p className="text-3xl font-bold tracking-tight text-foreground">{counts.total}</p>
-                <p className="text-xs font-mono text-primary flex items-center gap-1">
+              <CardContent className="space-y-3">
+                <p className="text-3xl font-black tracking-tight text-foreground">{counts.total}</p>
+                <p className="text-xs font-mono text-primary flex items-center gap-1.5">
                   <UsersRound size={14} /> Registered accounts
                 </p>
               </CardContent>
@@ -415,9 +373,9 @@ export default function ActiveUsersPage() {
                   Superusers
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-1">
-                <p className="text-3xl font-bold tracking-tight text-foreground">{counts.superusers}</p>
-                <p className="text-xs font-mono text-destructive flex items-center gap-1">
+              <CardContent className="space-y-3">
+                <p className="text-3xl font-black tracking-tight text-foreground">{counts.superusers}</p>
+                <p className="text-xs font-mono text-destructive flex items-center gap-1.5">
                   <ShieldCheck size={14} /> Full Access
                 </p>
               </CardContent>
@@ -428,9 +386,9 @@ export default function ActiveUsersPage() {
                   Staff Accounts
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-1">
-                <p className="text-3xl font-bold tracking-tight text-foreground">{counts.staff}</p>
-                <p className="text-xs font-mono text-info flex items-center gap-1">
+              <CardContent className="space-y-3">
+                <p className="text-3xl font-black tracking-tight text-foreground">{counts.staff}</p>
+                <p className="text-xs font-mono text-info flex items-center gap-1.5">
                   <UserRound size={14} /> Elevated Rights
                 </p>
               </CardContent>
@@ -441,75 +399,110 @@ export default function ActiveUsersPage() {
                   Client Accounts
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-1">
-                <p className="text-3xl font-bold tracking-tight text-foreground">{counts.clients}</p>
-                <p className="text-xs font-mono text-muted-foreground flex items-center gap-1">
+              <CardContent className="space-y-3">
+                <p className="text-3xl font-black tracking-tight text-foreground">{counts.clients}</p>
+                <p className="text-xs font-mono text-muted-foreground flex items-center gap-1.5">
                   <Handshake size={14} /> Standard Access
                 </p>
               </CardContent>
             </Card>
           </section>
 
-        <Card className="border-border overflow-hidden bg-card/80 backdrop-blur-sm p-0 mt-6">
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="pl-6 font-semibold w-[25%]">Full Name</TableHead>
-                  <TableHead className="font-semibold w-[15%]">Username</TableHead>
-                  <TableHead className="font-semibold w-[20%]">Email</TableHead>
-                  <TableHead className="font-semibold w-[15%]">Title / Role</TableHead>
-                  <TableHead className="font-semibold text-right w-[15%]">Access Level</TableHead>
-                  <TableHead className="font-semibold pr-6 text-right w-[10%]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                      <Loader2 className="mx-auto mb-2 animate-spin text-primary" size={22} />
-                      Loading secure directory...
-                    </TableCell>
+          <Card className="border-border overflow-hidden bg-card/80 backdrop-blur-sm p-0 mt-6">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader className="bg-muted/30">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[25%] pl-4">
+                      <Button variant="ghost" size="sm" onClick={() => handleSort('first_name')} className="font-semibold flex items-center group -ml-3">
+                        Full Name
+                        {renderSortIcon('first_name')}
+                      </Button>
+                    </TableHead>
+                    <TableHead className="w-[15%]">
+                      <div className="flex justify-center w-full">
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('username')} className="font-semibold flex items-center group">
+                          Username
+                          {renderSortIcon('username')}
+                        </Button>
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-[20%]">
+                      <div className="flex justify-center w-full">
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('email')} className="font-semibold flex items-center group">
+                          Email
+                          {renderSortIcon('email')}
+                        </Button>
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-[15%]">
+                      <div className="flex justify-center w-full">
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('title_role')} className="font-semibold flex items-center group">
+                          Title / Role
+                          {renderSortIcon('title_role')}
+                        </Button>
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-[15%]">
+                      <div className="flex justify-center w-full">
+                        <Button variant="ghost" size="sm" onClick={() => handleSort('access_level')} className="font-semibold flex items-center group">
+                          Access Level
+                          {renderSortIcon('access_level')}
+                        </Button>
+                      </div>
+                    </TableHead>
+                    <TableHead className="font-semibold pr-6 text-right w-[10%] align-middle">Actions</TableHead>
                   </TableRow>
-                ) : users.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                      No active users were returned.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  users.map((entry) => (
-                    <TableRow
-                      key={entry.id}
-                      tabIndex={0}
-                      className="group cursor-pointer hover:bg-muted/40 transition-colors focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                      onClick={() => handleUserSelect(entry)}
-                      onKeyDown={(event) => handleRowKeyDown(event, entry)}
-                      aria-label={`View ${entry.full_name}`}
-                    >
-                      <TableCell className="pl-6 py-4">
-                        <span className="font-bold text-foreground">{entry.full_name}</span>
-                      </TableCell>
-                      <TableCell className="py-4 text-muted-foreground">{entry.username}</TableCell>
-                      <TableCell className="py-4 text-muted-foreground">{entry.email || "Not provided"}</TableCell>
-                      <TableCell className="py-4 text-muted-foreground font-medium">{entry.title_role}</TableCell>
-                      <TableCell className="py-4 text-right">
-                        <Badge variant={getAccessBadgeVariant(entry.access_level)}>
-                          {entry.access_level}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="pr-6 py-4 text-right">
-                        <ChevronRight className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors" size={16} />
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                        <Loader2 className="mx-auto mb-2 animate-spin text-primary" size={22} />
+                        Loading secure directory...
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                  ) : sortedUsers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                        No active users were returned.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    sortedUsers.map((item) => (
+                      <TableRow
+                        key={item.id}
+                        tabIndex={0}
+                        className="group cursor-pointer hover:bg-muted/40 transition-colors focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                        onClick={() => handleUserSelect(item)}
+                        onKeyDown={(event) => handleRowKeyDown(event, item)}
+                        aria-label={`View ${item.full_name}`}
+                      >
+                        <TableCell className="pl-6 py-4 text-left">
+                          <span className="font-bold text-foreground">{item.full_name}</span>
+                        </TableCell>
+                        <TableCell className="py-4 text-muted-foreground text-center">{item.username}</TableCell>
+                        <TableCell className="py-4 text-muted-foreground text-center">{item.email || "Not provided"}</TableCell>
+                        <TableCell className="py-4 text-muted-foreground font-medium text-center">{item.title_role}</TableCell>
+                        <TableCell className="py-4 text-center">
+                          <Badge variant={getAccessBadgeVariant(item.access_level)}>
+                            {item.access_level}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="pr-6 py-4 text-right">
+                          <ChevronRight className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors" size={16} />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
+      {/* Edit Profile / Details Sheet */}
       <Sheet open={selectedUser !== null} onOpenChange={(open) => !open && handleUserSelect(null)}>
         <SheetContent className="w-full border-border bg-card sm:max-w-md flex flex-col h-full overflow-hidden p-0">
           {selectedUser && (
@@ -528,124 +521,24 @@ export default function ActiveUsersPage() {
                 </SheetDescription>
               </SheetHeader>
               
-              <div className="flex-1 overflow-y-auto p-6">
-                {isEditingSheet && editForm ? (
-                  <form className="space-y-5" onSubmit={(event) => void handleEdit(event)}>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-first-name">First Name</Label>
-                        <Input
-                          id="edit-first-name"
-                          value={editForm.firstName}
-                          onChange={(event) =>
-                            setEditForm((current) =>
-                              current ? { ...current, firstName: event.target.value } : current,
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-last-name">Last Name</Label>
-                        <Input
-                          id="edit-last-name"
-                          value={editForm.lastName}
-                          onChange={(event) =>
-                            setEditForm((current) =>
-                              current ? { ...current, lastName: event.target.value } : current,
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label htmlFor="edit-email">Email Address</Label>
-                        <Input
-                          id="edit-email"
-                          type="email"
-                          value={editForm.email}
-                          onChange={(event) =>
-                            setEditForm((current) =>
-                              current ? { ...current, email: event.target.value } : current,
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-title-role">Title / Role</Label>
-                        <Select
-                          value={editForm.titleRole}
-                          onValueChange={(value) => {
-                            if (value) {
-                              setEditForm((current) =>
-                                current
-                                  ? { ...current, titleRole: value as UserTitleRole }
-                                  : current,
-                              );
-                            }
-                          }}
-                        >
-                          <SelectTrigger id="edit-title-role" className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {USER_TITLE_ROLES.map((role) => (
-                              <SelectItem key={role} value={role}>
-                                {role}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-access-level">Access Level</Label>
-                        <Select
-                          value={editForm.accessLevel}
-                          onValueChange={(value) => {
-                            if (value) {
-                              setEditForm((current) =>
-                                current
-                                  ? { ...current, accessLevel: value as UserAccessLevel }
-                                  : current,
-                              );
-                            }
-                          }}
-                        >
-                          <SelectTrigger id="edit-access-level" className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {USER_ACCESS_LEVELS.map((level) => (
-                              <SelectItem key={level} value={level}>
-                                {level}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-4 border-t border-border mt-6">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={isUpdating}
-                        onClick={() => {
-                          setIsEditingSheet(false);
-                          setEditForm(null);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button type="submit" disabled={isUpdating}>
-                        {isUpdating ? (
-                          <Loader2 className="animate-spin" size={16} />
-                        ) : (
-                          <Pencil size={16} />
-                        )}
-                        {isUpdating ? "Saving..." : "Save Changes"}
-                      </Button>
-                    </div>
-                  </form>
+              <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+                {sheetMode === "edit" ? (
+                  <EditUserForm
+                    user={selectedUser}
+                    onSubmit={handleEditSubmit}
+                    onCancel={() => setSheetMode("view")}
+                    isSubmitting={isUpdating}
+                  />
+                ) : sheetMode === "resetPassword" ? (
+                  <ResetPasswordForm
+                    user={selectedUser}
+                    onSubmit={handleResetPasswordSubmit}
+                    onCancel={() => setSheetMode("view")}
+                    isSubmitting={isResettingPassword}
+                  />
                 ) : (
-                  <div className="space-y-5">
+                  <div className="space-y-5 flex flex-col flex-1">
+                    {/* Access Section */}
                     <div>
                       <p className="text-xs uppercase text-muted-foreground">Access</p>
                       <div className="mt-2 flex flex-wrap gap-2">
@@ -655,64 +548,7 @@ export default function ActiveUsersPage() {
                         <Badge variant="outline">{selectedUser.title_role}</Badge>
                       </div>
                     </div>
-                    <div className="border-t border-border pt-5">
-                      <p className="text-xs uppercase text-muted-foreground">Actions</p>
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => toggleEditMode()}
-                        >
-                          <Pencil size={15} />
-                          Edit Profile
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger
-                            render={
-                              <Button
-                                variant="destructive"
-                                disabled={
-                                  deletingUserId === selectedUser.id ||
-                                  String(user?.id) === String(selectedUser.id)
-                                }
-                                title={
-                                  String(user?.id) === String(selectedUser.id)
-                                    ? "You cannot delete your own account"
-                                    : undefined
-                                }
-                              />
-                            }
-                          >
-                            {deletingUserId === selectedUser.id ? (
-                              <Loader2 className="animate-spin" size={15} />
-                            ) : (
-                              <Trash2 size={15} />
-                            )}
-                            Delete User
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Permanently delete user?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to permanently delete this user? This
-                                action removes {selectedUser.username} and cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel disabled={deletingUserId !== null}>
-                                Cancel
-                              </AlertDialogCancel>
-                              <AlertDialogAction
-                                disabled={deletingUserId !== null}
-                                onClick={() => void handleDelete(selectedUser)}
-                              >
-                                <Trash2 size={15} />
-                                Delete Permanently
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </div>
+
                     <div className="grid gap-4 border-t border-border pt-5">
                       <div className="flex items-start gap-3">
                         <Mail className="mt-0.5 text-primary" size={16} />
@@ -738,6 +574,76 @@ export default function ActiveUsersPage() {
                         </div>
                       </div>
                     </div>
+
+                    <div className="border-t border-border pt-5">
+                      <p className="text-xs uppercase text-muted-foreground">Actions</p>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => setSheetMode("edit")}
+                        >
+                          <Pencil size={15} className="mr-2" />
+                          Edit Profile
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setSheetMode("resetPassword")}
+                        >
+                          <Lock size={15} className="mr-2" />
+                          Reset Password
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 mt-auto">
+                      <AlertDialog>
+                        <AlertDialogTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              className="w-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              disabled={
+                                deletingUserId === selectedUser.id ||
+                                String(user?.id) === String(selectedUser.id)
+                              }
+                              title={
+                                String(user?.id) === String(selectedUser.id)
+                                  ? "You cannot delete your own account"
+                                  : undefined
+                              }
+                            />
+                          }
+                        >
+                          {deletingUserId === selectedUser.id ? (
+                            <Loader2 className="animate-spin mr-2" size={15} />
+                          ) : (
+                            <Trash2 size={15} className="mr-2" />
+                          )}
+                          Delete User
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete User</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete{" "}
+                              <span className="font-semibold text-foreground">
+                                {selectedUser.username}
+                              </span>
+                              ? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              variant="destructive"
+                              onClick={() => handleDelete(selectedUser)}
+                            >
+                              Delete User
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 )}
               </div>
@@ -746,6 +652,7 @@ export default function ActiveUsersPage() {
         </SheetContent>
       </Sheet>
 
+      {/* Add New User Sheet */}
       <Sheet
         open={isCreateOpen}
         onOpenChange={(open) => {
@@ -762,196 +669,15 @@ export default function ActiveUsersPage() {
             </SheetDescription>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto p-6">
-            <form onSubmit={(event) => void handleCreate(event)}>
-              
-              {/* Identity Section */}
-              <div className="mb-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-                    <UserRound size={16} />
-                  </div>
-                  <h3 className="text-sm font-semibold text-foreground">Identity Information</h3>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="first-name">First Name</Label>
-                    <Input
-                      id="first-name"
-                      value={form.firstName}
-                      onChange={updateField("firstName")}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="last-name">Last Name</Label>
-                    <Input
-                      id="last-name"
-                      value={form.lastName}
-                      onChange={updateField("lastName")}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="username">Username</Label>
-                    <Input
-                      id="username"
-                      autoComplete="off"
-                      value={form.username}
-                      onChange={updateField("username")}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="email">Email Address</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={form.email}
-                      onChange={updateField("email")}
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="h-px w-full bg-border/50 mb-6" />
-
-              {/* Role & Access Section */}
-              <div className="mb-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-                    <BadgeCheck size={16} />
-                  </div>
-                  <h3 className="text-sm font-semibold text-foreground">Role & Permissions</h3>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="title-role">Title / Role</Label>
-                    <Select
-                      value={form.titleRole}
-                      onValueChange={(value) => {
-                        if (value) {
-                          setForm((current) => ({
-                            ...current,
-                            titleRole: value as UserTitleRole,
-                          }));
-                        }
-                      }}
-                    >
-                      <SelectTrigger id="title-role" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {USER_TITLE_ROLES.map((role) => (
-                          <SelectItem key={role} value={role}>
-                            {role}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="access-level">Access Level</Label>
-                    <Select
-                      value={form.accessLevel}
-                      onValueChange={(value) => {
-                        if (value) {
-                          setForm((current) => ({
-                            ...current,
-                            accessLevel: value as UserAccessLevel,
-                          }));
-                        }
-                      }}
-                    >
-                      <SelectTrigger id="access-level" className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {USER_ACCESS_LEVELS.map((level) => (
-                          <SelectItem key={level} value={level}>
-                            {level}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="h-px w-full bg-border/50 mb-6" />
-
-              {/* Security Section */}
-              <div className="mb-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-                    <Lock size={16} />
-                  </div>
-                  <h3 className="text-sm font-semibold text-foreground">Security Details</h3>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password">Password</Label>
-                    <button
-                      type="button"
-                      className="text-xs text-primary hover:underline flex items-center gap-1"
-                      onClick={() => {
-                        setForm(f => ({ ...f, password: generateSecurePassword() }));
-                        setShowPassword(true);
-                      }}
-                    >
-                      <WandSparkles size={12} />
-                      Generate
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      autoComplete="new-password"
-                      className="pr-11"
-                      value={form.password}
-                      onChange={updateField("password")}
-                      minLength={8}
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-                      onClick={() => setShowPassword((current) => !current)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-                    </button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Django password validators are applied before the account is created.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex justify-end gap-3 pt-6 border-t border-border mt-8">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={isCreating}
-                  onClick={() => setIsCreateOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={isCreating}>
-                  {isCreating ? (
-                    <Loader2 className="animate-spin" size={16} />
-                  ) : (
-                    <Plus size={16} />
-                  )}
-                  {isCreating ? "Creating..." : "Create User"}
-                </Button>
-              </div>
-            </form>
+            <CreateUserForm
+              onSubmit={handleCreateSubmit}
+              onCancel={() => setIsCreateOpen(false)}
+              isSubmitting={isCreating}
+            />
           </div>
         </SheetContent>
       </Sheet>
-      </div>
+
     </div>
   );
 }

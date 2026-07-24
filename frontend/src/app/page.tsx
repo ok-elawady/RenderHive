@@ -101,7 +101,7 @@ export default function DashboardPage() {
       return <PageSkeleton />;
     }
 
-    if (activeView === "Active Queue") {
+    if (activeView === "Job Queue") {
       return <div className="min-h-[520px]">{renderJobQueue()}</div>;
     }
 
