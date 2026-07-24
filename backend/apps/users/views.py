@@ -1,15 +1,15 @@
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView, UpdateAPIView
 from rest_framework.response import Response
 
 from .models import User
 from .permissions import IsSuperUser
 from .serializers import (
     UserCreateSerializer,
+    UserPasswordResetSerializer,
     UserSerializer,
     UserUpdateSerializer,
-    UserPasswordResetSerializer,
 )
 
 
@@ -47,20 +47,11 @@ class UserDetailView(RetrieveUpdateDestroyAPIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class UserPasswordResetView(RetrieveUpdateDestroyAPIView):
+class UserPasswordResetView(UpdateAPIView):
     """
     Dedicated view for Superusers to reset any user's password.
-    Inherits from RetrieveUpdateDestroyAPIView to match UserDetailView behavior 
-    but restricts the serializer to only handle password updates.
+    Inherits from UpdateAPIView to ensure only PUT/PATCH requests are supported.
     """
     queryset = User.objects.filter(is_active=True)
     permission_classes = [IsSuperUser]
     serializer_class = UserPasswordResetSerializer
-
-    def get(self, request, *args, **kwargs):
-        # We don't want to support GET on the password endpoint
-        return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-    def delete(self, request, *args, **kwargs):
-        # We don't want to support DELETE on the password endpoint
-        return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
