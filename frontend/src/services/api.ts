@@ -91,6 +91,7 @@ export const USER_TITLE_ROLES = [
   "Pipeline Engineer",
   "FX Artist",
   "Lighting Lead",
+  "Render User",
 ] as const;
 
 export const USER_ACCESS_LEVELS = ["Superuser", "Staff", "Client"] as const;
@@ -98,7 +99,7 @@ export const USER_ACCESS_LEVELS = ["Superuser", "Staff", "Client"] as const;
 export type UserTitleRole = (typeof USER_TITLE_ROLES)[number];
 export type UserAccessLevel = (typeof USER_ACCESS_LEVELS)[number];
 
-export interface AdminUser {
+export interface User {
   id: number;
   first_name: string;
   last_name: string;
@@ -114,7 +115,7 @@ export interface AdminUser {
   last_login: string | null;
 }
 
-export interface CreateAdminUserPayload {
+export interface CreateUserPayload {
   first_name: string;
   last_name: string;
   username: string;
@@ -124,7 +125,7 @@ export interface CreateAdminUserPayload {
   password: string;
 }
 
-export interface UpdateAdminUserPayload {
+export interface UpdateUserPayload {
   first_name: string;
   last_name: string;
   email: string;
@@ -563,8 +564,8 @@ export async function deleteJob(jobId: string): Promise<void> {
   }
 }
 
-export async function getAdminUsers(): Promise<AdminUser[]> {
-  const response = await apiFetch(`${API_BASE_URL}/api/admin/users/`, {
+export async function getUsers(): Promise<User[]> {
+  const response = await apiFetch(`${API_BASE_URL}/api/users/`, {
     method: "GET",
     cache: "no-store",
   });
@@ -573,13 +574,13 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
     throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
   }
 
-  return parseApiResponse<AdminUser[]>(response);
+  return parseApiResponse<User[]>(response);
 }
 
-export async function createAdminUser(
-  payload: CreateAdminUserPayload,
-): Promise<AdminUser> {
-  const response = await apiFetch(`${API_BASE_URL}/api/admin/users/`, {
+export async function createUser(
+  payload: CreateUserPayload,
+): Promise<User> {
+  const response = await apiFetch(`${API_BASE_URL}/api/users/`, {
     method: "POST",
     body: JSON.stringify(payload),
     cache: "no-store",
@@ -589,14 +590,14 @@ export async function createAdminUser(
     throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
   }
 
-  return parseApiResponse<AdminUser>(response);
+  return parseApiResponse<User>(response);
 }
 
-export async function updateAdminUser(
+export async function updateUser(
   userId: number,
-  payload: UpdateAdminUserPayload,
-): Promise<AdminUser> {
-  const response = await apiFetch(`${API_BASE_URL}/api/admin/users/${userId}/`, {
+  payload: UpdateUserPayload,
+): Promise<User> {
+  const response = await apiFetch(`${API_BASE_URL}/api/users/${userId}/`, {
     method: "PATCH",
     body: JSON.stringify(payload),
     cache: "no-store",
@@ -606,11 +607,11 @@ export async function updateAdminUser(
     throw new Error(JSON.stringify(await parseApiResponse<unknown>(response)));
   }
 
-  return parseApiResponse<AdminUser>(response);
+  return parseApiResponse<User>(response);
 }
 
-export async function deleteAdminUser(userId: number): Promise<void> {
-  const response = await apiFetch(`${API_BASE_URL}/api/admin/users/${userId}/`, {
+export async function deleteUser(userId: number): Promise<void> {
+  const response = await apiFetch(`${API_BASE_URL}/api/users/${userId}/`, {
     method: "DELETE",
     cache: "no-store",
   });
