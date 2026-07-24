@@ -168,3 +168,26 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         return UserSerializer(instance, context=self.context).data
+
+
+class UserPasswordResetSerializer(serializers.Serializer):
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        trim_whitespace=False,
+        style={"input_type": "password"},
+    )
+
+    def validate_password(self, value):
+        # self.instance is the user being updated
+        try:
+            validate_password(value, user=self.instance)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(list(error.messages)) from error
+        return value
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        instance.set_password(validated_data["password"])
+        instance.save()
+        return instance

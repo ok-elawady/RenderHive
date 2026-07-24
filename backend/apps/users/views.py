@@ -9,6 +9,7 @@ from .serializers import (
     UserCreateSerializer,
     UserSerializer,
     UserUpdateSerializer,
+    UserPasswordResetSerializer,
 )
 
 
@@ -44,3 +45,22 @@ class UserDetailView(RetrieveUpdateDestroyAPIView):
         user.is_active = False
         user.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class UserPasswordResetView(RetrieveUpdateDestroyAPIView):
+    """
+    Dedicated view for Superusers to reset any user's password.
+    Inherits from RetrieveUpdateDestroyAPIView to match UserDetailView behavior 
+    but restricts the serializer to only handle password updates.
+    """
+    queryset = User.objects.filter(is_active=True)
+    permission_classes = [IsSuperUser]
+    serializer_class = UserPasswordResetSerializer
+
+    def get(self, request, *args, **kwargs):
+        # We don't want to support GET on the password endpoint
+        return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def delete(self, request, *args, **kwargs):
+        # We don't want to support DELETE on the password endpoint
+        return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
