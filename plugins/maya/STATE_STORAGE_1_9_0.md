@@ -21,5 +21,4 @@
 - Local/offline Worker Pool cache
 - Last selected local Pool fallback
 
-The API token remains in `%LOCALAPPDATA%\RenderHive\api_config.json` and is
-not stored in SQLite or copied into Git.
+The API token is stored outside SQLite and outside the source package. On Windows it is protected with DPAPI in `%LOCALAPPDATA%\RenderHive\api_token.bin`; `api_config.json` contains no plain-text token.

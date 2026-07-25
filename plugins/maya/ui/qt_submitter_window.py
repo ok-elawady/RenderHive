@@ -10,22 +10,34 @@ import platform
 import sys
 import uuid
 
-from .qt_compat import QtCore, QtGui, QtWidgets, wrapInstance
+from .qt_compat import QtCore, QtGui, QtWidgets, wrapInstance, isValid
 
 import maya.OpenMayaUI as omui
 import maya.cmds as cmds
 
 from .qt_theme import COLORS, build_stylesheet
 from core.state_store import StateStore
+from api.version import PLUGIN_VERSION
 
 
 WINDOW_OBJECT_NAME = "RenderHiveQtSubmitter"
-UI_VERSION = "1.9.5"
+UI_VERSION = PLUGIN_VERSION
 _WINDOW = None
 _API = None
 _WIDGETS = {}
 _ORIGINAL_BUILD_TASK = None
 _ORIGINAL_VALIDATE_TASK = None
+_BACKGROUND_THREADS = set()
+
+
+def _release_background_thread(thread):
+    """Release a detached worker only after Qt reports it has finished."""
+    try:
+        _BACKGROUND_THREADS.discard(thread)
+        thread.deleteLater()
+    except Exception:
+        pass
+
 
 
 # -----------------------------------------------------------------------------
@@ -1037,6 +1049,7 @@ class PoolSelectionDialog(QtWidgets.QDialog):
         )
         hint.setObjectName("MutedText")
         hint.setWordWrap(True)
+        hint.setVisible(False)
         root.addWidget(hint)
 
         self.search = QtWidgets.QLineEdit()
@@ -1289,7 +1302,7 @@ class PoolSelectionDialog(QtWidgets.QDialog):
         select_all = QtWidgets.QPushButton("Select All")
         select_all.clicked.connect(self.select_all)
 
-        clear = QtWidgets.QPushButton("Clear")
+        clear = QtWidgets.QPushButton("Clear Results")
         clear.setObjectName("GhostButton")
         clear.clicked.connect(self.clear_all)
 
@@ -1659,11 +1672,6 @@ class WorkerMultiSelect(QtWidgets.QPushButton):
         self._workers = []
         self._selected_values = []
         self.setMinimumHeight(30)
-        self.setToolTip(
-            "Open the worker selector. The button text summarizes the current "
-            "selection, not the number of synced workers. Empty means: {}."
-            .format(self._empty_text)
-        )
         self.clicked.connect(self.open_selector)
         self.update_summary()
 
@@ -2086,7 +2094,7 @@ class ApiWorkerPoolManagerDialog(QtWidgets.QDialog):
         )
         left.addWidget(self.pool_list, 1)
 
-        refresh_button = QtWidgets.QPushButton("Refresh")
+        refresh_button = QtWidgets.QPushButton("Refresh Data")
         refresh_button.setObjectName("GhostButton")
         refresh_button.clicked.connect(self.reload_data)
         left.addWidget(refresh_button)
@@ -2564,22 +2572,49 @@ class WorkerSyncThread(QtCore.QThread):
         self.provider = provider
 
     def run(self):
+        if self.isInterruptionRequested():
+            return
+
         try:
-            self.succeeded.emit(self.provider())
+            result = self.provider()
+            if not self.isInterruptionRequested():
+                self.succeeded.emit(result)
         except Exception as error:
-            self.failed.emit(str(error))
+            if not self.isInterruptionRequested():
+                self.failed.emit(str(error))
+
+
+class InfoTipButton(QtWidgets.QToolButton):
+    def __init__(self, tooltip, parent=None):
+        super(InfoTipButton, self).__init__(parent)
+        self.setObjectName("InfoTipButton")
+        self.setText("i")
+        self.setToolTip(str(tooltip or ""))
+        self.setCursor(QtCore.Qt.WhatsThisCursor)
+        self.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.setFixedSize(18, 18)
 
 
 class LabeledField(QtWidgets.QWidget):
-    def __init__(self, label, widget, parent=None):
+    def __init__(self, label, widget, tooltip="", parent=None):
         super(LabeledField, self).__init__(parent)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
 
+        header = QtWidgets.QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(5)
+
         title = QtWidgets.QLabel(label)
         title.setObjectName("FieldLabel")
-        layout.addWidget(title)
+        header.addWidget(title)
+
+        if tooltip:
+            header.addWidget(InfoTipButton(tooltip))
+
+        header.addStretch()
+        layout.addLayout(header)
         layout.addWidget(widget)
 
 
@@ -2589,41 +2624,39 @@ class Card(QtWidgets.QFrame):
         self.setObjectName("Card")
 
         self.layout = QtWidgets.QVBoxLayout(self)
-        self.layout.setContentsMargins(11, 10, 11, 11)
-        self.layout.setSpacing(7)
+        self.layout.setContentsMargins(14, 12, 14, 14)
+        self.layout.setSpacing(10)
 
         header = QtWidgets.QHBoxLayout()
-        header.setSpacing(8)
+        header.setContentsMargins(0, 0, 0, 1)
+        header.setSpacing(7)
 
         title_label = QtWidgets.QLabel(title)
         title_label.setObjectName("SectionTitle")
         header.addWidget(title_label)
-        header.addStretch()
-
-        self.layout.addLayout(header)
 
         if subtitle:
-            subtitle_label = QtWidgets.QLabel(subtitle)
-            subtitle_label.setObjectName("MutedText")
-            subtitle_label.setWordWrap(True)
-            self.layout.addWidget(subtitle_label)
+            header.addWidget(InfoTipButton(subtitle))
+
+        header.addStretch()
+        self.layout.addLayout(header)
 
 
 class PageHeader(QtWidgets.QWidget):
-    def __init__(self, title, subtitle, parent=None):
+    def __init__(self, title, subtitle="", parent=None):
         super(PageHeader, self).__init__(parent)
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(2, 0, 2, 2)
-        layout.setSpacing(2)
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(3, 2, 3, 5)
+        layout.setSpacing(7)
 
         title_label = QtWidgets.QLabel(title)
         title_label.setObjectName("PageTitle")
         layout.addWidget(title_label)
 
-        subtitle_label = QtWidgets.QLabel(subtitle)
-        subtitle_label.setObjectName("MutedText")
-        subtitle_label.setWordWrap(True)
-        layout.addWidget(subtitle_label)
+        if subtitle:
+            layout.addWidget(InfoTipButton(subtitle))
+
+        layout.addStretch()
 
 
 
@@ -2657,6 +2690,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         self.worker_target_sync_error = ""
         self.api_test_thread = None
         self.api_submit_thread = None
+        self._is_closing = False
         self.worker_pools = self.load_worker_pools()
         self.api_pools = []
         self.pool_records = {}
@@ -2696,10 +2730,16 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             self.update_worker_sync_chips
         )
 
+        self.startup_timer = QtCore.QTimer(self)
+        self.startup_timer.setSingleShot(True)
+        self.startup_timer.timeout.connect(
+            self.test_api_connection
+        )
+
         self.setObjectName("RenderHiveWindow")
         self.setWindowTitle("RenderHive")
-        self.setMinimumSize(680, 600)
-        self.resize(720, 690)
+        self.setMinimumSize(720, 620)
+        self.resize(760, 720)
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.Window)
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
         self.setStyleSheet(build_stylesheet())
@@ -2711,23 +2751,79 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         self.report_state_storage_ready()
         self.scene_state_timer.start()
         self.worker_stale_timer.start()
-        QtCore.QTimer.singleShot(0, self.sync_available_workers)
+        self.startup_timer.start(0)
+
+    def _detach_running_thread(self, attribute_name):
+        thread = getattr(self, attribute_name, None)
+        if thread is None:
+            return
+
+        try:
+            if thread.isRunning():
+                thread.requestInterruption()
+
+                for signal_name in ("succeeded", "failed", "finished"):
+                    signal = getattr(thread, signal_name, None)
+                    if signal is not None:
+                        try:
+                            signal.disconnect()
+                        except Exception:
+                            pass
+
+                thread.setParent(None)
+                _BACKGROUND_THREADS.add(thread)
+                thread.finished.connect(
+                    lambda current=thread: _release_background_thread(current)
+                )
+            else:
+                thread.deleteLater()
+        except Exception:
+            pass
+
+        setattr(self, attribute_name, None)
 
     def closeEvent(self, event):
-        global _WINDOW
+        global _WINDOW, _WIDGETS
 
-        self.settings.setValue("geometry_v08", self.saveGeometry())
-        if self.page_stack is not None:
-            self.settings.setValue("page_v08", self.page_stack.currentIndex())
+        if self._is_closing:
+            event.accept()
+            return
 
+        self._is_closing = True
 
-        self.scene_state_timer.stop()
-        self.scene_state_save_timer.stop()
-        self.worker_stale_timer.stop()
-        self.save_scene_state(force=True)
-        self.save_worker_pools()
+        for timer in (
+            self.startup_timer,
+            self.scene_state_timer,
+            self.scene_state_save_timer,
+            self.worker_stale_timer,
+        ):
+            try:
+                timer.stop()
+            except Exception:
+                pass
 
+        for attribute_name in (
+            "worker_sync_thread",
+            "api_test_thread",
+            "api_submit_thread",
+        ):
+            self._detach_running_thread(attribute_name)
+
+        try:
+            self.settings.setValue("geometry_v08", self.saveGeometry())
+            if self.page_stack is not None:
+                self.settings.setValue(
+                    "page_v08",
+                    self.page_stack.currentIndex(),
+                )
+            self.save_scene_state(force=True)
+            self.save_worker_pools()
+        except Exception:
+            pass
+
+        _WIDGETS = {}
         _WINDOW = None
+        event.accept()
         super(RenderHiveSubmitter, self).closeEvent(event)
 
     def restore_ui_state(self):
@@ -3094,6 +3190,54 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
                 )
             )
 
+    def open_runtime_logs_folder(self):
+        provider = getattr(self.api, "get_runtime_log_folder", None)
+        if not callable(provider):
+            return
+        folder = provider()
+        try:
+            if hasattr(os, "startfile"):
+                os.startfile(folder)
+            else:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(folder))
+            self.append_activity("Opened runtime logs: {}".format(folder))
+        except Exception as error:
+            QtWidgets.QMessageBox.warning(self, "RenderHive", "Could not open runtime logs:\n\n{}".format(error))
+
+    def create_support_bundle(self):
+        provider = getattr(self.api, "create_diagnostics_bundle", None)
+        if not callable(provider):
+            return
+        try:
+            path = provider()
+            self.append_activity("Created support bundle: {}".format(path))
+            QtWidgets.QMessageBox.information(
+                self,
+                "RenderHive Support Bundle",
+                "Support bundle created successfully:\n\n{}".format(path),
+            )
+        except Exception as error:
+            QtWidgets.QMessageBox.warning(self, "RenderHive", "Could not create support bundle:\n\n{}".format(error))
+
+    def run_production_check(self):
+        provider = getattr(self.api, "get_production_health_report", None)
+        if not callable(provider):
+            return
+        try:
+            report = provider()
+            failed = [item for item in report.get("checks", []) if not item.get("ok")]
+            lines = [
+                "Plugin: v{}".format(report.get("plugin_version", "—")),
+                "Overall: {}".format("PASS" if report.get("ok") else "ATTENTION REQUIRED"),
+                "",
+            ]
+            for item in report.get("checks", []):
+                lines.append("{}  {}".format("PASS" if item.get("ok") else "FAIL", item.get("name", "check")))
+            self.append_activity("Production check completed: {}".format("PASS" if not failed else "{} issue(s)".format(len(failed))))
+            QtWidgets.QMessageBox.information(self, "RenderHive Production Check", "\n".join(lines))
+        except Exception as error:
+            QtWidgets.QMessageBox.warning(self, "RenderHive", "Production check failed:\n\n{}".format(error))
+
     def open_state_storage_folder(self):
         try:
             folder = os.path.dirname(self.state_store.database_path)
@@ -3177,7 +3321,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         brand_row.addStretch()
         brand_column.addLayout(brand_row)
 
-        subtitle = QtWidgets.QLabel("MAYA RENDER MANAGEMENT")
+        subtitle = QtWidgets.QLabel("MAYA RENDER SUBMISSION")
         subtitle.setObjectName("BrandSubtitle")
         brand_column.addWidget(subtitle)
 
@@ -3207,7 +3351,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
     def build_sidebar(self):
         frame = QtWidgets.QFrame()
         frame.setObjectName("Sidebar")
-        frame.setFixedWidth(92)
+        frame.setFixedWidth(104)
 
         layout = QtWidgets.QVBoxLayout(frame)
         layout.setContentsMargins(0, 8, 0, 8)
@@ -3217,15 +3361,14 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         button_group.setExclusive(True)
 
         pages = [
-            ("Job", "Job setup"),
-            ("Render", "Render settings"),
-            ("Checks", "Scene validation"),
-            ("Tools", "Activity and maintenance"),
+            "Job",
+            "Render",
+            "Validation",
+            "Tools",
         ]
 
-        for index, (title, tooltip) in enumerate(pages):
+        for index, title in enumerate(pages):
             button = QtWidgets.QPushButton(title)
-            button.setToolTip(tooltip)
             button.setObjectName("NavButton")
             button.setCheckable(True)
             button.clicked.connect(
@@ -3271,40 +3414,40 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
     def build_job_page(self):
         page, body = self.scroll_page(
-            "Job Setup",
-            "Control scheduling, worker targeting and packaging before the task reaches the farm.",
+            "Job Configuration",
+            "Configure job metadata, scheduling, pool targeting and delivery options.",
         )
 
-        identity = Card("Identity", "Core information used by the queue and reports.")
+        identity = Card("Job Details", "Identity and ownership information shown in the queue and reports.")
         grid = QtWidgets.QGridLayout()
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(8)
 
         project = register("rh_project_name", QtWidgets.QLineEdit())
-        project.setPlaceholderText("Project name")
+        project.setPlaceholderText("Enter the project name")
         job = register("rh_job_name", QtWidgets.QLineEdit())
-        job.setPlaceholderText("Job name")
+        job.setPlaceholderText("Enter a descriptive job name")
         priority = register("rh_priority", QtWidgets.QSpinBox())
         priority.setRange(1, 100)
         priority.setValue(50)
         department = register("rh_department", QtWidgets.QLineEdit())
-        department.setPlaceholderText("Lighting, FX, LookDev…")
+        department.setPlaceholderText("e.g. Lighting, FX or Look Development")
         comment = register("rh_comment", QtWidgets.QLineEdit())
-        comment.setPlaceholderText("Optional note for the farm operator")
+        comment.setPlaceholderText("Optional notes for the render team")
 
-        grid.addWidget(LabeledField("Project", project), 0, 0)
-        grid.addWidget(LabeledField("Job", job), 0, 1)
-        grid.addWidget(LabeledField("Priority", priority), 1, 0)
-        grid.addWidget(LabeledField("Department", department), 1, 1)
-        grid.addWidget(LabeledField("Comment", comment), 2, 0, 1, 2)
+        grid.addWidget(LabeledField("Project", project, "Project label used to organize and report submitted jobs."), 0, 0)
+        grid.addWidget(LabeledField("Job Name", job, "Name displayed in the RenderHive queue and reports."), 0, 1)
+        grid.addWidget(LabeledField("Priority", priority, "Higher values are scheduled before lower-priority jobs when resources are available."), 1, 0)
+        grid.addWidget(LabeledField("Department", department, "Optional department or discipline responsible for this job."), 1, 1)
+        grid.addWidget(LabeledField("Notes", comment, "Optional information for artists, operators or supervisors."), 2, 0, 1, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         identity.layout.addLayout(grid)
         body.addWidget(identity)
 
         scheduling = Card(
-            "Scheduling & Distribution",
-            "These values are submitted to the RenderHive scheduler.",
+            "Scheduling",
+            "Control task chunking, concurrency and scheduler limits.",
         )
         schedule_grid = QtWidgets.QGridLayout()
         schedule_grid.setHorizontalSpacing(10)
@@ -3313,7 +3456,6 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         chunk_size = register("rh_chunk_size", QtWidgets.QSpinBox())
         chunk_size.setRange(1, 10000)
         chunk_size.setValue(1)
-        chunk_size.setToolTip("Number of frames assigned to each farm task. Note: Chunking > 1 is not fully supported in the MVP yet.")
 
         machine_limit = register("rh_machine_limit", QtWidgets.QSpinBox())
         machine_limit.setRange(0, 10000)
@@ -3324,21 +3466,29 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         concurrent.setRange(1, 64)
         concurrent.setValue(1)
 
-        start_suspended = register("rh_start_suspended", QtWidgets.QCheckBox("Start job suspended"))
-        start_suspended.setToolTip("The RenderHive API can queue this job without starting it immediately.")
+        start_suspended = register("rh_start_suspended", QtWidgets.QCheckBox("Start Suspended"))
+        suspended_widget = QtWidgets.QWidget()
+        suspended_layout = QtWidgets.QHBoxLayout(suspended_widget)
+        suspended_layout.setContentsMargins(0, 0, 0, 0)
+        suspended_layout.setSpacing(6)
+        suspended_layout.addWidget(start_suspended)
+        suspended_layout.addWidget(InfoTipButton(
+            "Queue the job without allowing workers to start it until it is resumed."
+        ))
+        suspended_layout.addStretch()
 
-        schedule_grid.addWidget(LabeledField("Chunk Size", chunk_size), 0, 0)
-        schedule_grid.addWidget(LabeledField("Machine Limit", machine_limit), 0, 1)
-        schedule_grid.addWidget(LabeledField("Concurrent Tasks / Worker", concurrent), 1, 0)
-        schedule_grid.addWidget(start_suspended, 1, 1)
+        schedule_grid.addWidget(LabeledField("Chunk Size", chunk_size, "Number of consecutive frames assigned to each farm task."), 0, 0)
+        schedule_grid.addWidget(LabeledField("Machine Limit", machine_limit, "Maximum number of workers that may process this job at the same time. Zero means unlimited."), 0, 1)
+        schedule_grid.addWidget(LabeledField("Tasks per Worker", concurrent, "Maximum number of tasks from this job that one worker may run concurrently."), 1, 0)
+        schedule_grid.addWidget(suspended_widget, 1, 1)
         schedule_grid.setColumnStretch(0, 1)
         schedule_grid.setColumnStretch(1, 1)
         scheduling.layout.addLayout(schedule_grid)
         body.addWidget(scheduling)
 
         targeting = Card(
-            "Pool Targeting",
-            "Choose which backend pools can receive this job.",
+            "Pool Selection",
+            "Choose which backend worker pools are eligible to receive this job.",
         )
 
         worker_status_row = QtWidgets.QHBoxLayout()
@@ -3349,7 +3499,6 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         sync_chip = register("worker_sync_time_chip", WorkerStatusChip("Never"))
         sync_workers = register("sync_workers_button", QtWidgets.QPushButton("Refresh"))
         sync_workers.setObjectName("InfoButton")
-        sync_workers.setToolTip("Refresh workers and pools from RenderHive.")
         sync_workers.clicked.connect(self.sync_available_workers)
         worker_status_row.addWidget(api_chip)
         worker_status_row.addWidget(worker_chip)
@@ -3367,19 +3516,15 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             SegmentedChoice(["All Pools", "Selected Pools Only", "All Except Selected"]),
         )
         strategy.currentTextChanged.connect(self.on_pool_strategy_changed)
-        hint = register("pool_strategy_hint", QtWidgets.QLabel(""))
-        hint.setObjectName("MutedText")
-        hint.setWordWrap(True)
         selected = register("rh_selected_pools", PoolMultiSelect("Selected Pools", "Select Pools"))
         selected.selectionChanged.connect(self.on_selected_pools_changed)
         excluded = register("rh_excluded_pools", PoolMultiSelect("Excluded Pools", "None"))
         excluded.selectionChanged.connect(self.on_excluded_pools_changed)
         selected_field = register("pool_selected_field", LabeledField("Selected Pools", selected))
         excluded_field = register("pool_excluded_field", LabeledField("Excluded Pools", excluded))
-        target_grid.addWidget(LabeledField("Pool Assignment", strategy),0,0,1,2)
-        target_grid.addWidget(hint,1,0,1,2)
-        target_grid.addWidget(selected_field,2,0,1,2)
-        target_grid.addWidget(excluded_field,3,0,1,2)
+        target_grid.addWidget(LabeledField("Assignment Strategy", strategy, "Choose whether the job can use every pool, selected pools only, or all pools except selected ones."),0,0,1,2)
+        target_grid.addWidget(selected_field,1,0,1,2)
+        target_grid.addWidget(excluded_field,2,0,1,2)
         target_grid.setColumnStretch(0,1)
         target_grid.setColumnStretch(1,1)
         targeting.layout.addLayout(target_grid)
@@ -3397,7 +3542,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         self.update_worker_targeting_summary()
         body.addWidget(targeting)
 
-        delivery = Card("Submission & Failure Handling")
+        delivery = Card("Delivery & Recovery", "Configure packaging, retries, timeouts and job dependencies.")
         delivery_grid = QtWidgets.QGridLayout()
         delivery_grid.setHorizontalSpacing(10)
         delivery_grid.setVerticalSpacing(8)
@@ -3415,18 +3560,18 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         timeout.setSuffix(" min")
 
         dependencies = register("rh_job_dependencies", QtWidgets.QLineEdit())
-        dependencies.setPlaceholderText("Job IDs separated by commas")
+        dependencies.setPlaceholderText("Enter job IDs separated by commas")
 
-        delivery_grid.addWidget(LabeledField("Submission Mode", submission_mode), 0, 0)
-        delivery_grid.addWidget(LabeledField("Retry Count", retry_count), 0, 1)
-        delivery_grid.addWidget(LabeledField("Task Timeout", timeout), 1, 0)
-        delivery_grid.addWidget(LabeledField("Job Dependencies", dependencies), 1, 1)
+        delivery_grid.addWidget(LabeledField("Delivery Mode", submission_mode, "Shared Storage references existing project files. Packaging modes prepare transferable job data when supported."), 0, 0)
+        delivery_grid.addWidget(LabeledField("Retry Attempts", retry_count, "Number of automatic retries allowed after a task failure."), 0, 1)
+        delivery_grid.addWidget(LabeledField("Task Timeout", timeout, "Maximum runtime for one task before the backend marks it as timed out."), 1, 0)
+        delivery_grid.addWidget(LabeledField("Job Dependencies", dependencies, "Comma-separated RenderHive job IDs that must complete before this job can start."), 1, 1)
         delivery_grid.setColumnStretch(0, 1)
         delivery_grid.setColumnStretch(1, 1)
         delivery.layout.addLayout(delivery_grid)
         body.addWidget(delivery)
 
-        paths = Card("Paths", "Portable paths keep the job usable on other workers.")
+        paths = Card("File Paths", "Review the scene, project and output locations used by farm workers.")
 
         scene_path = register("rh_scene_path", QtWidgets.QLineEdit())
         project_path = register("rh_project_path", QtWidgets.QLineEdit())
@@ -3435,36 +3580,33 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         for widget in (scene_path, project_path, output_path):
             widget.setClearButtonEnabled(True)
 
-        paths.layout.addWidget(LabeledField("Scene", scene_path))
-        paths.layout.addWidget(LabeledField("Project Root", project_path))
+        paths.layout.addWidget(LabeledField("Scene File", scene_path, "Maya scene file submitted to the farm."))
+        paths.layout.addWidget(LabeledField("Project Root", project_path, "Maya project root used to resolve relative paths and dependencies."))
 
         output_row = QtWidgets.QHBoxLayout()
         output_row.setContentsMargins(0, 0, 0, 0)
         output_row.setSpacing(7)
         output_row.addWidget(output_path, 1)
 
-        browse = QtWidgets.QPushButton("Browse")
+        browse = QtWidgets.QPushButton("Browse…")
         browse.clicked.connect(self.api.browse_output_path)
         output_row.addWidget(browse)
 
         output_widget = QtWidgets.QWidget()
         output_widget.setLayout(output_row)
-        paths.layout.addWidget(LabeledField("Output", output_widget))
+        paths.layout.addWidget(LabeledField("Output Directory", output_widget, "Destination directory accessible to RenderHive workers."))
 
         utility_row = QtWidgets.QHBoxLayout()
         utility_row.setSpacing(7)
 
-        open_output = QtWidgets.QPushButton("Open Output")
+        open_output = QtWidgets.QPushButton("Open Output Folder")
         open_output.setObjectName("GhostButton")
         open_output.clicked.connect(
             self.api.open_output_folder
         )
 
-        sync_scene = QtWidgets.QPushButton("Sync From Scene")
+        sync_scene = QtWidgets.QPushButton("Sync Scene Settings")
         sync_scene.setObjectName("InfoButton")
-        sync_scene.setToolTip(
-            "Refresh scene, project, output, frame range, camera and renderer values."
-        )
         sync_scene.clicked.connect(self.sync_from_scene)
 
         utility_row.addWidget(open_output)
@@ -3482,17 +3624,17 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
     def build_render_page(self):
         page, body = self.scroll_page(
-            "Render Settings",
-            "Choose the frame range, renderer, camera and final output settings.",
+            "Render Configuration",
+            "Configure frame range, renderer, camera, format and output resolution.",
         )
 
-        preset_card = Card("Quick Preset", "Apply a safe starting point, then fine-tune below.")
+        preset_card = Card("Render Preset", "Apply a tested baseline, then adjust individual render settings as needed.")
         preset_row = QtWidgets.QHBoxLayout()
 
         preset = register("render_preset", QtWidgets.QComboBox())
         preset.addItems(
             [
-                "Custom",
+                "Manual Configuration",
                 "Preview",
                 "HD",
                 "Full HD",
@@ -3509,7 +3651,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         preset_card.layout.addLayout(preset_row)
         body.addWidget(preset_card)
 
-        render_card = Card("Frames & Renderer")
+        render_card = Card("Frame Range & Renderer", "Choose the frames, render engine and camera used by this submission.")
         render_grid = QtWidgets.QGridLayout()
         render_grid.setHorizontalSpacing(10)
         render_grid.setVerticalSpacing(8)
@@ -3528,23 +3670,23 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         camera = register("rh_camera", QtWidgets.QComboBox())
         camera.addItem("Loading")
 
-        render_grid.addWidget(LabeledField("Frame Start", frame_start), 0, 0)
-        render_grid.addWidget(LabeledField("Frame End", frame_end), 0, 1)
-        render_grid.addWidget(LabeledField("Frame Step", frame_step), 1, 0)
-        render_grid.addWidget(LabeledField("Renderer", renderer), 1, 1)
-        render_grid.addWidget(LabeledField("Camera", camera), 2, 0, 1, 2)
+        render_grid.addWidget(LabeledField("Start Frame", frame_start, "First frame included in the submission."), 0, 0)
+        render_grid.addWidget(LabeledField("End Frame", frame_end, "Last frame included in the submission."), 0, 1)
+        render_grid.addWidget(LabeledField("Frame Step", frame_step, "Increment between submitted frames."), 1, 0)
+        render_grid.addWidget(LabeledField("Renderer", renderer, "Render engine used by farm workers."), 1, 1)
+        render_grid.addWidget(LabeledField("Render Camera", camera, "Camera used for this render submission."), 2, 0, 1, 2)
         render_grid.setColumnStretch(0, 1)
         render_grid.setColumnStretch(1, 1)
         render_card.layout.addLayout(render_grid)
         body.addWidget(render_card)
 
-        output_card = Card("Output")
+        output_card = Card("Output Settings", "Define the output prefix, file format, frame padding and resolution.")
         output_grid = QtWidgets.QGridLayout()
         output_grid.setHorizontalSpacing(10)
         output_grid.setVerticalSpacing(8)
 
         image_name = register("rh_image_name", QtWidgets.QLineEdit())
-        image_name.setPlaceholderText("Output image prefix")
+        image_name.setPlaceholderText("Enter the output file prefix")
 
         image_format = register("rh_image_format", QtWidgets.QComboBox())
         image_format.addItems(["png", "jpg", "exr", "tif"])
@@ -3558,11 +3700,11 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         for widget in (width, height):
             widget.setRange(1, 65536)
 
-        output_grid.addWidget(LabeledField("Image Name", image_name), 0, 0, 1, 2)
-        output_grid.addWidget(LabeledField("Format", image_format), 1, 0)
-        output_grid.addWidget(LabeledField("Padding", padding), 1, 1)
-        output_grid.addWidget(LabeledField("Width", width), 2, 0)
-        output_grid.addWidget(LabeledField("Height", height), 2, 1)
+        output_grid.addWidget(LabeledField("Image Prefix", image_name, "Base name written before the frame number and file extension."), 0, 0, 1, 2)
+        output_grid.addWidget(LabeledField("File Format", image_format, "Image file format written by the renderer."), 1, 0)
+        output_grid.addWidget(LabeledField("Frame Padding", padding, "Number of digits used for frame numbers in output filenames."), 1, 1)
+        output_grid.addWidget(LabeledField("Width", width, "Output image width in pixels."), 2, 0)
+        output_grid.addWidget(LabeledField("Height", height, "Output image height in pixels."), 2, 1)
         output_grid.setColumnStretch(0, 1)
         output_grid.setColumnStretch(1, 1)
         output_card.layout.addLayout(output_grid)
@@ -3584,7 +3726,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         body.addWidget(
             PageHeader(
                 "Scene Validation",
-                "Errors block submission. Warnings remain visible without stopping the job.",
+                "Errors block submission; warnings remain visible for review.",
             )
         )
 
@@ -3592,8 +3734,8 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         counters.setSpacing(6)
 
         counter_specs = [
-            ("counter_error", "ERROR", "ERROR"),
-            ("counter_warning", "WARNING", "WARNING"),
+            ("counter_error", "ERRORS", "ERROR"),
+            ("counter_warning", "WARNINGS", "WARNING"),
             ("counter_info", "INFO", "INFO"),
             ("counter_passed", "PASSED", "PASSED"),
             ("counter_total", "TOTAL", "All"),
@@ -3652,7 +3794,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         details_layout.setSpacing(4)
 
         details_top = QtWidgets.QHBoxLayout()
-        details_title = QtWidgets.QLabel("Selected Result")
+        details_title = QtWidgets.QLabel("Result Details")
         details_title.setObjectName("SectionTitle")
         details_top.addWidget(details_title)
         details_top.addStretch()
@@ -3662,7 +3804,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         details_top.addWidget(details_badge)
         details_layout.addLayout(details_top)
 
-        details_message = register("details_message", QtWidgets.QLabel("Select a validation result to inspect it."))
+        details_message = register("details_message", QtWidgets.QLabel("Select a result to view its details."))
         details_message.setObjectName("SecondaryText")
         details_message.setWordWrap(True)
         details_layout.addWidget(details_message)
@@ -3679,9 +3821,6 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
         validate = QtWidgets.QPushButton("Validate Scene")
         validate.setObjectName("PrimaryButton")
-        validate.setToolTip(
-            "Run every installed RenderHive validation check."
-        )
         validate.clicked.connect(self.validate_scene)
 
         fix_selected = register(
@@ -3689,21 +3828,15 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             QtWidgets.QPushButton("Fix Selected"),
         )
         fix_selected.setObjectName("InfoButton")
-        fix_selected.setToolTip(
-            "Apply the registered auto-fix for the selected result."
-        )
         fix_selected.clicked.connect(
             self.fix_selected_validation
         )
 
         fix_all = register(
             "fix_all_safe_validation",
-            QtWidgets.QPushButton("Fix All Safe"),
+            QtWidgets.QPushButton("Fix All Safe Issues"),
         )
         fix_all.setObjectName("PrimaryButton")
-        fix_all.setToolTip(
-            "Apply every unique batch-safe auto-fix and validate again."
-        )
         fix_all.clicked.connect(
             self.fix_all_safe_validations
         )
@@ -4119,110 +4252,60 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
     def build_more_page(self):
         page, body = self.scroll_page(
             "Tools",
-            "Authenticated API connection, recent activity and maintenance options.",
+            "Connection status, activity and plugin maintenance.",
         )
 
-        backend_card = Card(
-            "API Connection",
-            "Uses the RenderHive OpenAPI job endpoints and Token authentication.",
+        connection_card = Card(
+            "Connection",
+            "RenderHive connects automatically using the managed studio configuration.",
         )
 
-        backend_url = register(
-            "rh_api_url",
-            QtWidgets.QLineEdit(),
-        )
-        backend_url.setPlaceholderText("http://127.0.0.1:8000")
-        backend_url.setClearButtonEnabled(True)
-
-        backend_token = register(
-            "rh_api_token",
-            QtWidgets.QLineEdit(),
-        )
-        backend_token.setPlaceholderText("Paste API token")
-        backend_token.setEchoMode(QtWidgets.QLineEdit.Password)
-        backend_token.setClearButtonEnabled(True)
-
-        token_row = QtWidgets.QHBoxLayout()
-        token_row.setContentsMargins(0, 0, 0, 0)
-        token_row.setSpacing(7)
-        token_row.addWidget(backend_token, 1)
-
-        show_token = QtWidgets.QToolButton()
-        show_token.setText("Show")
-        show_token.setCheckable(True)
-        show_token.setToolTip("Show or hide the API token")
-        show_token.toggled.connect(
-            lambda checked: backend_token.setEchoMode(
-                QtWidgets.QLineEdit.Normal
-                if checked
-                else QtWidgets.QLineEdit.Password
-            )
-        )
-        token_row.addWidget(show_token)
-
-        token_widget = QtWidgets.QWidget()
-        token_widget.setLayout(token_row)
-
-        api_enabled = register(
-            "rh_api_enabled",
-            QtWidgets.QCheckBox("Use RenderHive API for Submit Job"),
-        )
-        api_enabled.setToolTip(
-            "When disabled, Submit Job continues to use the Local Worker flow."
-        )
-
-        backend_card.layout.addWidget(
-            LabeledField("API Base URL", backend_url)
-        )
-        backend_card.layout.addWidget(
-            LabeledField("API Token", token_widget)
-        )
-        backend_card.layout.addWidget(api_enabled)
-
-        buttons = QtWidgets.QHBoxLayout()
-        buttons.setSpacing(7)
-
-        save_button = QtWidgets.QPushButton("Save Settings")
-        save_button.setObjectName("PrimaryButton")
-        save_button.clicked.connect(self.save_api_settings)
-
-        test_button = register(
-            "test_api_button",
-            QtWidgets.QPushButton("Test Connection"),
-        )
-        test_button.setObjectName("InfoButton")
-        test_button.clicked.connect(self.test_api_connection)
-
-        open_button = QtWidgets.QPushButton("Open API Config")
-        open_button.setObjectName("GhostButton")
-        open_button.clicked.connect(self.open_api_config)
-
-        buttons.addWidget(save_button)
-        buttons.addWidget(test_button)
-        buttons.addWidget(open_button)
-        buttons.addStretch()
-        backend_card.layout.addLayout(buttons)
+        connection_row = QtWidgets.QHBoxLayout()
+        connection_row.setSpacing(10)
 
         backend_status = register(
             "api_connection_status",
-            QtWidgets.QLabel("API settings are not loaded yet."),
+            QtWidgets.QLabel("Checking RenderHive connection…"),
         )
-        backend_status.setObjectName("MutedText")
+        backend_status.setObjectName("ConnectionState")
         backend_status.setWordWrap(True)
-        backend_card.layout.addWidget(backend_status)
+        connection_row.addWidget(backend_status, 1)
 
-        api_note = QtWidgets.QLabel(
-            "Jobs: /api/jobs/   •   Workers: /api/workers/   •   Pools: /api/pools/"
+        test_button = register(
+            "test_api_button",
+            QtWidgets.QPushButton("Retry Connection"),
         )
-        api_note.setObjectName("MutedText")
-        api_note.setWordWrap(True)
-        backend_card.layout.addWidget(api_note)
+        test_button.setObjectName("InfoButton")
+        test_button.clicked.connect(self.test_api_connection)
+        connection_row.addWidget(test_button)
 
-        body.addWidget(backend_card)
+        connection_card.layout.addLayout(connection_row)
+
+        source_label = register(
+            "api_config_source",
+            QtWidgets.QLabel("Managed configuration"),
+        )
+        source_label.setObjectName("MutedText")
+        connection_card.layout.addWidget(source_label)
+
+        if bool(getattr(self.api, "api_admin_mode_enabled", lambda: False)()):
+            admin_row = QtWidgets.QHBoxLayout()
+            admin_row.setSpacing(7)
+
+            open_button = QtWidgets.QPushButton(
+                "Open Managed Configuration"
+            )
+            open_button.setObjectName("GhostButton")
+            open_button.clicked.connect(self.open_api_config)
+            admin_row.addWidget(open_button)
+            admin_row.addStretch()
+            connection_card.layout.addLayout(admin_row)
+
+        body.addWidget(connection_card)
 
         activity = Card(
             "Activity Log",
-            "Recent RenderHive actions and status messages.",
+            "Recent RenderHive actions and operational messages.",
         )
 
         activity_log = register(
@@ -4232,7 +4315,7 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         activity_log.setObjectName("ActivityLog")
         activity_log.setReadOnly(True)
         activity_log.setMaximumBlockCount(250)
-        activity_log.setMinimumHeight(215)
+        activity_log.setMinimumHeight(260)
         activity.layout.addWidget(activity_log)
         body.addWidget(activity, 1)
 
@@ -4242,7 +4325,6 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         menu_button = QtWidgets.QToolButton()
         menu_button.setObjectName("MaintenanceButton")
         menu_button.setText("•••")
-        menu_button.setToolTip("Maintenance")
         menu_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
 
         menu = QtWidgets.QMenu(menu_button)
@@ -4252,6 +4334,27 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         )
         state_folder_action.triggered.connect(
             self.open_state_storage_folder
+        )
+
+        runtime_logs_action = menu.addAction(
+            "Open Runtime Logs"
+        )
+        runtime_logs_action.triggered.connect(
+            self.open_runtime_logs_folder
+        )
+
+        diagnostics_action = menu.addAction(
+            "Create Support Bundle"
+        )
+        diagnostics_action.triggered.connect(
+            self.create_support_bundle
+        )
+
+        health_action = menu.addAction(
+            "Run Production Check"
+        )
+        health_action.triggered.connect(
+            self.run_production_check
         )
 
         menu.addSeparator()
@@ -4266,7 +4369,6 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         body.addLayout(maintenance_row)
         body.addStretch()
         return page
-
 
     def build_footer(self):
         frame = QtWidgets.QFrame()
@@ -4288,10 +4390,6 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         submit.setMinimumWidth(340)
         submit.setMaximumWidth(420)
         submit.setMinimumHeight(38)
-        submit.setToolTip(
-            "Submit the current Maya job. "
-            "Submit the current validated job to the RenderHive API."
-        )
         submit.clicked.connect(self.submit_job)
 
         submit_row.addWidget(submit)
@@ -4590,17 +4688,17 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         syncing=self.worker_sync_thread is not None and self.worker_sync_thread.isRunning()
         if isinstance(api_chip,WorkerStatusChip):
             if syncing: api_chip.set_state("Connecting…",COLORS["info"])
-            elif self.worker_target_sync_error: api_chip.set_state("API Offline",COLORS["error"])
-            elif self.worker_target_has_sync: api_chip.set_state("API Online",COLORS["success"])
-            else: api_chip.set_state("Not Synced",COLORS["warning"])
+            elif self.worker_target_sync_error: api_chip.set_state("Backend Offline",COLORS["error"])
+            elif self.worker_target_has_sync: api_chip.set_state("Backend Online",COLORS["success"])
+            else: api_chip.set_state("Not Connected",COLORS["warning"])
         if isinstance(worker_chip,WorkerStatusChip):
-            worker_chip.set_state("{} Online / {}".format(online,total) if total else "0 Workers",
+            worker_chip.set_state("{} / {} Workers".format(online,total) if total else "0 Workers",
                                   COLORS["success"] if online else COLORS["warning"])
         if isinstance(pool_chip,WorkerStatusChip):
             pool_chip.set_state("{} Pool{}".format(pools,"" if pools==1 else "s"),
                                 COLORS["info"] if pools else COLORS["muted"])
         if isinstance(time_chip,WorkerStatusChip):
-            if self.worker_target_last_sync is None: time_chip.set_state("Never",COLORS["muted"])
+            if self.worker_target_last_sync is None: time_chip.set_state("Not Synced",COLORS["muted"])
             else:
                 prefix="Cached" if self.worker_target_sync_error else ("Stale" if self.worker_data_is_stale() else "Synced")
                 time_chip.set_state("{} {}".format(prefix,self.worker_target_last_sync.strftime("%H:%M")),
@@ -4640,13 +4738,15 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         strategy=self.pool_assignment_strategy_key()
         selected=_WIDGETS.get("pool_selected_field")
         excluded=_WIDGETS.get("pool_excluded_field")
-        hint=_WIDGETS.get("pool_strategy_hint")
         if isinstance(selected,QtWidgets.QWidget): selected.setVisible(strategy=="selected")
         if isinstance(excluded,QtWidgets.QWidget): excluded.setVisible(strategy=="all_except")
-        if isinstance(hint,QtWidgets.QLabel):
-            if strategy=="selected": hint.setText("Only the selected backend pools can receive this job.")
-            elif strategy=="all_except": hint.setText("Every backend pool can receive this job except the excluded pools.")
-            else: hint.setText("Every backend pool can receive this job.")
+        strategy_widget=_WIDGETS.get("rh_pool_strategy")
+        if strategy=="selected":
+            help_text="Only the selected backend pools can receive this job."
+        elif strategy=="all_except":
+            help_text="Every backend pool can receive this job except the excluded pools."
+        else:
+            help_text="Every backend pool can receive this job."
         self.update_worker_targeting_summary()
 
     def on_pool_strategy_changed(self,mode=""):
@@ -4907,6 +5007,9 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         return workers
 
     def sync_available_workers(self, *args):
+        if self._is_closing:
+            return
+
         provider = self.worker_provider()
         button = _WIDGETS.get("sync_workers_button")
 
@@ -5011,6 +5114,9 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         )
 
     def on_worker_sync_finished(self):
+        if self._is_closing:
+            return
+
         button = _WIDGETS.get("sync_workers_button")
 
         if isinstance(button, QtWidgets.QPushButton):
@@ -5069,10 +5175,6 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
 
 
     def api_enabled(self):
-        widget = _WIDGETS.get("rh_api_enabled")
-        if isinstance(widget, QtWidgets.QCheckBox):
-            return bool(widget.isChecked())
-
         try:
             return bool(
                 self.api.get_api_config().get("enabled", False)
@@ -5085,96 +5187,59 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             config = self.api.get_api_config()
         except Exception as error:
             self.set_api_status(
-                "Could not load API settings: {}".format(error),
+                "Configuration unavailable",
                 level="error",
+            )
+            self.append_activity(
+                "Could not load managed API configuration: {}".format(error)
             )
             return
 
-        url_widget = _WIDGETS.get("rh_api_url")
-        token_widget = _WIDGETS.get("rh_api_token")
-        enabled_widget = _WIDGETS.get("rh_api_enabled")
-
-        if isinstance(url_widget, QtWidgets.QLineEdit):
-            url_widget.setText(str(config.get("base_url", "")))
-
-        if isinstance(token_widget, QtWidgets.QLineEdit):
-            token_widget.setText(
-                str(config.get("auth", {}).get("token", ""))
+        source_widget = _WIDGETS.get("api_config_source")
+        if isinstance(source_widget, QtWidgets.QLabel):
+            source = str(
+                config.get("_config_source")
+                or self.api.get_api_config_source()
+                or "Managed"
             )
-
-        if isinstance(enabled_widget, QtWidgets.QCheckBox):
-            enabled_widget.setChecked(bool(config.get("enabled", False)))
+            source_widget.setText(
+                "Configuration: {}".format(source)
+            )
 
         has_token = bool(config.get("auth", {}).get("token"))
         if config.get("enabled", False) and has_token:
             self.set_api_status(
-                "RenderHive API enabled with Token authentication. Test the connection before submitting.",
+                "Ready to connect",
                 level="info",
             )
         elif config.get("enabled", False):
             self.set_api_status(
-                "RenderHive API enabled, but the token is empty.",
+                "Credentials not configured",
                 level="warning",
             )
         else:
             self.set_api_status(
-                "RenderHive API is disabled. Enable it before submission.",
+                "Backend disabled by configuration",
                 level="warning",
             )
 
     def api_settings_payload(self):
-        url_widget = _WIDGETS.get("rh_api_url")
-        token_widget = _WIDGETS.get("rh_api_token")
-        enabled_widget = _WIDGETS.get("rh_api_enabled")
-
-        base_url = (
-            url_widget.text().strip()
-            if isinstance(url_widget, QtWidgets.QLineEdit)
-            else ""
-        )
-        token = (
-            token_widget.text().strip()
-            if isinstance(token_widget, QtWidgets.QLineEdit)
-            else ""
-        )
-        enabled = (
-            bool(enabled_widget.isChecked())
-            if isinstance(enabled_widget, QtWidgets.QCheckBox)
-            else False
-        )
-
-        return {
-            "base_url": base_url,
-            "enabled": enabled,
-            "auth": {
-                "type": "token",
-                "token": token,
-            },
-        }
+        return self.api.get_api_config()
 
     def save_api_settings(self):
+        # Artist mode is read-only. Connection settings are managed outside
+        # Maya and are reloaded automatically for every API operation.
         try:
-            config = self.api.save_api_config(
-                self.api_settings_payload()
-            )
+            return self.api.get_api_config()
         except Exception as error:
             self.set_api_status(
-                "Could not save API settings: {}".format(error),
+                "Configuration unavailable",
                 level="error",
             )
-            QtWidgets.QMessageBox.critical(
-                self,
-                "RenderHive API",
-                "Could not save API settings:\n\n{}".format(error),
+            self.append_activity(
+                "Could not load managed API configuration: {}".format(error)
             )
             return None
-
-        self.set_api_status(
-            "Settings saved: {}".format(config.get("base_url", "")),
-            level="success",
-        )
-        self.append_activity("API settings saved.")
-        return config
 
     def set_api_status(self, message, level="info"):
         label = _WIDGETS.get("api_connection_status")
@@ -5188,12 +5253,26 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         if isinstance(label, QtWidgets.QLabel):
             label.setText(str(message))
             label.setStyleSheet(
-                "QLabel { color:%s; }" % color
+                "QLabel#ConnectionState {"
+                "background-color:%s;"
+                "border:1px solid %s;"
+                "border-radius:7px;"
+                "color:%s;"
+                "padding:8px 10px;"
+                "font-weight:600;"
+                "}" % (COLORS["surface2"], color, color)
             )
 
     def open_api_config(self):
+        if not bool(getattr(self.api, "api_admin_mode_enabled", lambda: False)()):
+            return
+
         try:
             path = self.api.get_api_config_path()
+            if not path:
+                raise RuntimeError(
+                    "No managed API configuration file is available."
+                )
 
             if hasattr(os, "startfile"):
                 os.startfile(path)
@@ -5203,36 +5282,47 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
                 )
 
             self.append_activity(
-                "Opened API config: {}".format(path)
+                "Opened managed API config: {}".format(path)
             )
         except Exception as error:
             QtWidgets.QMessageBox.warning(
                 self,
                 "RenderHive API",
-                "Could not open API config:\n\n{}".format(error),
+                "Could not open managed configuration:\n\n{}".format(error),
             )
 
-    def test_api_connection(self):
+    def test_api_connection(self, *args):
+        if self._is_closing:
+            return
+
         if (
             self.api_test_thread is not None
             and self.api_test_thread.isRunning()
         ):
             return
 
-        if not self.save_api_settings():
+        if not self.api_enabled():
+            self.set_api_status(
+                "Backend disabled by configuration",
+                level="warning",
+            )
+            self.set_status(
+                "Backend submission is disabled.",
+                level="warning",
+            )
             return
 
         button = _WIDGETS.get("test_api_button")
         if isinstance(button, QtWidgets.QPushButton):
             button.setEnabled(False)
-            button.setText("Testing…")
+            button.setText("Connecting…")
 
         self.set_api_status(
-            "Testing API connection…",
+            "Connecting…",
             level="info",
         )
         self.set_status(
-            "Testing API connection…",
+            "Connecting to RenderHive…",
             level="info",
         )
 
@@ -5259,41 +5349,41 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         )
 
         self.set_api_status(
-            "RenderHive API is online. HTTP {}.".format(status_code),
+            "Connected",
             level="success",
         )
         self.set_status(
-            "API connection successful.",
+            "RenderHive connected.",
             level="success",
         )
         self.append_activity(
-            "API connection test succeeded."
+            "Backend connection succeeded (HTTP {}).".format(status_code)
         )
 
-        if self.api_enabled():
-            QtCore.QTimer.singleShot(
-                0,
-                self.sync_available_workers
-            )
+        if not self._is_closing:
+            self.sync_available_workers()
 
     def on_api_test_failed(self, error):
         self.set_api_status(
-            "API connection failed: {}".format(error),
+            "Connection unavailable",
             level="error",
         )
         self.set_status(
-            "API connection failed.",
+            "RenderHive connection failed.",
             level="error",
         )
         self.append_activity(
-            "API connection test failed: {}".format(error)
+            "Backend connection failed: {}".format(error)
         )
 
     def on_api_test_finished(self):
+        if self._is_closing:
+            return
+
         button = _WIDGETS.get("test_api_button")
         if isinstance(button, QtWidgets.QPushButton):
             button.setEnabled(True)
-            button.setText("Test Connection")
+            button.setText("Retry Connection")
 
         if self.api_test_thread is not None:
             self.api_test_thread.deleteLater()
@@ -5389,6 +5479,9 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         return task
 
     def submit_job(self):
+        if self._is_closing:
+            return None
+
         if not self.api_enabled():
             self.set_status(
                 "RenderHive API is disabled.",
@@ -5398,8 +5491,9 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
                 self,
                 "RenderHive API",
                 (
-                    "Enable 'Use RenderHive API for Submit Job' "
-                    "inside Tools before submitting."
+                    "Backend submission is disabled in the managed "
+                    "RenderHive configuration. Contact the pipeline "
+                    "administrator."
                 ),
             )
             return None
@@ -5408,9 +5502,6 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
             self.api_submit_thread is not None
             and self.api_submit_thread.isRunning()
         ):
-            return
-
-        if not self.save_api_settings():
             return
 
         task = self.prepare_api_task()
@@ -5542,6 +5633,9 @@ class RenderHiveSubmitter(QtWidgets.QDialog):
         )
 
     def on_api_submit_finished(self):
+        if self._is_closing:
+            return
+
         button = _WIDGETS.get("submit_job_button")
         if isinstance(button, QtWidgets.QPushButton):
             button.setEnabled(True)
@@ -5641,16 +5735,22 @@ def show_submitter(api):
     global _WINDOW, _API, _WIDGETS
 
     _API = api
-    _WIDGETS = {}
     install_api_bridge(api)
 
     if _WINDOW is not None:
         try:
-            _WINDOW.close()
-            _WINDOW.deleteLater()
+            if isValid(_WINDOW) and not _WINDOW._is_closing:
+                if _WINDOW.isMinimized():
+                    _WINDOW.showNormal()
+                else:
+                    _WINDOW.show()
+                _WINDOW.raise_()
+                _WINDOW.activateWindow()
+                return _WINDOW
         except Exception:
-            pass
+            _WINDOW = None
 
+    _WIDGETS = {}
     _WINDOW = RenderHiveSubmitter(api)
     _WINDOW.show()
     _WINDOW.raise_()

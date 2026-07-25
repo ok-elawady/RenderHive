@@ -1,62 +1,59 @@
 # RenderHive Maya Submitter
 
-Clean production package for the RenderHive Maya submitter.
+Current plugin version: **1.9.12**  
+Validated API contract: **RenderHive API 0.1.0**
 
-## Main folders
+## Current scope
 
-- `api/` — REST client, Token authentication, request payloads and Maya bridge.
-- `config/` — API template and validation rules.
-- `core/` — dependency collection used by validation.
-- `ui/` — active PySide2 interface and theme.
-- `validation/` — scene checks and Auto Fix.
-- `icons/` — header and shelf icons.
+- Maya scene validation and safe Auto Fix.
+- API Job submission.
+- Backend Worker and Pool synchronization.
+- Read-only pool selection and worker details.
+- Scene-specific SQLite restore.
+- Token authentication.
+- Local activity and API submission logs.
+
+## Backend ownership
+
+The backend/admin owns:
+
+- Pool creation, rename and deletion.
+- Worker-to-Pool membership.
+- Worker ping and Frame lifecycle endpoints.
+
+The Maya submitter only reads Pools and Workers and submits Jobs.
+
+## API configuration
+
+Open `Tools > API Connection` and set the API URL and Token.
+
+Runtime configuration:
+
+```text
+%LOCALAPPDATA%/RenderHive/api_config.json
+```
+
+The Token is stored separately. On Windows it is encrypted with DPAPI for the current Windows user.
+
+## Contract status
+
+All Maya-side endpoint paths and HTTP methods match the supplied OpenAPI file. Two backend changes remain:
+
+1. `POST /api/jobs/` should return the created Job ID.
+2. `LayerCreate` should accept explicit target Pool IDs for guaranteed pool dispatch.
+
+See:
+
+- `API_CONTRACT_AUDIT_1_9_6.md`
+- `BACKEND_HANDOFF_1_9_6.md`
+- `PRODUCTION_CORE_1_9_6.md`
+
+## Development audit
+
+```bat
+python tools\audit_api_contract.py contracts\renderhive_api_0_1_0.yaml
+```
 
 ## Installation
 
-Drag `drag_to_maya_install.mel` into Maya.
-
-The package is copied to:
-
-`Documents/maya/<version>/scripts/RenderHive`
-
-The real API token is stored outside the source package at:
-
-`%LOCALAPPDATA%/RenderHive/api_config.json`
-
-Existing settings from the old `backend_config.json` are migrated automatically.
-
-## API setup
-
-Open:
-
-`Tools > API Connection`
-
-Then set the URL, token, enable the API, save, and test the connection.
-
-## Current limitation
-
-The supplied API exposes Jobs, Layers and Frames but no worker-discovery or
-pool-management endpoints. Pool definitions therefore remain local and worker
-sync returns no online workers until those endpoints are added.
-
-
-## API Pools & Workers — UI 1.8.0
-
-See `API_INTEGRATION_1_8_0.md`.
-
-
-## Worker Targeting — UI 1.9.2
-
-Backend pools are read-only in Maya. Use **Job > Browse Pools** to review
-pool details and workers, then apply the selected pool to the current job.
-Pool creation and membership management remain backend responsibilities.
-
-
-## Worker Assignment — UI 1.9.2
-
-The Worker Targeting card now provides two explicit strategies:
-
-- **Use All Workers in Pool**: every available pool member is eligible, with optional exclusions.
-- **Use Selected Workers Only**: only explicitly selected pool members are eligible.
-
-The active strategy clears the inactive list, so a worker can never be both selected and excluded. Worker selections remain scene-specific through SQLite restore.
+Drag `drag_to_maya_install.mel` into Maya, or use the packaged CMD installer when included with the release.

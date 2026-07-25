@@ -1,17 +1,25 @@
 from __future__ import print_function
 
 import importlib
+import datetime
 import json
 import os
 import shutil
 import sys
+import tempfile
 
 import maya.cmds as cmds
 import maya.mel as mel
 
+from api.version import PLUGIN_VERSION
+
 
 SHELF_NAME = "RenderHive"
 BUTTON_ANNOTATION = "Open RenderHive Maya Submitter"
+MAIN_MENU_NAME = "RenderHiveMainMenu"
+MAIN_MENU_LABEL = "RenderHive"
+STARTUP_BLOCK_BEGIN = "# >>> RenderHive Maya startup >>>"
+STARTUP_BLOCK_END = "# <<< RenderHive Maya startup <<<"
 
 
 def get_installed_package_dir():
@@ -40,6 +48,9 @@ def _ignore_runtime_content(
         "backups",
         "logs",
         "reports",
+        "tests",
+        "tools",
+        "contracts",
     }
 
     for name in names:
@@ -50,6 +61,9 @@ def _ignore_runtime_content(
             or lowered.startswith("backup_")
             or lowered.endswith(".zip")
             or lowered.endswith(".pyc")
+            or lowered.endswith(".md")
+            or lowered.endswith(".yaml")
+            or lowered.endswith(".yml")
         ):
             ignored.append(
                 name
@@ -58,31 +72,233 @@ def _ignore_runtime_content(
     return ignored
 
 
-def copy_package_to_maya_scripts(
-    source_dir
-):
-    install_dir = get_installed_package_dir()
-
-    if os.path.isdir(
-        install_dir
-    ):
-        shutil.rmtree(
-            install_dir
-        )
-
-    shutil.copytree(
-        source_dir,
-        install_dir,
-        ignore=_ignore_runtime_content,
+def _validate_staged_package(path):
+    required = (
+        "renderhive_maya_submitter.py",
+        os.path.join("api", "version.py"),
+        os.path.join("ui", "qt_submitter_window.py"),
+        os.path.join("validation", "validator.py"),
     )
+    missing = [item for item in required if not os.path.isfile(os.path.join(path, item))]
+    if missing:
+        raise RuntimeError("Installer package is incomplete: {}".format(", ".join(missing)))
 
-    return install_dir
+
+def copy_package_to_maya_scripts(source_dir):
+    install_dir = get_installed_package_dir()
+    parent = os.path.dirname(install_dir)
+    if not os.path.isdir(parent):
+        os.makedirs(parent)
+
+    stage_dir = tempfile.mkdtemp(prefix="RenderHive_stage_", dir=parent)
+    backup_dir = ""
+    try:
+        shutil.rmtree(stage_dir)
+        shutil.copytree(source_dir, stage_dir, ignore=_ignore_runtime_content)
+        _validate_staged_package(stage_dir)
+
+        if os.path.isdir(install_dir):
+            stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = "{}_backup_{}".format(install_dir, stamp)
+            os.replace(install_dir, backup_dir)
+
+        os.replace(stage_dir, install_dir)
+        _validate_staged_package(install_dir)
+        return install_dir
+    except Exception:
+        if os.path.isdir(install_dir):
+            shutil.rmtree(install_dir, ignore_errors=True)
+        if backup_dir and os.path.isdir(backup_dir):
+            os.replace(backup_dir, install_dir)
+        raise
+    finally:
+        if os.path.isdir(stage_dir):
+            shutil.rmtree(stage_dir, ignore_errors=True)
 
 
 def get_shelf_top_level():
     return mel.eval(
         "$tmp = $gShelfTopLevel"
     )
+
+
+def _python_open_command(install_dir):
+    return """
+import importlib
+import os
+import sys
+
+renderhive_path = r"{install_dir}"
+if renderhive_path in sys.path:
+    sys.path.remove(renderhive_path)
+sys.path.insert(0, renderhive_path)
+
+import renderhive_maya_submitter
+renderhive_maya_submitter.show_submitter()
+""".format(
+        install_dir=str(install_dir).replace("\\", "\\\\")
+    )
+
+
+def _python_validate_command(install_dir):
+    return """
+import importlib
+import os
+import sys
+
+renderhive_path = r"{install_dir}"
+if renderhive_path in sys.path:
+    sys.path.remove(renderhive_path)
+sys.path.insert(0, renderhive_path)
+
+import renderhive_maya_submitter
+renderhive_maya_submitter.show_submitter()
+renderhive_maya_submitter.validate_scene_from_ui()
+""".format(
+        install_dir=str(install_dir).replace("\\", "\\\\")
+    )
+
+
+def remove_main_menu():
+    try:
+        if cmds.menu(MAIN_MENU_NAME, exists=True):
+            cmds.deleteUI(MAIN_MENU_NAME, menu=True)
+    except Exception:
+        pass
+
+
+def ensure_main_menu(install_dir=None):
+    install_dir = os.path.abspath(
+        install_dir or get_installed_package_dir()
+    )
+
+    remove_main_menu()
+
+    try:
+        main_window = mel.eval("$tmp = $gMainWindow")
+        menu = cmds.menu(
+            MAIN_MENU_NAME,
+            label=MAIN_MENU_LABEL,
+            parent=main_window,
+            tearOff=False,
+        )
+
+        cmds.menuItem(
+            parent=menu,
+            label="Open RenderHive",
+            annotation="Open the RenderHive Maya Submitter",
+            sourceType="python",
+            command=_python_open_command(install_dir),
+        )
+        cmds.menuItem(
+            parent=menu,
+            label="Validate Current Scene",
+            annotation="Open RenderHive and validate the current Maya scene",
+            sourceType="python",
+            command=_python_validate_command(install_dir),
+        )
+        cmds.menuItem(parent=menu, divider=True)
+        cmds.menuItem(
+            parent=menu,
+            label="Uninstall RenderHive",
+            annotation="Remove RenderHive from this Maya installation",
+            sourceType="python",
+            command=(
+                "import renderhive_maya_submitter; "
+                "renderhive_maya_submitter.uninstall_renderhive_from_maya()"
+            ),
+        )
+        return menu
+    except Exception:
+        return None
+
+
+def _startup_block(install_dir):
+    safe_path = repr(os.path.abspath(install_dir))
+    return """{begin}
+try:
+    import maya.utils as _renderhive_maya_utils
+
+    def _renderhive_install_menu():
+        import importlib
+        import sys
+        _renderhive_path = {path}
+        if _renderhive_path in sys.path:
+            sys.path.remove(_renderhive_path)
+        sys.path.insert(0, _renderhive_path)
+        import renderhive_installer
+        renderhive_installer.ensure_main_menu(_renderhive_path)
+
+    _renderhive_maya_utils.executeDeferred(_renderhive_install_menu)
+except Exception:
+    pass
+{end}
+""".format(
+        begin=STARTUP_BLOCK_BEGIN,
+        end=STARTUP_BLOCK_END,
+        path=safe_path,
+    )
+
+
+def _remove_startup_block(content):
+    start = content.find(STARTUP_BLOCK_BEGIN)
+    if start < 0:
+        return content
+
+    end = content.find(STARTUP_BLOCK_END, start)
+    if end < 0:
+        return content[:start].rstrip() + "\n"
+
+    end += len(STARTUP_BLOCK_END)
+    return (content[:start] + content[end:]).strip() + "\n"
+
+
+def get_user_setup_path():
+    return os.path.join(
+        cmds.internalVar(userScriptDir=True),
+        "userSetup.py",
+    )
+
+
+def install_startup_hook(install_dir):
+    path = get_user_setup_path()
+    folder = os.path.dirname(path)
+    if not os.path.isdir(folder):
+        os.makedirs(folder)
+
+    content = ""
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                content = handle.read()
+        except Exception:
+            content = ""
+
+    content = _remove_startup_block(content).rstrip()
+    if content:
+        content += "\n\n"
+    content += _startup_block(install_dir)
+
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(content)
+
+    return path
+
+
+def remove_startup_hook():
+    path = get_user_setup_path()
+    if not os.path.isfile(path):
+        return False
+
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            content = handle.read()
+        updated = _remove_startup_block(content)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(updated)
+        return True
+    except Exception:
+        return False
 
 
 def ensure_shelf():
@@ -185,27 +401,6 @@ def create_shelf_button(
         "/"
     )
 
-    command = """
-import importlib
-import os
-import sys
-
-renderhive_path = r"{install_dir}"
-
-if renderhive_path in sys.path:
-    sys.path.remove(renderhive_path)
-sys.path.insert(0, renderhive_path)
-
-import renderhive_maya_submitter
-importlib.reload(renderhive_maya_submitter)
-renderhive_maya_submitter.show_submitter()
-""".format(
-        install_dir=install_dir.replace(
-            "\\",
-            "\\\\"
-        )
-    )
-
     cmds.shelfButton(
         parent=shelf_name,
         label="",
@@ -215,7 +410,7 @@ renderhive_maya_submitter.show_submitter()
         imageOverlayLabel="",
         style="iconOnly",
         sourceType="python",
-        command=command,
+        command=_python_open_command(install_dir),
     )
 
     try:
@@ -248,6 +443,7 @@ def write_install_info(
                 "install_dir": os.path.abspath(
                     install_dir
                 ),
+                "plugin_version": PLUGIN_VERSION,
             },
             handle,
             indent=4,
@@ -269,14 +465,17 @@ def install_from_drag_drop(
     create_shelf_button(
         install_dir
     )
+    install_startup_hook(install_dir)
+    ensure_main_menu(install_dir)
 
     cmds.confirmDialog(
         title="RenderHive Installed",
         message=(
-            "RenderHive was installed successfully.\n\n"
+            "RenderHive v{} was installed successfully.\n\n"
             "Installed to:\n{}\n\n"
-            "A RenderHive shelf button was created."
+            "A RenderHive shelf button and main-menu entry were created."
         ).format(
+            PLUGIN_VERSION,
             install_dir
         ),
         button=["OK"],
@@ -340,6 +539,8 @@ def uninstall_renderhive(
 
     close_renderhive_windows()
     remove_renderhive_shelf_buttons()
+    remove_main_menu()
+    remove_startup_hook()
 
     if os.path.isdir(
         install_dir

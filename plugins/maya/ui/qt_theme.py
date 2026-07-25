@@ -4,12 +4,12 @@ import os
 
 
 COLORS = {
-    "background": "#0E1016",
-    "surface": "#171A24",
-    "surface2": "#1F2330",
-    "surface3": "#2A3040",
-    "border": "#343B4D",
-    "divider": "#2A3143",
+    "background": "#10131A",
+    "surface": "#181D28",
+    "surface2": "#202635",
+    "surface3": "#2A3244",
+    "border": "#364055",
+    "divider": "#2B3447",
     "primary": "#5A1FA6",
     "hover": "#6C2AC4",
     "active": "#7A39D9",
@@ -24,7 +24,7 @@ COLORS = {
     "warning": "#FFB84D",
     "error": "#FF5D73",
     "paused": "#9E8EFF",
-    "terminal": "#090B11",
+    "terminal": "#0D1118",
 }
 
 
@@ -49,7 +49,21 @@ def build_stylesheet():
         background-color: %(background)s;
         color: %(text)s;
         font-family: "Segoe UI";
-        font-size: 12px;
+        font-size: 11px;
+    }
+
+    QLabel {
+        background-color: transparent;
+        border: none;
+    }
+
+    QToolTip {
+        background-color: #252C3B;
+        color: %(text)s;
+        border: 1px solid %(border)s;
+        border-radius: 5px;
+        padding: 6px 8px;
+        font-size: 10px;
     }
 
     QDialog#RenderHiveWindow {
@@ -62,7 +76,7 @@ def build_stylesheet():
     QFrame#DetailsCard {
         background-color: %(surface)s;
         border: 1px solid %(border)s;
-        border-radius: 9px;
+        border-radius: 10px;
     }
 
     QFrame#HeaderCard {
@@ -77,19 +91,19 @@ def build_stylesheet():
     QFrame#Sidebar {
         background-color: %(surface)s;
         border: 1px solid %(border)s;
-        border-radius: 9px;
+        border-radius: 10px;
     }
 
     QLabel#BrandMain {
         color: %(text)s;
-        font-size: 20px;
+        font-size: 19px;
         font-weight: 700;
         letter-spacing: 1px;
     }
 
     QLabel#BrandAccent {
         color: %(light)s;
-        font-size: 20px;
+        font-size: 19px;
         font-weight: 700;
         letter-spacing: 1px;
     }
@@ -103,13 +117,13 @@ def build_stylesheet():
 
     QLabel#PageTitle {
         color: %(text)s;
-        font-size: 18px;
+        font-size: 17px;
         font-weight: 700;
     }
 
     QLabel#SectionTitle {
         color: %(text)s;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 700;
     }
 
@@ -117,20 +131,40 @@ def build_stylesheet():
         color: %(secondary)s;
     }
 
-    QLabel#MutedText,
-    QLabel#FieldLabel {
+    QLabel#MutedText {
         color: %(muted)s;
+        font-size: 10px;
     }
 
     QLabel#FieldLabel {
-        font-size: 11px;
+        color: %(secondary)s;
+    }
+
+    QLabel#FieldLabel {
+        font-size: 10px;
         font-weight: 600;
+    }
+
+    QToolButton#InfoTipButton {
+        background-color: %(surface2)s;
+        color: %(muted)s;
+        border: 1px solid %(divider)s;
+        border-radius: 8px;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 0;
+    }
+
+    QToolButton#InfoTipButton:hover {
+        color: %(text)s;
+        border-color: %(light)s;
+        background-color: %(surface3)s;
     }
 
     QLabel#MetaChip {
         background-color: %(surface2)s;
         border: 1px solid %(divider)s;
-        border-radius: 9px;
+        border-radius: 10px;
         color: %(secondary)s;
         padding: 3px 8px;
         font-size: 10px;
@@ -157,7 +191,7 @@ def build_stylesheet():
         border-left: 3px solid transparent;
         border-radius: 0px;
         color: %(muted)s;
-        min-height: 40px;
+        min-height: 42px;
         padding: 0 11px;
         text-align: left;
         font-weight: 600;
@@ -176,13 +210,14 @@ def build_stylesheet():
 
     QLineEdit,
     QSpinBox,
+    QDoubleSpinBox,
     QComboBox {
-        background-color: #161B24;
+        background-color: #151A24;
         color: %(text)s;
         border: 1px solid %(border)s;
-        border-radius: 6px;
-        min-height: 29px;
-        padding: 0 9px;
+        border-radius: 7px;
+        min-height: 31px;
+        padding: 0 10px;
         selection-background-color: %(primary)s;
     }
 
@@ -298,11 +333,11 @@ def build_stylesheet():
     }
 
     QPushButton {
-        background-color: #232939;
+        background-color: #232A3A;
         color: %(text)s;
-        border: 1px solid #40485D;
-        border-radius: 6px;
-        min-height: 29px;
+        border: 1px solid #414B62;
+        border-radius: 7px;
+        min-height: 31px;
         padding: 0 14px;
         font-weight: 600;
     }
@@ -322,18 +357,22 @@ def build_stylesheet():
         border-color: %(divider)s;
     }
 
-    QPushButton#PrimaryButton {
+    QPushButton#PrimaryButton,
+    QPushButton#SubmitButton {
         background-color: %(primary)s;
         border-color: %(hover)s;
         min-height: 34px;
+        font-weight: 700;
     }
 
-    QPushButton#PrimaryButton:hover {
+    QPushButton#PrimaryButton:hover,
+    QPushButton#SubmitButton:hover {
         background-color: %(hover)s;
         border-color: %(light)s;
     }
 
-    QPushButton#PrimaryButton:pressed {
+    QPushButton#PrimaryButton:pressed,
+    QPushButton#SubmitButton:pressed {
         background-color: #4A1888;
     }
 
@@ -385,8 +424,8 @@ def build_stylesheet():
         background-color: %(surface2)s;
         border: 1px solid %(border)s;
         border-top: 3px solid %(muted)s;
-        border-radius: 7px;
-        min-height: 44px;
+        border-radius: 8px;
+        min-height: 48px;
         padding: 4px;
         font-weight: 700;
     }
@@ -400,7 +439,7 @@ def build_stylesheet():
         alternate-background-color: #0D1017;
         color: %(secondary)s;
         border: 1px solid %(border)s;
-        border-radius: 7px;
+        border-radius: 8px;
         outline: none;
         gridline-color: %(divider)s;
     }
@@ -436,15 +475,15 @@ def build_stylesheet():
         border: 1px solid %(border)s;
         border-radius: 7px;
         padding: 8px;
-        font-family: Consolas;
-        font-size: 11px;
+        font-family: "Cascadia Mono", Consolas;
+        font-size: 10px;
         selection-background-color: %(primary)s;
     }
 
     QFrame#FooterBar {
         background-color: %(surface)s;
         border: 1px solid %(border)s;
-        border-radius: 9px;
+        border-radius: 10px;
     }
 
     QProgressBar {

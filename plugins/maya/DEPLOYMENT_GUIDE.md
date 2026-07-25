@@ -9,7 +9,7 @@ This guide explains how to deploy the RenderHive Maya Plugin across your studio 
 ## Step 2: Configure the .mod File
 1. Open the `RenderHive.mod` file included in this directory.
 2. Replace `<NETWORK_DRIVE_PATH>\RenderHive\plugins\maya` with the actual UNC path or mapped drive path from Step 1.
-   - *Example:* `+ RenderHive 1.0 Z:\Pipeline\RenderHive\plugins\maya`
+   - *Example:* `+ RenderHive 1.9.7 Z:\Pipeline\RenderHive\plugins\maya`
 
 ## Step 3: Deploy to Artists
 You only need to distribute the tiny `RenderHive.mod` file to your artists. 

@@ -1,2 +1,2 @@
-+ RenderHive 1.0 <NETWORK_DRIVE_PATH>\RenderHive\plugins\maya
-PYTHONPATH+:=
++ RenderHive 1.9.12 <RENDERHIVE_MAYA_PLUGIN_PATH>
+PYTHONPATH +:= .
