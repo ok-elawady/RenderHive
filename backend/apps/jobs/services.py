@@ -40,8 +40,8 @@ def generate_job_name(project: str, user: str, visible_name: str) -> str:
     return f"{sanitize(project)}-{sanitize(user)}-{sanitize(visible_name)}-{epoch_ms}-{uid}"
 
 
-def expand_frame_range(frame_range: str, chunk_size: int = 1) -> list[int]:
-    """Parse a VFX frame range descriptor into a list of frame start numbers.
+def expand_frame_range(frame_range: str, chunk_size: int = 1) -> list[tuple[int, int]]:
+    """Parse a VFX frame range descriptor into a list of frame chunks.
 
     Supports the following range formats:
     - Simple: ``1-100``
@@ -49,16 +49,15 @@ def expand_frame_range(frame_range: str, chunk_size: int = 1) -> list[int]:
     - List: ``1,5,10``
     - Mixed: ``1-50,75,100-200x5``
 
-    For chunked layers (``chunk_size > 1``), only the first frame of each
-    chunk is returned. For example, ``1-10`` with ``chunk_size=5`` returns
-    ``[1, 6]``.
+    For chunked layers (``chunk_size > 1``), the range is split into chunks of
+    the specified size, returning the start and end frame for each chunk.
 
     Args:
         frame_range: A VFX frame range descriptor string.
-        chunk_size: Number of consecutive frames per Frame record.
+        chunk_size: Number of consecutive frames per task.
 
     Returns:
-        A sorted list of unique frame numbers (start of each chunk).
+        A list of tuples (chunk_start, chunk_end).
 
     Raises:
         ValueError: If the frame range string contains an invalid segment.
@@ -91,16 +90,22 @@ def expand_frame_range(frame_range: str, chunk_size: int = 1) -> list[int]:
     # Deduplicate and sort
     frames = sorted(set(frames))
 
-    # Apply chunking: return only the start frame of each chunk
+    # Apply chunking: return the start and end frame of each chunk
+    chunks = []
     if chunk_size > 1:
-        frames = [frames[i] for i in range(0, len(frames), chunk_size)]
+        for i in range(0, len(frames), chunk_size):
+            chunk = frames[i:i + chunk_size]
+            chunks.append((chunk[0], chunk[-1]))
+    else:
+        for f in frames:
+            chunks.append((f, f))
 
-    return frames
+    return chunks
 
 
 @transaction.atomic
 def create_job_with_layers(validated_data: dict, submitted_by=None):
-    """Create a Job with its Layers and Frames in a single atomic transaction.
+    """Create a Job with its Layers and Tasks in a single atomic transaction.
 
     This is the canonical job submission path. It is called by
     ``JobCreateSerializer.create()`` and must not be called directly from views.
@@ -108,7 +113,7 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
     The function:
     1. Pops the nested ``layers`` data from ``validated_data``.
     2. Creates the ``Job`` row.
-    3. For each layer, creates the ``Layer`` row and bulk-creates all ``Frame``
+    3. For each layer, creates the ``Layer`` row and bulk-creates all ``Task``
        rows derived from expanding the ``frame_range``.
 
     Args:
@@ -123,7 +128,7 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
     Raises:
         ValueError: If any layer's ``frame_range`` is invalid.
     """
-    from apps.jobs.models import Frame, FrameState, Job, Layer
+    from apps.jobs.models import Task, TaskState, Job, Layer
 
     layers_data = validated_data.pop("layers")
     included_pools = validated_data.pop("included_pools", [])
@@ -155,20 +160,21 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
 
         layer = Layer.objects.create(job=job, **layer_data)
 
-        # Bulk-create Frame rows for efficiency
-        frames = []
-        for i, start_number in enumerate(frame_starts):
+        # Bulk-create Task rows for efficiency
+        tasks = []
+        for i, (start_number, end_number) in enumerate(frame_starts):
             padded = str(start_number).zfill(4)
             # Since dependencies are not passed in create_job, depend_count is 0
             # Initialize to READY immediately so workers can dispatch them
-            initial_state = FrameState.READY
+            initial_state = TaskState.READY
 
-            frames.append(
-                Frame(
+            tasks.append(
+                Task(
                     layer=layer,
                     job=job,
                     name=f"{layer.name}_{padded}",
-                    number=start_number,
+                    frame_start=start_number,
+                    frame_end=end_number,
                     dispatch_order=i,
                     state=initial_state,
                     depend_count=0,
@@ -176,18 +182,18 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
                 )
             )
 
-        Frame.objects.bulk_create(frames)
+        Task.objects.bulk_create(tasks)
 
         # Update layer and job counters after bulk_create
         # (signals do not fire on bulk_create, so we set them directly)
-        frame_count = len(frames)
+        task_count = len(tasks)
         Layer.objects.filter(pk=layer.pk).update(
-            total_frames=frame_count,
-            ready_frames=frame_count,
+            total_tasks=task_count,
+            ready_tasks=task_count,
         )
         Job.objects.filter(pk=job.pk).update(
-            total_frames=F("total_frames") + frame_count,
-            ready_frames=F("ready_frames") + frame_count,
+            total_tasks=F("total_tasks") + task_count,
+            ready_tasks=F("ready_tasks") + task_count,
         )
 
     job.refresh_from_db()

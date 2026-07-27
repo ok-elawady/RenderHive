@@ -3,14 +3,14 @@ Django Admin registration for the jobs app.
 
 Provides list views, search, filtering, and read-only protection on
 auto-managed fields (counter caches, timestamps, UUIDs) for all four
-jobs models: Job, Layer, Frame, and Dependency.
+jobs models: Job, Layer, Task, and Dependency.
 """
 
 from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 
-from .models import Dependency, Frame, Job, Layer
+from .models import Dependency, Task, Job, Layer
 
 
 class LayerInline(admin.TabularInline):
@@ -35,13 +35,13 @@ class LayerInline(admin.TabularInline):
         "state",
         "frame_range",
         "chunk_size",
-        "total_frames",
-        "waiting_frames",
-        "ready_frames",
-        "running_frames",
-        "succeeded_frames",
-        "failed_frames",
-        "skipped_frames",
+        "total_tasks",
+        "waiting_tasks",
+        "ready_tasks",
+        "running_tasks",
+        "succeeded_tasks",
+        "failed_tasks",
+        "skipped_tasks",
     )
     fields = readonly_fields
     can_delete = False
@@ -83,9 +83,9 @@ class JobAdmin(admin.ModelAdmin):
         "state",
         "priority",
         "is_paused",
-        "total_frames",
-        "running_frames",
-        "failed_frames",
+        "total_tasks",
+        "running_tasks",
+        "failed_tasks",
         "created_at",
     )
     list_filter = ("state", "is_paused", "project", "department")
@@ -97,14 +97,14 @@ class JobAdmin(admin.ModelAdmin):
         "id",
         "name",
         "submitted_by",
-        "total_frames",
-        "waiting_frames",
-        "ready_frames",
-        "running_frames",
-        "succeeded_frames",
-        "failed_frames",
-        "skipped_frames",
-        "depend_frames",
+        "total_tasks",
+        "waiting_tasks",
+        "ready_tasks",
+        "running_tasks",
+        "succeeded_tasks",
+        "failed_tasks",
+        "skipped_tasks",
+        "depend_tasks",
         "created_at",
         "updated_at",
         "stopped_at",
@@ -127,7 +127,7 @@ class JobAdmin(admin.ModelAdmin):
         (
             "State",
             {
-                "fields": ("state", "is_paused", "priority", "max_frames_per_worker"),
+                "fields": ("state", "is_paused", "priority", "max_tasks_per_worker"),
             },
         ),
         (
@@ -147,14 +147,14 @@ class JobAdmin(admin.ModelAdmin):
             "Progress Counters (read-only)",
             {
                 "fields": (
-                    "total_frames",
-                    "waiting_frames",
-                    "ready_frames",
-                    "running_frames",
-                    "succeeded_frames",
-                    "failed_frames",
-                    "skipped_frames",
-                    "depend_frames",
+                    "total_tasks",
+                    "waiting_tasks",
+                    "ready_tasks",
+                    "running_tasks",
+                    "succeeded_tasks",
+                    "failed_tasks",
+                    "skipped_tasks",
+                    "depend_tasks",
                 ),
                 "classes": ("collapse",),
             },
@@ -183,9 +183,9 @@ class LayerAdmin(admin.ModelAdmin):
         "state",
         "frame_range",
         "chunk_size",
-        "total_frames",
-        "running_frames",
-        "failed_frames",
+        "total_tasks",
+        "running_tasks",
+        "failed_tasks",
     )
     list_filter = ("state", "layer_type")
     search_fields = ("name", "job__name", "job__visible_name")
@@ -193,14 +193,14 @@ class LayerAdmin(admin.ModelAdmin):
     readonly_fields = (
         "id",
         "state",
-        "total_frames",
-        "waiting_frames",
-        "ready_frames",
-        "running_frames",
-        "succeeded_frames",
-        "failed_frames",
-        "skipped_frames",
-        "depend_frames",
+        "total_tasks",
+        "waiting_tasks",
+        "ready_tasks",
+        "running_tasks",
+        "succeeded_tasks",
+        "failed_tasks",
+        "skipped_tasks",
+        "depend_tasks",
     )
 
     fieldsets = (
@@ -245,23 +245,23 @@ class LayerAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "state",
-                    "total_frames",
-                    "waiting_frames",
-                    "ready_frames",
-                    "running_frames",
-                    "succeeded_frames",
-                    "failed_frames",
-                    "skipped_frames",
-                    "depend_frames",
+                    "total_tasks",
+                    "waiting_tasks",
+                    "ready_tasks",
+                    "running_tasks",
+                    "succeeded_tasks",
+                    "failed_tasks",
+                    "skipped_tasks",
+                    "depend_tasks",
                 ),
             },
         ),
     )
 
 
-@admin.register(Frame)
-class FrameAdmin(admin.ModelAdmin):
-    """Admin view for the Frame model.
+@admin.register(Task)
+class TaskAdmin(admin.ModelAdmin):
+    """Admin view for the Task model.
 
     The ``depend_count`` field is read-only — it is managed atomically
     by signals and must not be edited manually.
@@ -271,7 +271,8 @@ class FrameAdmin(admin.ModelAdmin):
         "name",
         "job",
         "layer",
-        "number",
+        "frame_start",
+        "frame_end",
         "state",
         "depend_count",
         "retries",
@@ -295,7 +296,7 @@ class FrameAdmin(admin.ModelAdmin):
         (
             "Identity",
             {
-                "fields": ("id", "job", "layer", "name", "number", "dispatch_order"),
+                "fields": ("id", "job", "layer", "name", "frame_start", "frame_end", "dispatch_order"),
             },
         ),
         (
@@ -338,9 +339,9 @@ class DependencyAdmin(admin.ModelAdmin):
         "id",
         "type",
         "dep_job",
-        "dep_frame",
+        "dep_task",
         "parent_job",
-        "parent_frame",
+        "parent_task",
         "is_satisfied",
         "created_at",
         "satisfied_at",

@@ -18,14 +18,14 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Frame, FrameState, Job, JobState, Layer
+from .models import Task, TaskState, Job, JobState, Layer
 from .permissions import IsFarmAgent, IsJobOwnerOrStaff
 from .serializers import (
-    FrameDetailSerializer,
-    FrameFailSerializer,
-    FrameListSerializer,
-    FrameStartSerializer,
-    FrameSucceedSerializer,
+    TaskDetailSerializer,
+    TaskFailSerializer,
+    TaskListSerializer,
+    TaskStartSerializer,
+    TaskSucceedSerializer,
     JobCreateSerializer,
     JobDetailSerializer,
     JobListSerializer,
@@ -59,18 +59,18 @@ class JobFilter(django_filters.FilterSet):
         fields = ["state", "project", "department", "user"]
 
 
-class FrameFilter(django_filters.FilterSet):
-    """FilterSet for the Frame list endpoint.
+class TaskFilter(django_filters.FilterSet):
+    """FilterSet for the Task list endpoint.
 
     Allows filtering by state via query params.
-    Example: ``GET /api/jobs/{id}/layers/{id}/frames/?state=FAILED``
+    Example: ``GET /api/jobs/{id}/layers/{id}/tasks/?state=FAILED``
 
     Attributes:
-        state: Filter by frame state (e.g. ``READY``, ``FAILED``).
+        state: Filter by task state (e.g. ``READY``, ``FAILED``).
     """
 
     class Meta:
-        model = Frame
+        model = Task
         fields = ["state"]
 
 
@@ -85,7 +85,7 @@ class JobViewSet(viewsets.ModelViewSet):
         ``POST   /api/jobs/``         — submit a new job with nested layers.
         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
-        ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/frames.
+        ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
         ``POST   /api/jobs/{id}/pause/``  — pause the job.
         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
     """
@@ -136,10 +136,10 @@ class JobViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def pause(self, request, pk=None):
-        """Pause a job, preventing new frames from being dispatched.
+        """Pause a job, preventing new tasks from being dispatched.
 
         Sets ``is_paused=True`` on the job. Does not terminate currently
-        running frames — they will complete their current render.
+        running tasks — they will complete their current render.
 
         Args:
             request: The HTTP request.
@@ -156,7 +156,7 @@ class JobViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def resume(self, request, pk=None):
-        """Resume a paused job, allowing frames to be dispatched again.
+        """Resume a paused job, allowing tasks to be dispatched again.
 
         Sets ``is_paused=False`` on the job.
 
@@ -171,11 +171,11 @@ class JobViewSet(viewsets.ModelViewSet):
         job.is_paused = False
 
         # Recalculate state based on current counters
-        if job.running_frames > 0:
+        if job.running_tasks > 0:
             job.state = JobState.RUNNING
-        elif job.total_frames > 0 and (job.succeeded_frames + job.skipped_frames) == job.total_frames:
+        elif job.total_tasks > 0 and (job.succeeded_tasks + job.skipped_tasks) == job.total_tasks:
             job.state = JobState.FINISHED
-        elif job.failed_frames > 0 and job.ready_frames == 0 and job.running_frames == 0:
+        elif job.failed_tasks > 0 and job.ready_tasks == 0 and job.running_tasks == 0:
             job.state = JobState.FAILED
         else:
             job.state = JobState.PENDING
@@ -219,42 +219,42 @@ class LayerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         return LayerDetailSerializer
 
 
-# ── Frame ViewSet ─────────────────────────────────────────────────────────────
+# ── Task ViewSet ─────────────────────────────────────────────────────────────
 
 
-class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
-    """ViewSet for listing frames and handling Worker state transition actions.
+class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """ViewSet for listing tasks and handling Worker state transition actions.
 
     List/retrieve endpoints are nested under a layer:
-        ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/``
-        ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/``
+        ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/``
+        ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/``
 
-    State transition action endpoints are on the top-level ``/api/frames/``
+    State transition action endpoints are on the top-level ``/api/tasks/``
     router, identified by UUID only (no nesting required for Workers):
-        ``POST /api/frames/{id}/start/``
-        ``POST /api/frames/{id}/succeed/``
-        ``POST /api/frames/{id}/fail/``
-        ``POST /api/frames/{id}/skip/``
-        ``POST /api/frames/{id}/checkpoint/``
+        ``POST /api/tasks/{id}/start/``
+        ``POST /api/tasks/{id}/succeed/``
+        ``POST /api/tasks/{id}/fail/``
+        ``POST /api/tasks/{id}/skip/``
+        ``POST /api/tasks/{id}/checkpoint/``
     """
 
-    filterset_class = FrameFilter
+    filterset_class = TaskFilter
     search_fields = ["name", "worker_name", "layer__job__name", "layer__job__visible_name"]
 
     def get_queryset(self):
-        """Return frames, optionally scoped to a parent layer.
+        """Return tasks, optionally scoped to a parent layer.
 
         When called from the nested router (layer context), filters by
         ``layer_pk``. When called from the top-level router (Worker actions),
-        returns all frames.
+        returns all tasks.
 
         Returns:
-            A queryset of Frame objects.
+            A queryset of Task objects.
         """
         layer_pk = self.kwargs.get("layer_pk")
         if layer_pk:
-            return Frame.objects.filter(layer_id=layer_pk)
-        return Frame.objects.all()
+            return Task.objects.filter(layer_id=layer_pk)
+        return Task.objects.all()
 
     def get_serializer_class(self):
         """Return the appropriate serializer for the current action.
@@ -263,14 +263,14 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             A serializer class matched to the current action.
         """
         if self.action == "list":
-            return FrameListSerializer
+            return TaskListSerializer
         if self.action == "start":
-            return FrameStartSerializer
+            return TaskStartSerializer
         if self.action == "succeed":
-            return FrameSucceedSerializer
+            return TaskSucceedSerializer
         if self.action == "fail":
-            return FrameFailSerializer
-        return FrameDetailSerializer
+            return TaskFailSerializer
+        return TaskDetailSerializer
 
     def get_permissions(self):
         """Return per-action permission classes.
@@ -287,182 +287,182 @@ class FrameViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             return [IsAuthenticated()]  # View enforces is_staff internally
         return [IsAuthenticated()]
 
-    @action(detail=True, methods=["post"], serializer_class=FrameStartSerializer)
+    @action(detail=True, methods=["post"], serializer_class=TaskStartSerializer)
     @transaction.atomic
     def start(self, request, pk=None, **kwargs):
-        """Mark a frame as RUNNING when a Worker begins execution.
+        """Mark a task as RUNNING when a Worker begins execution.
 
         Records the Worker hostname and execution start timestamp. Only
-        valid when the frame is in ``READY`` state.
+        valid when the task is in ``READY`` state.
 
         Args:
             request: HTTP request containing ``worker_name``.
-            pk: Frame UUID.
+            pk: Task UUID.
 
         Returns:
             ``200 OK`` on success.
-            ``409 Conflict`` if the frame is not in READY state.
+            ``409 Conflict`` if the task is not in READY state.
         """
         queryset = self.filter_queryset(self.get_queryset())
-        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
-        self.check_object_permissions(self.request, frame)
-        if frame.state != FrameState.READY:
+        task = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, task)
+        if task.state != TaskState.READY:
             return Response(
-                {"detail": f"Cannot start a frame in state '{frame.state}'."},
+                {"detail": f"Cannot start a task in state '{task.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        frame.state = FrameState.RUNNING
-        frame.worker_name = serializer.validated_data["worker_name"]
-        frame.started_at = timezone.now()
-        frame.save(update_fields=["state", "worker_name", "started_at", "updated_at"])
+        task.state = TaskState.RUNNING
+        task.worker_name = serializer.validated_data["worker_name"]
+        task.started_at = timezone.now()
+        task.save(update_fields=["state", "worker_name", "started_at", "updated_at"])
         return Response({"status": "running"})
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def succeed(self, request, pk=None, **kwargs):
-        """Mark a frame as SUCCEEDED and record telemetry.
+        """Mark a task as SUCCEEDED and record telemetry.
 
         Transitions state, logs exit code and stop timestamp.
-        Returns 409 if the frame isn't currently running/checkpointing.
+        Returns 409 if the task isn't currently running/checkpointing.
         """
         queryset = self.filter_queryset(self.get_queryset())
-        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
-        self.check_object_permissions(self.request, frame)
-        if frame.state not in (FrameState.RUNNING, FrameState.CHECKPOINT):
+        task = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, task)
+        if task.state not in (TaskState.RUNNING, TaskState.CHECKPOINT):
             return Response(
-                {"detail": f"Cannot succeed a frame in state '{frame.state}'."},
+                {"detail": f"Cannot succeed a task in state '{task.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        frame.state = FrameState.SUCCEEDED
-        frame.exit_status = data["exit_status"]
-        frame.max_memory_used_mb = data["max_memory_used_mb"]
+        task.state = TaskState.SUCCEEDED
+        task.exit_status = data["exit_status"]
+        task.max_memory_used_mb = data["max_memory_used_mb"]
         if data.get("cores_used") is not None:
-            frame.cores_used = data["cores_used"]
-        # stopped_at is set by the frame_pre_save signal on SUCCEEDED/SKIPPED transitions.
-        frame.save()
+            task.cores_used = data["cores_used"]
+        # stopped_at is set by the task_pre_save signal on SUCCEEDED/SKIPPED transitions.
+        task.save()
         return Response({"status": "succeeded"})
 
-    @action(detail=True, methods=["post"], serializer_class=FrameFailSerializer)
+    @action(detail=True, methods=["post"], serializer_class=TaskFailSerializer)
     @transaction.atomic
     def fail(self, request, pk=None, **kwargs):
-        """Mark a frame as FAILED or retry it based on the retry budget.
+        """Mark a task as FAILED or retry it based on the retry budget.
 
-        Increments the retry counter. If ``retries >= max_retries``, the frame
+        Increments the retry counter. If ``retries >= max_retries``, the task
         transitions to ``FAILED`` permanently. Otherwise it reverts to ``READY``
         for re-dispatch.
 
         Args:
             request: HTTP request containing ``exit_status``.
-            pk: Frame UUID.
+            pk: Task UUID.
 
         Returns:
             ``200 OK`` with the resulting state (``failed`` or ``retrying``).
-            ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
+            ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
         """
         queryset = self.filter_queryset(self.get_queryset())
-        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
-        self.check_object_permissions(self.request, frame)
-        if frame.state not in (FrameState.RUNNING, FrameState.CHECKPOINT):
+        task = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, task)
+        if task.state not in (TaskState.RUNNING, TaskState.CHECKPOINT):
             return Response(
-                {"detail": f"Cannot fail a frame in state '{frame.state}'."},
+                {"detail": f"Cannot fail a task in state '{task.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        frame.exit_status = serializer.validated_data["exit_status"]
-        frame.retries += 1
+        task.exit_status = serializer.validated_data["exit_status"]
+        task.retries += 1
 
-        if frame.retries >= frame.max_retries:
-            frame.state = FrameState.FAILED
-            frame.stopped_at = timezone.now()
-            frame.save()
+        if task.retries >= task.max_retries:
+            task.state = TaskState.FAILED
+            task.stopped_at = timezone.now()
+            task.save()
             return Response({"status": "failed"})
         else:
-            # Frame will be re-dispatched; stopped_at is intentionally not set
-            # so it doesn't show a misleading end timestamp for a frame still in flight.
-            frame.state = FrameState.READY
-            frame.save()
-            return Response({"status": "retrying", "retries": frame.retries})
+            # Task will be re-dispatched; stopped_at is intentionally not set
+            # so it doesn't show a misleading end timestamp for a task still in flight.
+            task.state = TaskState.READY
+            task.save()
+            return Response({"status": "retrying", "retries": task.retries})
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def skip(self, request, pk=None, **kwargs):
-        """Dismiss a failed frame, allowing its dependents to proceed.
+        """Dismiss a failed task, allowing its dependents to proceed.
 
-        Only available to staff users. Sets the frame state to ``SKIPPED``,
-        which (via signals) satisfies any dependencies blocked on this frame.
+        Only available to staff users. Sets the task state to ``SKIPPED``,
+        which (via signals) satisfies any dependencies blocked on this task.
 
         Args:
             request: HTTP request.
-            pk: Frame UUID.
+            pk: Task UUID.
 
         Returns:
             ``200 OK`` on success.
             ``403 Forbidden`` if the requesting user is not staff.
-            ``409 Conflict`` if the frame is not in FAILED state.
+            ``409 Conflict`` if the task is not in FAILED state.
         """
         if not (request.user.is_staff or request.user.is_superuser):
             return Response(
-                {"detail": "Only staff or superusers can skip frames."},
+                {"detail": "Only staff or superusers can skip tasks."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         queryset = self.filter_queryset(self.get_queryset())
-        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
-        self.check_object_permissions(self.request, frame)
-        if frame.state != FrameState.FAILED:
+        task = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, task)
+        if task.state != TaskState.FAILED:
             return Response(
-                {"detail": f"Only FAILED frames can be skipped (current state: '{frame.state}')."},
+                {"detail": f"Only FAILED tasks can be skipped (current state: '{task.state}')."},
                 status=status.HTTP_409_CONFLICT,
             )
-        frame.state = FrameState.SKIPPED
-        frame.save()
+        task.state = TaskState.SKIPPED
+        task.save()
         return Response({"status": "skipped"})
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def checkpoint(self, request, pk=None, **kwargs):
-        """Increment the checkpoint counter for a frame in progress.
+        """Increment the checkpoint counter for a task in progress.
 
         Called by a Worker when it saves a resume checkpoint (e.g. a V-Ray
-        ``.vrimg`` file). The frame transitions to ``CHECKPOINT`` state to
+        ``.vrimg`` file). The task transitions to ``CHECKPOINT`` state to
         indicate that progress has been persisted.
 
         Args:
             request: HTTP request.
-            pk: Frame UUID.
+            pk: Task UUID.
 
         Returns:
             ``200 OK`` with the new checkpoint count.
-            ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
+            ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
         """
         queryset = self.filter_queryset(self.get_queryset())
-        frame = get_object_or_404(queryset.select_for_update(), pk=pk)
-        self.check_object_permissions(self.request, frame)
-        if frame.state not in (FrameState.RUNNING, FrameState.CHECKPOINT):
+        task = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, task)
+        if task.state not in (TaskState.RUNNING, TaskState.CHECKPOINT):
             return Response(
-                {"detail": f"Cannot checkpoint a frame in state '{frame.state}'."},
+                {"detail": f"Cannot checkpoint a task in state '{task.state}'."},
                 status=status.HTTP_409_CONFLICT,
             )
 
-        frame.checkpoint_count += 1
-        frame.state = FrameState.CHECKPOINT
-        frame.save(update_fields=["checkpoint_count", "state", "updated_at"])
-        return Response({"status": "checkpointed", "checkpoint_count": frame.checkpoint_count})
+        task.checkpoint_count += 1
+        task.state = TaskState.CHECKPOINT
+        task.save(update_fields=["checkpoint_count", "state", "updated_at"])
+        return Response({"status": "checkpointed", "checkpoint_count": task.checkpoint_count})
 
 
-class FrameDispatchView(generics.GenericAPIView):
-    """Atomically find, lock, and dispatch a READY frame to a worker."""
+class TaskDispatchView(generics.GenericAPIView):
+    """Atomically find, lock, and dispatch a READY task to a worker."""
 
     permission_classes = [IsFarmAgent]
-    serializer_class = FrameStartSerializer
+    serializer_class = TaskStartSerializer
 
     @transaction.atomic
     def post(self, request, *args, **kwargs):
@@ -485,11 +485,11 @@ class FrameDispatchView(generics.GenericAPIView):
         # Find jobs where this worker has reached the concurrency limit
         maxed_jobs = (
             Job.objects.annotate(
-                active_worker_frames=Count(
-                    "frames", filter=Q(frames__state=FrameState.RUNNING, frames__worker_name=worker_name)
+                active_worker_tasks=Count(
+                    "tasks", filter=Q(tasks__state=TaskState.RUNNING, tasks__worker_name=worker_name)
                 )
             )
-            .filter(active_worker_frames__gte=F("max_frames_per_worker"))
+            .filter(active_worker_tasks__gte=F("max_tasks_per_worker"))
             .values("pk")
         )
 
@@ -497,7 +497,7 @@ class FrameDispatchView(generics.GenericAPIView):
         # limit, and pool routing.
         # Notes:
         #   - `state__in` is defense-in-depth: FINISHED/FAILED jobs have no READY
-        #     frames anyway, but filtering here keeps the subquery semantically clean.
+        #     tasks anyway, but filtering here keeps the subquery semantically clean.
         #   - `.distinct()` prevents duplicate PKs caused by the M2M JOIN when a job
         #     belongs to multiple pools that all match the worker's pools.
         allowed_jobs = (
@@ -512,22 +512,22 @@ class FrameDispatchView(generics.GenericAPIView):
             .values("pk")
         )
 
-        # Find the highest priority READY frame and lock it
-        frame = (
-            Frame.objects.select_for_update(skip_locked=True)
-            .filter(state=FrameState.READY, job_id__in=allowed_jobs)
+        # Find the highest priority READY task and lock it
+        task = (
+            Task.objects.select_for_update(skip_locked=True)
+            .filter(state=TaskState.READY, job_id__in=allowed_jobs)
             .order_by("job__priority", "dispatch_order")
             .first()
         )
 
-        if not frame:
-            return Response({"detail": "No frames available."}, status=status.HTTP_404_NOT_FOUND)
+        if not task:
+            return Response({"detail": "No tasks available."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Transition frame to RUNNING
-        frame.state = FrameState.RUNNING
-        frame.worker_name = worker_name
-        frame.started_at = timezone.now()
-        frame.save(update_fields=["state", "worker_name", "started_at", "updated_at"])
+        # Transition task to RUNNING
+        task.state = TaskState.RUNNING
+        task.worker_name = worker_name
+        task.started_at = timezone.now()
+        task.save(update_fields=["state", "worker_name", "started_at", "updated_at"])
 
         # Update worker status to RENDERING
         try:
@@ -542,14 +542,15 @@ class FrameDispatchView(generics.GenericAPIView):
         # Return consolidated payload
         return Response(
             {
-                "id": str(frame.id),
-                "name": frame.name,
-                "number": frame.number,
-                "job_id": str(frame.job_id),
-                "layer_id": str(frame.layer_id),
-                "command": frame.layer.command,
-                "scene_path": frame.layer.scene_path,
-                "env": frame.layer.env,
-                "chunk_size": frame.layer.chunk_size,
+                "id": str(task.id),
+                "name": task.name,
+                "frame_start": task.frame_start,
+                "frame_end": task.frame_end,
+                "job_id": str(task.job_id),
+                "layer_id": str(task.layer_id),
+                "command": task.layer.command,
+                "scene_path": task.layer.scene_path,
+                "env": task.layer.env,
+                "chunk_size": task.layer.chunk_size,
             }
         )
