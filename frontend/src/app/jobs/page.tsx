@@ -174,10 +174,10 @@ export default function JobsPage() {
   return (
     <div className="flex h-full flex-col bg-background font-sans text-foreground">
       <PageHeader 
-        title="Jobs Dashboard" 
-        description="Monitor and manage active render jobs in the queue."
+        title="Job Queue" 
+        description="Monitor, prioritize, and manage the active render queue."
       >
-        <Button variant="outline" size="sm" onClick={() => void fetchData(false)} className="gap-2">
+        <Button variant="outline" onClick={() => void fetchData(false)} className="gap-2">
           <RefreshCw size={14} className={isLoading || isRefreshing ? "animate-spin" : ""} />
           Refresh
         </Button>

@@ -8,11 +8,12 @@ import time
 
 import maya.cmds as cmds
 
-
-PLUGIN_VERSION = "1.6.0"
+from api.version import PLUGIN_VERSION
+from core.runtime_log import get_logger
 
 VALIDATION_RESULTS = []
 VALIDATION_REPORT = {}
+LOGGER = get_logger("submitter")
 
 
 # -----------------------------------------------------------------------------
@@ -35,6 +36,24 @@ def get_install_info_path():
         get_install_root(),
         "renderhive_install_info.json"
     )
+
+
+def api_admin_mode_enabled():
+    """Return the managed admin-mode state without making UI startup fragile."""
+    try:
+        from api.maya_bridge import api_admin_mode_enabled as _enabled
+        return bool(_enabled())
+    except Exception:
+        return False
+
+
+def get_api_config_source():
+    """Return the active backend config source for status display."""
+    try:
+        from api.maya_bridge import get_api_config_source as _source
+        return _source()
+    except Exception:
+        return "Managed"
 
 
 def get_original_package_root():
@@ -877,20 +896,25 @@ def _ensure_local_package(
 
 
 def show_submitter():
-    _ensure_local_package(
-        "ui"
-    )
+    try:
+        _ensure_local_package("ui")
+        import ui.qt_submitter_window as qt_submitter_window
 
-    import ui.qt_theme as qt_theme
-    import ui.qt_submitter_window as qt_submitter_window
-
-    importlib.reload(
-        qt_theme
-    )
-    importlib.reload(
-        qt_submitter_window
-    )
-
-    return qt_submitter_window.show_submitter(
-        sys.modules[__name__]
-    )
+        window = qt_submitter_window.show_submitter(sys.modules[__name__])
+        LOGGER.info("RenderHive Maya v%s opened successfully", PLUGIN_VERSION)
+        return window
+    except Exception as error:
+        LOGGER.exception("Could not open RenderHive Maya submitter")
+        try:
+            cmds.confirmDialog(
+                title="RenderHive Error",
+                message=(
+                    "RenderHive could not open.\n\n{}\n\n"
+                    "Check the runtime log for details."
+                ).format(error),
+                button=["OK"],
+                icon="critical",
+            )
+        except Exception:
+            pass
+        raise

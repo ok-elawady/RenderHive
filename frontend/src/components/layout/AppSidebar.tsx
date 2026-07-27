@@ -3,7 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Cpu, LayoutDashboard, ListOrdered, LogOut, Settings } from "lucide-react";
+import {
+  Bot,
+  Cpu,
+  LayoutDashboard,
+  ListOrdered,
+  LogOut,
+  Settings,
+  UsersRound,
+} from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import {
   Sidebar,
@@ -16,12 +24,29 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 import type { SidebarItem } from "@/types/dashboard";
 
-const sidebarItems: SidebarItem[] = [
-  { icon: <LayoutDashboard size={18} />, label: "Dashboard", href: "/" },
-  { icon: <ListOrdered size={18} />, label: "Active Queue", href: "/jobs" },
+const dashboardItem: SidebarItem = {
+  icon: <LayoutDashboard size={18} />,
+  label: "Dashboard",
+  href: "/",
+};
+
+const queueItem: SidebarItem = {
+  icon: <ListOrdered size={18} />,
+  label: "Job Queue",
+  href: "/jobs",
+};
+
+const usersItem: SidebarItem = {
+  icon: <UsersRound size={18} />,
+  label: "User Management",
+  href: "/users",
+};
+
+const remainingSidebarItems: SidebarItem[] = [
   { icon: <Cpu size={18} />, label: "Node Pool", href: "/nodes" },
   { icon: <Bot size={18} />, label: "AI Rules", href: "/logs" },
   { icon: <Settings size={18} />, label: "Settings", href: "/settings" },
@@ -33,6 +58,12 @@ export default function AppSidebar() {
   const displayName = user?.displayName ?? "RenderHive User";
   const role = user?.role ?? "Authenticated";
   const initials = user?.initials ?? "RH";
+  const sidebarItems: SidebarItem[] = [
+    dashboardItem,
+    queueItem,
+    ...(user?.isSuperuser ? [usersItem] : []),
+    ...remainingSidebarItems,
+  ];
 
   return (
     <Sidebar className="border-r-0">
@@ -101,9 +132,11 @@ export default function AppSidebar() {
               render={<Link href="/settings" className="cursor-pointer" />}
               tooltip="Account Settings"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white shrink-0">
-                {initials}
-              </div>
+              <Avatar className="size-8 rounded-lg">
+                <AvatarFallback className="rounded-lg bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="font-semibold text-foreground text-sm">{displayName}</span>
                 <span className="text-[10px] text-primary font-mono">{role}</span>

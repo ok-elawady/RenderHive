@@ -10,12 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import {
-  changePassword,
-  fetchCurrentUserProfile,
-  formatApiError,
-  type CurrentUserProfile,
-} from "@/services/api";
+import { changePassword, fetchCurrentUserProfile, formatApiError, type CurrentUserProfile } from "@/services/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 interface PasswordState {
@@ -94,8 +89,7 @@ export default function SettingsPage() {
     passwords.newPassword.trim() !== "" &&
     passwords.confirmPassword.trim() !== "";
   const newPasswordLongEnough = passwords.newPassword === "" || passwords.newPassword.length >= 8;
-  const passwordsMatch =
-    passwords.confirmPassword === "" || passwords.newPassword === passwords.confirmPassword;
+  const passwordsMatch = passwords.confirmPassword === "" || passwords.newPassword === passwords.confirmPassword;
   const canSubmit = allFieldsFilled && newPasswordLongEnough && passwordsMatch && !isChangingPassword;
 
   const handlePasswordSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -133,11 +127,8 @@ export default function SettingsPage() {
 
   return (
     <div className="flex h-full flex-col bg-background font-sans text-foreground">
-      <PageHeader
-        title="Account Settings"
-        description="Manage your profile identity, security, and preferences."
-      />
-      
+      <PageHeader title="Account Settings" description="Manage your profile identity, security, and preferences." />
+
       <div className="flex-1 overflow-y-auto p-6 font-mono">
         <div className="space-y-6">
           <Card className="border-border bg-card/95">
@@ -147,7 +138,10 @@ export default function SettingsPage() {
                   <UserCog className="text-primary" size={18} />
                   Personal Information
                 </div>
-                <Badge variant="outline" className="border-border bg-muted/30 px-3 py-1 font-normal text-muted-foreground">
+                <Badge
+                  variant="outline"
+                  className="border-border bg-muted/30 px-3 py-1 font-normal text-muted-foreground"
+                >
                   Managed by Admin
                 </Badge>
               </CardTitle>
@@ -167,83 +161,80 @@ export default function SettingsPage() {
 
               <div className="grid gap-5 md:grid-cols-2">
                 <ReadOnlyField label="First Name" value={profile?.firstName || user?.firstName || ""} />
-            <ReadOnlyField label="Last Name" value={profile?.lastName || user?.lastName || ""} />
-            <ReadOnlyField label="Username" value={profile?.username || user?.username || ""} />
-            <ReadOnlyField label="Email Address" value={profile?.email || user?.email || ""} />
-            <ReadOnlyField label="Title / Role" value={role} />
-            <ReadOnlyField
-              label="Access Level"
-              value={profile?.isSuperuser ? "Superuser" : profile?.isStaff ? "Staff" : "User"}
-            />
-              </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card/95">
-          <CardHeader className="border-b border-border pb-4">
-            <CardTitle className="flex items-center gap-3 text-base font-black">
-              <ShieldCheck className="text-primary" size={18} />
-              Security Settings
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6">
-            <form
-              onSubmit={(event) => void handlePasswordSubmit(event)}
-              className="w-full space-y-4"
-            >
-              <div className="space-y-2">
-                <Label>Current Password</Label>
-                <PasswordInput
-                  value={passwords.currentPassword}
-                  isVisible={visiblePasswords.currentPassword}
-                  onToggleVisibility={() => togglePasswordVisibility("currentPassword")}
-                  onChange={(value) => handlePasswordChange("currentPassword", value)}
-                  hasError={Boolean(passwordError) && !passwords.currentPassword}
-                  autoComplete="current-password"
+                <ReadOnlyField label="Last Name" value={profile?.lastName || user?.lastName || ""} />
+                <ReadOnlyField label="Username" value={profile?.username || user?.username || ""} />
+                <ReadOnlyField label="Email Address" value={profile?.email || user?.email || ""} />
+                <ReadOnlyField label="Title / Role" value={role} />
+                <ReadOnlyField
+                  label="Access Level"
+                  value={profile?.isSuperuser ? "Superuser" : profile?.isStaff ? "Staff" : "User"}
                 />
               </div>
+            </CardContent>
+          </Card>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Card className="border-border bg-card/95">
+            <CardHeader className="border-b border-border pb-4">
+              <CardTitle className="flex items-center gap-3 text-base font-black">
+                <ShieldCheck className="text-primary" size={18} />
+                Security Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <form onSubmit={(event) => void handlePasswordSubmit(event)} className="w-full space-y-4">
                 <div className="space-y-2">
-                  <Label>New Password</Label>
+                  <Label>Current Password</Label>
                   <PasswordInput
-                    value={passwords.newPassword}
-                    isVisible={visiblePasswords.newPassword}
-                    onToggleVisibility={() => togglePasswordVisibility("newPassword")}
-                    onChange={(value) => handlePasswordChange("newPassword", value)}
-                    hasError={!newPasswordLongEnough}
-                    autoComplete="new-password"
+                    value={passwords.currentPassword}
+                    isVisible={visiblePasswords.currentPassword}
+                    onToggleVisibility={() => togglePasswordVisibility("currentPassword")}
+                    onChange={(value) => handlePasswordChange("currentPassword", value)}
+                    hasError={Boolean(passwordError) && !passwords.currentPassword}
+                    autoComplete="current-password"
                   />
-                  {!newPasswordLongEnough && (
-                    <p className="text-[0.8rem] font-medium text-destructive">Must be at least 8 characters.</p>
-                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Confirm New Password</Label>
-                  <PasswordInput
-                    value={passwords.confirmPassword}
-                    isVisible={visiblePasswords.confirmPassword}
-                    onToggleVisibility={() => togglePasswordVisibility("confirmPassword")}
-                    onChange={(value) => handlePasswordChange("confirmPassword", value)}
-                    hasError={!passwordsMatch}
-                    autoComplete="new-password"
-                  />
-                  {!passwordsMatch && (
-                    <p className="text-[0.8rem] font-medium text-destructive">Passwords do not match.</p>
-                  )}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>New Password</Label>
+                    <PasswordInput
+                      value={passwords.newPassword}
+                      isVisible={visiblePasswords.newPassword}
+                      onToggleVisibility={() => togglePasswordVisibility("newPassword")}
+                      onChange={(value) => handlePasswordChange("newPassword", value)}
+                      hasError={!newPasswordLongEnough}
+                      autoComplete="new-password"
+                    />
+                    {!newPasswordLongEnough && (
+                      <p className="text-[0.8rem] font-medium text-destructive">Must be at least 8 characters.</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Confirm New Password</Label>
+                    <PasswordInput
+                      value={passwords.confirmPassword}
+                      isVisible={visiblePasswords.confirmPassword}
+                      onToggleVisibility={() => togglePasswordVisibility("confirmPassword")}
+                      onChange={(value) => handlePasswordChange("confirmPassword", value)}
+                      hasError={!passwordsMatch}
+                      autoComplete="new-password"
+                    />
+                    {!passwordsMatch && (
+                      <p className="text-[0.8rem] font-medium text-destructive">Passwords do not match.</p>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {passwordError ? <p className="text-[0.8rem] font-medium text-destructive">{passwordError}</p> : null}
+                {passwordError ? <p className="text-[0.8rem] font-medium text-destructive">{passwordError}</p> : null}
 
-              <Button type="submit" disabled={!canSubmit} size="lg" className="mt-2 sm:w-auto">
-                {isChangingPassword ? <Loader2 className="animate-spin" /> : <LockKeyhole />}
-                Update Password
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                <Button type="submit" disabled={!canSubmit} size="lg" className="mt-2 sm:w-auto">
+                  {isChangingPassword ? <Loader2 className="animate-spin" /> : <LockKeyhole />}
+                  Update Password
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
@@ -289,7 +280,16 @@ function PasswordInput({
   );
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
+function getDisplayValue(value: string | null | undefined): string {
+  if (value == null) return "N/A";
+
+  const normalizedValue = value.trim();
+  return normalizedValue === "" || normalizedValue === "-" ? "N/A" : normalizedValue;
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string | null | undefined }) {
+  const displayValue = getDisplayValue(value);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -301,8 +301,8 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
       </div>
       <Input
         value={value || "-"}
-          readOnly
-          tabIndex={-1}
+        readOnly
+        tabIndex={-1}
         className="bg-muted/40 text-muted-foreground border-border/50 cursor-not-allowed select-none focus-visible:ring-0"
       />
     </div>

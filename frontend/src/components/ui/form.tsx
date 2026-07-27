@@ -36,6 +36,11 @@ const useFormField = () => {
   const itemContext = React.useContext(FormItemContext)
   const { getFieldState, formState } = useFormContext()
 
+  // Force React Hook Form to subscribe this component to error state changes.
+  // We must actually use this value in the return object, otherwise Turbopack's
+  // aggressive dead-code elimination will strip it out, breaking the Proxy subscription!
+  const fieldError = formState.errors[fieldContext.name]
+
   const fieldState = getFieldState(fieldContext.name, formState)
 
   if (!fieldContext) {
@@ -51,6 +56,7 @@ const useFormField = () => {
     formDescriptionId: `${id}-form-item-description`,
     formMessageId: `${id}-form-item-message`,
     ...fieldState,
+    error: fieldError || fieldState.error,
   }
 }
 
