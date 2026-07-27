@@ -435,7 +435,7 @@ def build_job_request(task, config):
             maximum=100,
         ),
         "log_directory": log_directory,
-        "max_frames_per_worker": _integer(
+        "max_tasks_per_worker": _integer(
             task.get("concurrent_tasks"),
             1,
             minimum=0,

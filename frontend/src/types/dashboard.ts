@@ -33,7 +33,7 @@ export interface RenderJob {
   status: JobStatus;
   backendState: BackendJobState;
   progress: number;
-  frameCounts: string;
+  taskCounts: string;
 }
 
 export type LogType = "INFO" | "ROUTE" | "WARN";

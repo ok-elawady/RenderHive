@@ -183,7 +183,7 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                             </span>
                             <Progress value={job.progress} className="h-[6px] flex-1 bg-input/50 rounded-full" />
                             <span className="text-[11px] text-muted-foreground text-left whitespace-nowrap w-12">
-                              {job.frameCounts}
+                              {job.taskCounts}
                             </span>
                           </div>
                         </TableCell>
@@ -262,7 +262,7 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
             <DialogTitle>Delete Render Job</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete <strong className="text-foreground">{jobToDelete?.displayId}</strong>?
-              This will permanently delete the job and all associated layers and frames. This action cannot be undone.
+              This will permanently delete the job and all associated layers and tasks. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -266,8 +266,8 @@ export default function JobsPage() {
                     ))
                   ) : jobs.length > 0 ? (
                     jobs.map((job) => {
-                      const completed = job.succeeded_frames + job.skipped_frames;
-                      const total = job.total_frames || 1;
+                      const completed = job.succeeded_tasks + job.skipped_tasks;
+                      const total = job.total_tasks || 1;
                       const percentage = Math.round((completed / total) * 100);
                       
                       return (
@@ -294,7 +294,7 @@ export default function JobsPage() {
                               <span className="text-xs text-muted-foreground w-8 text-right font-medium">{percentage}%</span>
                               <Progress value={percentage} className="h-1.5 flex-1 bg-input/50 rounded-full" />
                               <span className="text-[11px] text-muted-foreground text-left whitespace-nowrap w-12">
-                                {completed}/{job.total_frames}
+                                {completed}/{job.total_tasks}
                               </span>
                             </div>
                           </TableCell>
@@ -380,7 +380,7 @@ export default function JobsPage() {
             <DialogTitle>Delete Render Job</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete <strong className="text-foreground">{jobToDelete?.visible_name || jobToDelete?.name}</strong>? 
-              This will permanently delete the job and all associated layers and frames. This action cannot be undone.
+              This will permanently delete the job and all associated layers and tasks. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

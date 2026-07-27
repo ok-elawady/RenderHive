@@ -403,13 +403,13 @@ def update_api_job(
     job_id,
     visible_name=None,
     priority=None,
-    max_frames_per_worker=None,
+    max_tasks_per_worker=None,
 ):
     return _client().update_job(
         job_id,
         visible_name=visible_name,
         priority=priority,
-        max_frames_per_worker=max_frames_per_worker,
+        max_tasks_per_worker=max_tasks_per_worker,
     )
 
 
