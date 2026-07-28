@@ -14,22 +14,22 @@ import {
   API_BASE_URL,
   formatApiError,
   getLayer,
-  skipFrame,
-  type FrameList,
-  type FrameStateFilter,
+  skipTask,
+  type TaskList,
+  type TaskStateFilter,
   type LayerDetail,
 } from "@/services/api";
 
-type PaginatedFrameResponse = {
+type PaginatedTaskResponse = {
   count?: number;
   next?: string | null;
   previous?: string | null;
-  results: FrameList[];
+  results: TaskList[];
 };
 
-const FRAME_FETCH_LIMIT = 200;
+const TASK_FETCH_LIMIT = 200;
 
-const frameStates: Array<FrameStateFilter | "ALL"> = [
+const taskStates: Array<TaskStateFilter | "ALL"> = [
   "ALL",
   "READY",
   "RUNNING",
@@ -39,16 +39,16 @@ const frameStates: Array<FrameStateFilter | "ALL"> = [
   "WAITING",
 ];
 
-function isFrameListArray(value: unknown): value is FrameList[] {
+function isTaskListArray(value: unknown): value is TaskList[] {
   return Array.isArray(value);
 }
 
-function isPaginatedFrameResponse(value: unknown): value is PaginatedFrameResponse {
+function isPaginatedTaskResponse(value: unknown): value is PaginatedTaskResponse {
   return (
     typeof value === "object" &&
     value !== null &&
     "results" in value &&
-    Array.isArray((value as PaginatedFrameResponse).results)
+    Array.isArray((value as PaginatedTaskResponse).results)
   );
 }
 
@@ -61,17 +61,17 @@ function getApiHeaders(): HeadersInit {
   };
 }
 
-async function fetchLayerFramesWithLimit(
+async function fetchLayerTasksWithLimit(
   jobId: string,
   layerId: string,
-): Promise<FrameList[]> {
+): Promise<TaskList[]> {
   const query = new URLSearchParams({
-    limit: String(FRAME_FETCH_LIMIT),
-    page_size: String(FRAME_FETCH_LIMIT),
+    limit: String(TASK_FETCH_LIMIT),
+    page_size: String(TASK_FETCH_LIMIT),
   });
   let nextUrl: string | null =
-    `${API_BASE_URL}/api/jobs/${jobId}/layers/${layerId}/frames/?${query.toString()}`;
-  const allFrames: FrameList[] = [];
+    `${API_BASE_URL}/api/jobs/${jobId}/layers/${layerId}/tasks/?${query.toString()}`;
+  const allTasks: TaskList[] = [];
 
   while (nextUrl) {
     const response = await fetch(nextUrl, {
@@ -84,23 +84,23 @@ async function fetchLayerFramesWithLimit(
       throw new Error(JSON.stringify(payload));
     }
 
-    if (isPaginatedFrameResponse(payload)) {
-      allFrames.push(...payload.results);
+    if (isPaginatedTaskResponse(payload)) {
+      allTasks.push(...payload.results);
       nextUrl = payload.next ?? null;
       continue;
     }
 
-    if (isFrameListArray(payload)) {
-      allFrames.push(...payload);
+    if (isTaskListArray(payload)) {
+      allTasks.push(...payload);
     }
 
     nextUrl = null;
   }
 
-  return allFrames;
+  return allTasks;
 }
 
-function getFrameClasses(state: FrameList["state"]): string {
+function getTaskClasses(state: TaskList["state"]): string {
   if (state === "RUNNING") {
     return "border-warning bg-warning/20 text-warning animate-pulse";
   }
@@ -122,35 +122,35 @@ function getFrameClasses(state: FrameList["state"]): string {
 export default function LayerInspectorPage() {
   const params = useParams<{ jobId: string; layerId: string }>();
   const [layer, setLayer] = useState<LayerDetail | null>(null);
-  const [frames, setFrames] = useState<FrameList[]>([]);
-  const [stateFilter, setStateFilter] = useState<FrameStateFilter | "ALL">("ALL");
+  const [tasks, setTasks] = useState<TaskList[]>([]);
+  const [stateFilter, setStateFilter] = useState<TaskStateFilter | "ALL">("ALL");
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [skippingFrameId, setSkippingFrameId] = useState<string | null>(null);
+  const [skippingTaskId, setSkippingTaskId] = useState<string | null>(null);
 
-  const visibleFrames = useMemo(
+  const visibleTasks = useMemo(
     () =>
       stateFilter === "ALL"
-        ? frames
-        : frames.filter((frame) => frame.state === stateFilter),
-    [frames, stateFilter],
+        ? tasks
+        : tasks.filter((task) => task.state === stateFilter),
+    [tasks, stateFilter],
   );
 
-  const refreshFrames = useCallback(async (): Promise<void> => {
-    const frameData = await fetchLayerFramesWithLimit(params.jobId, params.layerId);
-    setFrames(frameData);
+  const refreshTasks = useCallback(async (): Promise<void> => {
+    const taskData = await fetchLayerTasksWithLimit(params.jobId, params.layerId);
+    setTasks(taskData);
   }, [params.jobId, params.layerId]);
 
   const loadLayer = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     try {
-      const [layerData, frameData] = await Promise.all([
+      const [layerData, taskData] = await Promise.all([
         getLayer(params.jobId, params.layerId),
-        fetchLayerFramesWithLimit(params.jobId, params.layerId),
+        fetchLayerTasksWithLimit(params.jobId, params.layerId),
       ]);
       setLayer(layerData);
-      setFrames(frameData);
+      setTasks(taskData);
     } catch (error) {
-      toast.error("Unable to load layer frames", {
+      toast.error("Unable to load layer tasks", {
         description: formatApiError(error),
       });
     } finally {
@@ -166,23 +166,23 @@ export default function LayerInspectorPage() {
     return () => window.clearTimeout(timer);
   }, [loadLayer]);
 
-  const handleSkipFrame = async (frameId: string): Promise<void> => {
-    setSkippingFrameId(frameId);
+  const handleSkipTask = async (taskId: string): Promise<void> => {
+    setSkippingTaskId(taskId);
     try {
-      await skipFrame(frameId);
-      setFrames((currentFrames) =>
-        currentFrames.map((frame) =>
-          frame.id === frameId ? { ...frame, state: "SKIPPED" } : frame,
+      await skipTask(taskId);
+      setTasks((currentTasks) =>
+        currentTasks.map((task) =>
+          task.id === taskId ? { ...task, state: "SKIPPED" } : task,
         ),
       );
-      toast.success("Frame skipped", {
-        description: "The failed frame was moved to SKIPPED.",
+      toast.success("Task skipped", {
+        description: "The failed task was moved to SKIPPED.",
       });
-      void refreshFrames();
+      void refreshTasks();
     } catch (error) {
       toast.error("Skip failed", { description: formatApiError(error) });
     } finally {
-      setSkippingFrameId(null);
+      setSkippingTaskId(null);
     }
   };
 
@@ -190,7 +190,7 @@ export default function LayerInspectorPage() {
     <div className="flex h-full flex-col bg-background font-sans text-foreground">
       <PageHeader
         title={layer?.name ?? "Layer Inspector"}
-        description={layer ? `${layer.layer_type} / ${layer.frame_range} / ${layer.command}` : "Fetching frames..."}
+        description={layer ? `${layer.layer_type} / ${layer.frame_range} / ${layer.command}` : "Fetching tasks..."}
         backTo={`/jobs/${params.jobId}`}
       >
         <Button variant="outline" onClick={() => void loadLayer()} className="gap-2">
@@ -204,10 +204,10 @@ export default function LayerInspectorPage() {
 
         <Tabs
           value={stateFilter}
-          onValueChange={(value) => setStateFilter(value as FrameStateFilter | "ALL")}
+          onValueChange={(value) => setStateFilter(value as TaskStateFilter | "ALL")}
         >
           <TabsList className="flex-wrap justify-start">
-            {frameStates.map((state) => (
+            {taskStates.map((state) => (
               <TabsTrigger key={state} value={state}>
                 {state}
               </TabsTrigger>
@@ -218,38 +218,38 @@ export default function LayerInspectorPage() {
             <Card className="border-border">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
-                  Frame Grid
-                  <Badge variant="outline">{frames.length} frames</Badge>
+                  Task Grid
+                  <Badge variant="outline">{tasks.length} tasks</Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {isLoading ? (
                   <div className="flex h-56 items-center justify-center text-muted-foreground">
-                    Loading frames...
+                    Loading tasks...
                   </div>
                 ) : (
                   <div className="grid grid-cols-8 gap-2 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-[repeat(16,minmax(0,1fr))] xl:grid-cols-[repeat(20,minmax(0,1fr))]">
-                    {visibleFrames.map((frame) => (
+                    {visibleTasks.map((task) => (
                       <div
-                        key={frame.id}
-                        title={`${frame.name} / ${frame.state}`}
-                        className={`group relative aspect-square overflow-hidden rounded-lg border text-[10px] font-black transition-all hover:scale-105 ${getFrameClasses(frame.state)}`}
+                        key={task.id}
+                        title={`${task.name} / ${task.state}`}
+                        className={`group relative aspect-square overflow-hidden rounded-lg border text-[10px] font-black transition-all hover:scale-105 ${getTaskClasses(task.state)}`}
                       >
                         <span className="absolute inset-0 flex items-center justify-center">
-                          {frame.number}
+                          {task.frame_start + (task.frame_start !== task.frame_end ? "-" + task.frame_end : "")}
                         </span>
-                        {frame.state === "FAILED" && (
+                        {task.state === "FAILED" && (
                           <button
                             type="button"
                             className="absolute inset-x-1 bottom-1 hidden rounded-md bg-background/95 px-1.5 py-1 text-[9px] font-black text-destructive shadow-lg ring-1 ring-destructive/30 transition-all hover:bg-destructive hover:text-destructive-foreground group-hover:block"
-                            disabled={skippingFrameId === frame.id}
+                            disabled={skippingTaskId === task.id}
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              void handleSkipFrame(frame.id);
+                              void handleSkipTask(task.id);
                             }}
                           >
-                            {skippingFrameId === frame.id ? "..." : "SKIP"}
+                            {skippingTaskId === task.id ? "..." : "SKIP"}
                           </button>
                         )}
                       </div>
@@ -277,8 +277,7 @@ export default function LayerInspectorPage() {
 
                 <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
                   <SkipForward size={14} className="mr-2 inline text-primary" />
-                  Hover a failed frame and click SKIP to call{" "}
-                  <code>POST /api/frames/&lbrace;id&rbrace;/skip/</code>.
+                  Hover over a failed task and click SKIP to bypass it and allow the job to continue.
                 </div>
               </CardContent>
             </Card>

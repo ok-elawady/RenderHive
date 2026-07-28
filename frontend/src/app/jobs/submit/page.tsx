@@ -55,7 +55,7 @@ const jobFormSchema = z.object({
   user: z.string().min(1, "User is required"),
   priority: z.coerce.number().min(1).max(100),
   logDirectory: z.string().min(1, "Log directory is required"),
-  maxFramesPerWorker: z.coerce.number().min(0),
+  maxTasksPerWorker: z.coerce.number().min(0),
   layers: z.array(layerSchema).min(1, "At least one layer is required"),
 });
 
@@ -96,7 +96,7 @@ export default function SubmitJobPage() {
       user: "",
       priority: 50,
       logDirectory: "/tmp/render_logs",
-      maxFramesPerWorker: 0,
+      maxTasksPerWorker: 0,
       layers: [createLayerDraft(0)],
     },
   });
@@ -157,7 +157,7 @@ export default function SubmitJobPage() {
       user: data.user.trim() || "System",
       priority: data.priority,
       log_directory: data.logDirectory.trim(),
-      max_frames_per_worker: data.maxFramesPerWorker,
+      max_tasks_per_worker: data.maxTasksPerWorker,
       layers: data.layers.map((layer) => ({
         name: layer.name.trim(),
         layer_type: layer.layerType as LayerType,
@@ -340,10 +340,10 @@ export default function SubmitJobPage() {
 
                     <FormField
                       control={form.control}
-                      name="maxFramesPerWorker"
+                      name="maxTasksPerWorker"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Max Frames/Worker</FormLabel>
+                          <FormLabel>Max Tasks/Worker</FormLabel>
                           <FormControl>
                             <Input type="number" title="0 means unlimited" {...field} />
                           </FormControl>

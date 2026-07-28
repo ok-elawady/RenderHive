@@ -300,14 +300,14 @@ export type JobDetail = components["schemas"]["JobDetail"];
 export type JobPatch = components["schemas"]["PatchedJobPatch"];
 export type LayerList = components["schemas"]["LayerList"];
 export type LayerDetail = components["schemas"]["LayerDetail"];
-export type FrameList = components["schemas"]["FrameList"];
-export type FrameDetail = components["schemas"]["FrameDetail"];
+export type TaskList = components["schemas"]["TaskList"];
+export type TaskDetail = components["schemas"]["TaskDetail"];
 export type JobStateFilter = NonNullable<
   NonNullable<paths["/api/jobs/"]["get"]["parameters"]["query"]>["state"]
 >;
-export type FrameStateFilter = NonNullable<
+export type TaskStateFilter = NonNullable<
   NonNullable<
-    paths["/api/jobs/{job_pk}/layers/{layer_pk}/frames/"]["get"]["parameters"]["query"]
+    paths["/api/jobs/{job_pk}/layers/{layer_pk}/tasks/"]["get"]["parameters"]["query"]
   >["state"]
 >;
 
@@ -329,10 +329,10 @@ function mapStatus(state: BackendJobState): RenderJob["status"] {
 }
 
 function getProgress(job: BackendJob): number {
-  if (job.total_frames <= 0) return 0;
+  if (job.total_tasks <= 0) return 0;
 
   return Math.round(
-    ((job.succeeded_frames + job.skipped_frames) / job.total_frames) * 100,
+    ((job.succeeded_tasks + job.skipped_tasks) / job.total_tasks) * 100,
   );
 }
 
@@ -443,13 +443,13 @@ export async function getLayer(
   return data;
 }
 
-export async function getLayerFrames(
+export async function getLayerTasks(
   jobId: string,
   layerId: string,
-  state?: FrameStateFilter,
-): Promise<FrameList[]> {
+  state?: TaskStateFilter,
+): Promise<TaskList[]> {
   const { data, error } = await client.GET(
-    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/",
+    "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/",
     {
       params: {
         path: { job_pk: jobId, layer_pk: layerId },
@@ -465,9 +465,9 @@ export async function getLayerFrames(
   return data?.results || [];
 }
 
-export async function skipFrame(frameId: string): Promise<FrameDetail> {
-  const { data, error } = await client.POST("/api/frames/{id}/skip/", {
-    params: { path: { id: frameId } },
+export async function skipTask(taskId: string): Promise<TaskDetail> {
+  const { data, error } = await client.POST("/api/tasks/{id}/skip/", {
+    params: { path: { id: taskId } },
   });
 
   if (error) {
@@ -486,7 +486,7 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
     status: mapStatus(job.state),
     backendState: job.state,
     progress: getProgress(job),
-    frameCounts: `${job.succeeded_frames + job.skipped_frames}/${job.total_frames}`,
+    taskCounts: `${job.succeeded_tasks + job.skipped_tasks}/${job.total_tasks}`,
   };
 }
 

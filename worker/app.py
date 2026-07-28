@@ -177,15 +177,15 @@ class WorkerThread(QThread):
             self.log_signal.emit(f"Heartbeat unexpected error: {str(e)}")
             return False
 
-    def run_frame(self, frame):
-        frame_id = frame["id"]
-        command_template = frame["command"]
+    def run_task(self, task):
+        task_id = task["id"]
+        command_template = task["command"]
         
         cmd = command_template
         
         # Normalize paths for safety (use forward slashes)
         normalized_maya_exec = self.maya_exec.replace("\\", "/")
-        normalized_scene_path = frame["scene_path"].replace("\\", "/")
+        normalized_scene_path = task["scene_path"].replace("\\", "/")
         
 
         # Support both uppercase and lowercase placeholders for robustness
@@ -198,7 +198,10 @@ class WorkerThread(QThread):
                 else:
                     cmd = cmd.replace(placeholder, f'"{normalized_maya_exec}"')
                     
-        cmd = cmd.replace("{FRAME}", str(frame["number"])).replace("{frame}", str(frame["number"]))
+        cmd = cmd.replace("{START_FRAME}", str(task["frame_start"])).replace("{start_frame}", str(task["frame_start"]))
+        cmd = cmd.replace("{END_FRAME}", str(task["frame_end"])).replace("{end_frame}", str(task["frame_end"]))
+        # Support legacy {FRAME} by defaulting to frame_start
+        cmd = cmd.replace("{FRAME}", str(task["frame_start"])).replace("{frame}", str(task["frame_start"]))
         
         for placeholder in ("{SCENE_PATH}", "{scene_path}"):
             if placeholder in cmd:
@@ -208,11 +211,11 @@ class WorkerThread(QThread):
                 else:
                     cmd = cmd.replace(placeholder, f'"{normalized_scene_path}"')
         
-        self.log_signal.emit(f"Executing frame {frame['number']}...")
+        self.log_signal.emit(f"Executing task {task_id} (Frames {task['frame_start']}-{task['frame_end']})...")
         
         log_dir = "logs"
         os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, f"{frame_id}.log")
+        log_file = os.path.join(log_dir, f"{task_id}.log")
         
         if not shutil.which(self.maya_exec):
             self.log_signal.emit(f"Error: Maya executable not found at '{self.maya_exec}'")
@@ -283,7 +286,7 @@ class WorkerThread(QThread):
                 display_log_file = log_file.replace("\\", "/")
                 
                 if exit_status == 0:
-                    success_msg = f"Frame {frame['number']} completed successfully."
+                    success_msg = f"Task {task_id} completed successfully."
                     if output_image_path:
                         success_msg += f"\n  Output Image: {output_image_path}"
                     success_msg += f"\n  Log saved to: {display_log_file}"
@@ -298,16 +301,16 @@ class WorkerThread(QThread):
                                 error_tail = f"\n  Output: {last_lines}"
                     except Exception:
                         pass
-                    self.log_signal.emit(f"Frame {frame['number']} failed (Exit Code: {exit_status}){error_tail}\n  Log saved to: {display_log_file}")
+                    self.log_signal.emit(f"Task {task_id} failed (Exit Code: {exit_status}){error_tail}\n  Log saved to: {display_log_file}")
         except Exception as e:
-            self.log_signal.emit(f"Failed to execute frame: {str(e)}")
+            self.log_signal.emit(f"Failed to execute task: {str(e)}")
         
         return exit_status
 
-    def report_status(self, frame_id, exit_status):
+    def report_status(self, task_id, exit_status):
         try:
             endpoint = "succeed" if exit_status == 0 else "fail"
-            res = requests.post(f"{self.api_url}/frames/{frame_id}/{endpoint}/", json={"exit_status": exit_status}, headers=self.get_headers())
+            res = requests.post(f"{self.api_url}/tasks/{task_id}/{endpoint}/", json={"exit_status": exit_status}, headers=self.get_headers())
             if res.status_code != 200:
                 self.log_signal.emit(f"Failed to report status: {res.status_code}")
         except Exception as e:
@@ -343,17 +346,17 @@ class WorkerThread(QThread):
                 last_heartbeat = now
                 
             try:
-                res = requests.post(f"{self.api_url}/frames/dispatch/", json={"worker_name": HOSTNAME}, headers=self.get_headers())
+                res = requests.post(f"{self.api_url}/tasks/dispatch/", json={"worker_name": HOSTNAME}, headers=self.get_headers())
                 if res.status_code == 200:
                     self.status_signal.emit("RENDERING")
-                    frame = res.json()
-                    self.log_signal.emit(f"Received frame {frame['id']} (Frame {frame['number']})")
+                    task = res.json()
+                    self.log_signal.emit(f"Received task {task['id']} (Frames {task['frame_start']}-{task['frame_end']})")
                     
-                    exit_status = self.run_frame(frame)
-                    self.report_status(frame["id"], exit_status)
+                    exit_status = self.run_task(task)
+                    self.report_status(task["id"], exit_status)
                     self.status_signal.emit("ONLINE")
                 elif res.status_code == 404:
-                    time.sleep(5)  # No frames
+                    time.sleep(5)  # No tasks
                 else:
                     self.log_signal.emit(f"Dispatch error: {res.status_code}")
                     time.sleep(5)

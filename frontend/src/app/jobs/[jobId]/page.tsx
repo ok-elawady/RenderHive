@@ -34,8 +34,8 @@ import {
 
 const counters: Array<keyof Pick<
   JobDetail,
-  "ready_frames" | "running_frames" | "failed_frames" | "succeeded_frames"
->> = ["ready_frames", "running_frames", "failed_frames", "succeeded_frames"];
+  "ready_tasks" | "running_tasks" | "failed_tasks" | "succeeded_tasks"
+>> = ["ready_tasks", "running_tasks", "failed_tasks", "succeeded_tasks"];
 
 function prettyCounterLabel(key: string): string {
   return key.replace("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -59,10 +59,10 @@ export default function JobDetailPage() {
   const [layers, setLayers] = useState<LayerList[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isEditOpen, setIsEditOpen] = useState<boolean>(false);
-  const [draft, setDraft] = useState({ visible_name: "", priority: 50, max_frames_per_worker: 0 });
+  const [draft, setDraft] = useState({ visible_name: "", priority: 50, max_tasks_per_worker: 0 });
 
-  const completedFrames = useMemo(
-    () => (job ? job.succeeded_frames + job.skipped_frames : 0),
+  const completedTasks = useMemo(
+    () => (job ? job.succeeded_tasks + job.skipped_tasks : 0),
     [job],
   );
 
@@ -78,7 +78,7 @@ export default function JobDetailPage() {
       setDraft({
         visible_name: jobData.visible_name,
         priority: jobData.priority,
-        max_frames_per_worker: jobData.max_frames_per_worker,
+        max_tasks_per_worker: jobData.max_tasks_per_worker,
       });
     } catch (error) {
       toast.error("Unable to load job", { description: formatApiError(error) });
@@ -117,7 +117,7 @@ export default function JobDetailPage() {
   };
 
   const handleAbort = async (): Promise<void> => {
-    if (!window.confirm("Abort this job and remove all nested layers and frames?")) return;
+    if (!window.confirm("Abort this job and remove all nested layers and tasks?")) return;
 
     try {
       await abortJob(jobId);
@@ -170,7 +170,7 @@ export default function JobDetailPage() {
                     {job.state}
                   </Badge>
                   <p className="mt-3 text-xs text-muted-foreground">
-                    {completedFrames}/{job.total_frames} frames completed
+                    {completedTasks}/{job.total_tasks} tasks completed
                   </p>
                 </CardContent>
               </Card>
@@ -227,7 +227,7 @@ export default function JobDetailPage() {
                             </TableCell>
                             <TableCell>{layer.frame_range}</TableCell>
                             <TableCell className="text-right text-muted-foreground">
-                              {layer.succeeded_frames + layer.skipped_frames}/{layer.total_frames}
+                              {layer.succeeded_tasks + layer.skipped_tasks}/{layer.total_tasks}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -242,7 +242,7 @@ export default function JobDetailPage() {
                     <p><span className="text-muted-foreground">System name:</span> {job.name}</p>
                     <p><span className="text-muted-foreground">Priority:</span> {job.priority}</p>
                     <p><span className="text-muted-foreground">Log directory:</span> {job.log_directory}</p>
-                    <p><span className="text-muted-foreground">Max frames / worker:</span> {job.max_frames_per_worker}</p>
+                    <p><span className="text-muted-foreground">Max tasks / worker:</span> {job.max_tasks_per_worker}</p>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -267,11 +267,11 @@ export default function JobDetailPage() {
                 <Input type="number" value={draft.priority} onChange={handleDraftChange("priority")} />
               </div>
               <div className="space-y-2">
-                <Label>Max Frames / Worker</Label>
+                <Label>Max Tasks / Worker</Label>
                 <Input
                   type="number"
-                  value={draft.max_frames_per_worker}
-                  onChange={handleDraftChange("max_frames_per_worker")}
+                  value={draft.max_tasks_per_worker}
+                  onChange={handleDraftChange("max_tasks_per_worker")}
                 />
               </div>
             </div>

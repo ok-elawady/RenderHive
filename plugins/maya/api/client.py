@@ -385,11 +385,11 @@ class RenderHiveApiClient(object):
 
     def get_job_status(self, job_id): return self.request("GET", "job_status", endpoint_values={"job_id": job_id}).get("data", {})
 
-    def update_job(self, job_id, visible_name=None, priority=None, max_frames_per_worker=None):
+    def update_job(self, job_id, visible_name=None, priority=None, max_tasks_per_worker=None):
         payload = {}
         if visible_name is not None: payload["visible_name"] = str(visible_name).strip()
         if priority is not None: payload["priority"] = int(priority)
-        if max_frames_per_worker is not None: payload["max_frames_per_worker"] = int(max_frames_per_worker)
+        if max_tasks_per_worker is not None: payload["max_tasks_per_worker"] = int(max_tasks_per_worker)
         if not payload: raise ApiResponseError("At least one job field is required for update.")
         return self.request("PATCH", "job_update", payload=payload, endpoint_values={"job_id": job_id}).get("data", {})
 

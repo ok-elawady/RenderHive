@@ -5,7 +5,7 @@ Covers:
 - Job.clean() M2M validation (model layer).
 - JobCreateSerializer / JobPatchSerializer pool intersection validation.
 - create_job_with_layers() service-layer validation.
-- FrameDispatchView pool-based frame routing.
+- TaskDispatchView pool-based frame routing.
 """
 
 import pytest
@@ -14,11 +14,11 @@ from django.core.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from apps.jobs.models import FrameState, Job, JobState
+from apps.jobs.models import TaskState, Job, JobState
 from apps.jobs.services import create_job_with_layers
 from apps.workers.models import WorkerNode, WorkerPool
 
-from .factories import FrameFactory, JobFactory
+from .factories import TaskFactory, JobFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -201,17 +201,17 @@ class TestServicePoolValidation:
             create_job_with_layers(data)
 
 
-# ── FrameDispatchView: pool routing ──────────────────────────────────────────
+# ── TaskDispatchView: pool routing ──────────────────────────────────────────
 
 
-class TestFrameDispatchPoolRouting:
-    DISPATCH_URL = "/api/frames/dispatch/"
+class TestTaskDispatchPoolRouting:
+    DISPATCH_URL = "/api/tasks/dispatch/"
 
     def test_worker_in_included_pool_gets_frame(self, farm_client, worker, pool_a):
         """A worker belonging to a job's included_pools receives a READY frame."""
         job = JobFactory(is_paused=False, state=JobState.PENDING)
         job.included_pools.set([pool_a])
-        FrameFactory(job=job, state=FrameState.READY)
+        TaskFactory(job=job, state=TaskState.READY)
 
         resp = farm_client.post(self.DISPATCH_URL, {"worker_name": "render-node-01"}, format="json")
         assert resp.status_code == 200
@@ -225,7 +225,7 @@ class TestFrameDispatchPoolRouting:
 
         job = JobFactory(is_paused=False, state=JobState.PENDING)
         job.included_pools.set([pool_a])  # restricted to pool_a
-        FrameFactory(job=job, state=FrameState.READY)
+        TaskFactory(job=job, state=TaskState.READY)
 
         resp = farm_client.post(self.DISPATCH_URL, {"worker_name": "render-node-02"}, format="json")
         assert resp.status_code == 404
@@ -234,7 +234,7 @@ class TestFrameDispatchPoolRouting:
         """A worker in a job's excluded_pools is skipped even if a READY frame exists."""
         job = JobFactory(is_paused=False, state=JobState.PENDING)
         job.excluded_pools.set([pool_a])
-        FrameFactory(job=job, state=FrameState.READY)
+        TaskFactory(job=job, state=TaskState.READY)
 
         resp = farm_client.post(self.DISPATCH_URL, {"worker_name": "render-node-01"}, format="json")
         assert resp.status_code == 404
@@ -243,17 +243,17 @@ class TestFrameDispatchPoolRouting:
         """A worker picks up a frame from a job with no pool restrictions."""
         job = JobFactory(is_paused=False, state=JobState.PENDING)
         # No included_pools or excluded_pools set.
-        FrameFactory(job=job, state=FrameState.READY)
+        TaskFactory(job=job, state=TaskState.READY)
 
         resp = farm_client.post(self.DISPATCH_URL, {"worker_name": "render-node-01"}, format="json")
         assert resp.status_code == 200
         assert resp.data["job_id"] == str(job.pk)
 
     def test_paused_job_frames_are_not_dispatched(self, farm_client, worker, pool_a):
-        """Frames from a paused job are not dispatched regardless of pool membership."""
+        """Tasks from a paused job are not dispatched regardless of pool membership."""
         job = JobFactory(is_paused=True, state=JobState.PAUSED)
         job.included_pools.set([pool_a])
-        FrameFactory(job=job, state=FrameState.READY)
+        TaskFactory(job=job, state=TaskState.READY)
 
         resp = farm_client.post(self.DISPATCH_URL, {"worker_name": "render-node-01"}, format="json")
         assert resp.status_code == 404
@@ -268,11 +268,11 @@ class TestFrameDispatchPoolRouting:
         # Restricted job — unregistered worker cannot access
         restricted_job = JobFactory(is_paused=False, state=JobState.PENDING)
         restricted_job.included_pools.set([pool_a])
-        FrameFactory(job=restricted_job, state=FrameState.READY)
+        TaskFactory(job=restricted_job, state=TaskState.READY)
 
         # Unrestricted job — unregistered worker CAN access
         open_job = JobFactory(is_paused=False, state=JobState.PENDING)
-        FrameFactory(job=open_job, state=FrameState.READY)
+        TaskFactory(job=open_job, state=TaskState.READY)
 
         # "ghost-worker" has never pinged — not in WorkerNode
         resp = farm_client.post(self.DISPATCH_URL, {"worker_name": "ghost-worker"}, format="json")

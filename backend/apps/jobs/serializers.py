@@ -6,24 +6,25 @@ Serializers are split by usage pattern:
 - Detail serializers: full read-only representations for retrieve views.
 - Create serializers: write-only, used for POST endpoints.
 - Patch serializers: write-only, limited fields for PATCH endpoints.
-- Action serializers: write-only, used for frame state transition endpoints.
+- Action serializers: write-only, used for task state transition endpoints.
 """
 
 from rest_framework import serializers
 
-from .models import Frame, Job, Layer
+from .models import Task, Job, Layer
 from .services import create_job_with_layers
 
-# ── Frame Serializers ─────────────────────────────────────────────────────────
+# ── Task Serializers ─────────────────────────────────────────────────────────
 
 
-class FrameListSerializer(serializers.ModelSerializer):
-    """Slim read-only frame representation for list views.
+class TaskListSerializer(serializers.ModelSerializer):
+    """Slim read-only task representation for list views.
 
     Attributes:
         id: UUID primary key.
         name: Display name (e.g. 'beauty_0042').
-        number: Render frame index.
+        frame_start: First render frame index.
+        frame_end: Last render frame index.
         state: Current execution state.
         depend_count: Number of unresolved dependencies.
         retries: Execution attempt count.
@@ -34,11 +35,12 @@ class FrameListSerializer(serializers.ModelSerializer):
     """
 
     class Meta:
-        model = Frame
+        model = Task
         fields = [
             "id",
             "name",
-            "number",
+            "frame_start",
+            "frame_end",
             "state",
             "depend_count",
             "retries",
@@ -50,10 +52,10 @@ class FrameListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class FrameDetailSerializer(FrameListSerializer):
-    """Full read-only frame representation for detail and Worker poll views.
+class TaskDetailSerializer(TaskListSerializer):
+    """Full read-only task representation for detail and Worker poll views.
 
-    Extends :class:`FrameListSerializer` with execution telemetry fields.
+    Extends :class:`TaskListSerializer` with execution telemetry fields.
 
     Attributes:
         max_memory_used_mb: Peak RSS memory in MB.
@@ -62,8 +64,8 @@ class FrameDetailSerializer(FrameListSerializer):
         dispatch_order: Dispatch priority within the layer.
     """
 
-    class Meta(FrameListSerializer.Meta):
-        fields = FrameListSerializer.Meta.fields + [
+    class Meta(TaskListSerializer.Meta):
+        fields = TaskListSerializer.Meta.fields + [
             "max_memory_used_mb",
             "cores_used",
             "checkpoint_count",
@@ -84,14 +86,14 @@ class LayerListSerializer(serializers.ModelSerializer):
         layer_type: Render pass type.
         state: Current execution state.
         frame_range: VFX frame range descriptor.
-        total_frames: Counter cache.
-        waiting_frames: Counter cache.
-        ready_frames: Counter cache.
-        running_frames: Counter cache.
-        succeeded_frames: Counter cache.
-        failed_frames: Counter cache.
-        skipped_frames: Counter cache.
-        depend_frames: Counter cache.
+        total_tasks: Counter cache.
+        waiting_tasks: Counter cache.
+        ready_tasks: Counter cache.
+        running_tasks: Counter cache.
+        succeeded_tasks: Counter cache.
+        failed_tasks: Counter cache.
+        skipped_tasks: Counter cache.
+        depend_tasks: Counter cache.
     """
 
     class Meta:
@@ -102,14 +104,14 @@ class LayerListSerializer(serializers.ModelSerializer):
             "layer_type",
             "state",
             "frame_range",
-            "total_frames",
-            "waiting_frames",
-            "ready_frames",
-            "running_frames",
-            "succeeded_frames",
-            "failed_frames",
-            "skipped_frames",
-            "depend_frames",
+            "total_tasks",
+            "waiting_tasks",
+            "ready_tasks",
+            "running_tasks",
+            "succeeded_tasks",
+            "failed_tasks",
+            "skipped_tasks",
+            "depend_tasks",
         ]
         read_only_fields = fields
 
@@ -129,8 +131,8 @@ class LayerDetailSerializer(LayerListSerializer):
         scene_path: DCC scene file path.
         scene_info: DCC scene metadata JSON.
         env: Environment variable overrides.
-        max_retries: Per-frame retry ceiling.
-        timeout_seconds: Frame execution timeout.
+        max_retries: Per-task retry ceiling.
+        timeout_seconds: Task execution timeout.
     """
 
     class Meta(LayerListSerializer.Meta):
@@ -169,8 +171,8 @@ class LayerCreateSerializer(serializers.ModelSerializer):
         scene_path: DCC scene file path.
         scene_info: DCC scene metadata JSON.
         env: Environment variable overrides.
-        max_retries: Per-frame retry ceiling.
-        timeout_seconds: Frame execution timeout.
+        max_retries: Per-task retry ceiling.
+        timeout_seconds: Task execution timeout.
     """
 
     class Meta:
@@ -179,14 +181,14 @@ class LayerCreateSerializer(serializers.ModelSerializer):
             "id",
             "job",
             "state",
-            "total_frames",
-            "waiting_frames",
-            "ready_frames",
-            "running_frames",
-            "succeeded_frames",
-            "failed_frames",
-            "skipped_frames",
-            "depend_frames",
+            "total_tasks",
+            "waiting_tasks",
+            "ready_tasks",
+            "running_tasks",
+            "succeeded_tasks",
+            "failed_tasks",
+            "skipped_tasks",
+            "depend_tasks",
         ]
 
     def validate_frame_range(self, value: str) -> str:
@@ -228,14 +230,14 @@ class JobListSerializer(serializers.ModelSerializer):
         state: Current execution state.
         priority: Dispatch priority (1-100).
         is_paused: Standalone pause flag.
-        total_frames: Counter cache.
-        waiting_frames: Counter cache.
-        ready_frames: Counter cache.
-        running_frames: Counter cache.
-        succeeded_frames: Counter cache.
-        failed_frames: Counter cache.
-        skipped_frames: Counter cache.
-        depend_frames: Counter cache.
+        total_tasks: Counter cache.
+        waiting_tasks: Counter cache.
+        ready_tasks: Counter cache.
+        running_tasks: Counter cache.
+        succeeded_tasks: Counter cache.
+        failed_tasks: Counter cache.
+        skipped_tasks: Counter cache.
+        depend_tasks: Counter cache.
         created_at: Submission timestamp.
         updated_at: Last update timestamp.
     """
@@ -252,14 +254,14 @@ class JobListSerializer(serializers.ModelSerializer):
             "state",
             "priority",
             "is_paused",
-            "total_frames",
-            "waiting_frames",
-            "ready_frames",
-            "running_frames",
-            "succeeded_frames",
-            "failed_frames",
-            "skipped_frames",
-            "depend_frames",
+            "total_tasks",
+            "waiting_tasks",
+            "ready_tasks",
+            "running_tasks",
+            "succeeded_tasks",
+            "failed_tasks",
+            "skipped_tasks",
+            "depend_tasks",
             "created_at",
             "updated_at",
             "included_pools",
@@ -276,8 +278,8 @@ class JobDetailSerializer(JobListSerializer):
 
     Attributes:
         layers: Nested list of all layers belonging to this job.
-        log_directory: Absolute path for frame logs.
-        max_frames_per_worker: Concurrent frames per Worker limit.
+        log_directory: Absolute path for task logs.
+        max_tasks_per_worker: Concurrent tasks per Worker limit.
         stopped_at: Timestamp when job reached FINISHED or FAILED.
     """
 
@@ -287,7 +289,7 @@ class JobDetailSerializer(JobListSerializer):
         fields = JobListSerializer.Meta.fields + [
             "layers",
             "log_directory",
-            "max_frames_per_worker",
+            "max_tasks_per_worker",
             "stopped_at",
         ]
         read_only_fields = fields
@@ -307,8 +309,8 @@ class JobCreateSerializer(serializers.ModelSerializer):
         department: Department name.
         user: Submitter's display name.
         priority: Dispatch priority (1-100).
-        log_directory: Absolute path for frame logs.
-        max_frames_per_worker: Concurrent frames per Worker limit.
+        log_directory: Absolute path for task logs.
+        max_tasks_per_worker: Concurrent tasks per Worker limit.
     """
 
     layers = LayerCreateSerializer(many=True)
@@ -322,7 +324,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
             "user",
             "priority",
             "log_directory",
-            "max_frames_per_worker",
+            "max_tasks_per_worker",
             "included_pools",
             "excluded_pools",
             "layers",
@@ -355,7 +357,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data: dict) -> Job:
-        """Delegate creation to the service layer for atomic job + layer + frame creation.
+        """Delegate creation to the service layer for atomic job + layer + task creation.
 
         Args:
             validated_data: The fully validated data dict including nested layers.
@@ -377,7 +379,7 @@ class JobPatchSerializer(serializers.ModelSerializer):
     Attributes:
         visible_name: Human-readable label.
         priority: Dispatch priority (1-100).
-        max_frames_per_worker: Concurrent frames per Worker limit.
+        max_tasks_per_worker: Concurrent tasks per Worker limit.
     """
 
     class Meta:
@@ -385,7 +387,7 @@ class JobPatchSerializer(serializers.ModelSerializer):
         fields = [
             "visible_name",
             "priority",
-            "max_frames_per_worker",
+            "max_tasks_per_worker",
             "included_pools",
             "excluded_pools",
         ]
@@ -402,21 +404,21 @@ class JobPatchSerializer(serializers.ModelSerializer):
         return data
 
 
-# ── Frame Action Serializers ──────────────────────────────────────────────────
+# ── Task Action Serializers ──────────────────────────────────────────────────
 
 
-class FrameStartSerializer(serializers.Serializer):
-    """Validates payload when a Worker marks a frame as RUNNING.
+class TaskStartSerializer(serializers.Serializer):
+    """Validates payload when a Worker marks a task as RUNNING.
 
     Attributes:
-        worker_name: Hostname of the Worker claiming this frame.
+        worker_name: Hostname of the Worker claiming this task.
     """
 
-    worker_name = serializers.CharField(max_length=256, help_text="Hostname of the Worker claiming this frame.")
+    worker_name = serializers.CharField(max_length=256, help_text="Hostname of the Worker claiming this task.")
 
 
-class FrameSucceedSerializer(serializers.Serializer):
-    """Validates payload when a Worker reports a frame as SUCCEEDED.
+class TaskSucceedSerializer(serializers.Serializer):
+    """Validates payload when a Worker reports a task as SUCCEEDED.
 
     Attributes:
         exit_status: Process exit code (should be 0).
@@ -436,8 +438,8 @@ class FrameSucceedSerializer(serializers.Serializer):
     )
 
 
-class FrameFailSerializer(serializers.Serializer):
-    """Validates payload when a Worker reports a frame as FAILED.
+class TaskFailSerializer(serializers.Serializer):
+    """Validates payload when a Worker reports a task as FAILED.
 
     Attributes:
         exit_status: Non-zero process exit code.
