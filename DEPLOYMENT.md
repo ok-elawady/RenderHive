@@ -89,39 +89,49 @@ On first boot the entrypoint automatically:
 - Collects static files
 - Starts the API server (Django dev server in debug mode, Gunicorn otherwise)
 
-### 1.4 Get the Farm Token
+### 1.4 Configure Server Hosts and Verify
 
-The worker daemon and Maya plugin both need this token to authenticate against the API. There are two ways to retrieve it:
+To view the dashboard on the server itself, the server needs to know how to resolve the local domain names to itself.
 
-**Option A — From the container logs** (fastest on first boot):
-```bash
-docker compose logs api | findstr /i "token"
-```
+1. Navigate to the `scripts/` directory.
+2. Right-click `setup_hosts.ps1` and select **Run with PowerShell**.
+3. Accept Administrator privileges. When prompted for the IP, simply press **Enter** to use the default (`127.0.0.1`).
 
-**Option B — From the Django admin panel** (always available):
-1. Navigate to `http://localhost:8000/admin/`
-2. Log in with your superuser credentials.
-3. Go to **Auth Token → Tokens** and look for the token belonging to the `farm_service` user.
-
-Copy this token — you will need it when configuring the worker daemon and the Maya plugin.
-
-### 1.5 Verify the Server is Up
-
-Open a browser **on the server machine** and check:
+Now, open a browser **on the server machine** and check:
 
 | URL | Expected result |
 |---|---|
-| `http://localhost:3000` | RenderHive dashboard login page |
-| `http://localhost:8000/api/` | Django REST Framework browsable API |
-| `http://localhost:8000/admin/` | Django admin panel |
+| `http://renderhive.local` | RenderHive dashboard login page |
+| `http://server.renderhive.local/api/` | Django REST Framework browsable API |
+| `http://server.renderhive.local/admin/` | Django admin panel |
 
 ---
 
-## Part 2 — Client / Worker Machine Setup
+## Part 2 — Dashboard Access (Non-Workers)
 
-Every machine that needs to **access the dashboard** or **run render jobs** must have the worker installer run on it. The installer modifies the local `hosts` file so that `renderhive.local` and `server.renderhive.local` resolve to the server's IP address.
+If a machine (like a supervisor's laptop) only needs to view the web dashboard and won't render jobs, you don't need to install the full worker daemon. Instead, run the included script to configure the domains:
 
-### 2.1 Obtain the Installer
+### 2.1 Run the Hosts Setup Script
+
+1. Navigate to the `scripts/` directory.
+2. Right-click `setup_hosts.ps1` and select **Run with PowerShell**.
+3. The script will request Administrator privileges and ask for the server's LAN IP.
+
+### 2.2 Verify Dashboard Access
+
+Open a browser on any configured machine (worker or dashboard-only) and navigate to:
+```
+http://renderhive.local
+```
+You should see the RenderHive login page. Log in with the admin credentials set in `.env`.
+
+---
+
+## Part 3 — Worker Machine Setup
+
+Worker machines are responsible for rendering jobs. You must install the worker daemon, which also automatically configures the network domains required to reach the server.
+
+### 3.1 Obtain the Installer
 
 The pre-built installer is at:
 ```
@@ -132,7 +142,7 @@ Copy it to a USB drive or shared network folder, then run it on each client mach
 
 > If `Output/` is empty, build the installer first — see [Appendix A](#appendix-a--building-the-worker-installer).
 
-### 2.2 Run the Installer (on each client machine)
+### 3.2 Run the Installer (on each worker machine)
 
 1. Right-click `RenderHiveWorkerSetup.exe` → **Run as administrator** (admin rights are required to modify the hosts file).
 2. Follow the wizard. When prompted for **Server IP Address**, enter the server's LAN IP (e.g. `192.168.100.5`).
@@ -140,38 +150,42 @@ Copy it to a USB drive or shared network folder, then run it on each client mach
 
 The installer will:
 - Install the Worker daemon application to `C:\Program Files\RenderHive\Worker\`
-- Add the following entries to `C:\Windows\System32\drivers\etc\hosts`:
-  ```
-  192.168.100.5  renderhive.local
-  192.168.100.5  server.renderhive.local
-  ```
+- Add the required domain entries to `C:\Windows\System32\drivers\etc\hosts`.
 
-### 2.3 Configure the Worker Daemon
+### 3.3 Get the Farm Token
+
+The worker daemon and Maya plugin both need this token to authenticate against the API. There are two ways to retrieve it:
+
+**Option A — From the container logs** (fastest on first boot):
+```bash
+docker compose logs api | findstr /i "token"
+```
+
+**Option B — From the Django admin panel** (always available):
+1. Navigate to `http://renderhive.local/admin/`
+2. Log in with your superuser credentials.
+3. Go to **Auth Token → Tokens** and look for the token belonging to the `farm_service` user.
+
+Copy this token — you will need it when configuring the worker daemon.
+
+### 3.4 Configure the Worker Daemon
 
 1. Launch **RenderHive Worker** from the desktop or Start menu.
 2. Click **Settings** and fill in:
    - **API URL:** `http://server.renderhive.local/api`
-   - **API Token:** the farm token from [Step 1.4](#14-get-the-farm-token)
+   - **API Token:** the farm token from [Step 3.3](#33-get-the-farm-token)
    - **Maya Executable:** path to `Render.exe`, e.g. `C:\Program Files\Autodesk\Maya2025\bin\Render.exe`
 3. Click **Save**, then **Start Worker**.
 
 The status indicator will turn green (`ONLINE`) if the connection succeeds.
 
-### 2.4 Verify Dashboard Access
-
-Open a browser on the client machine and navigate to:
-```
-http://renderhive.local
-```
-You should see the RenderHive login page. Log in with the admin credentials set in `.env`.
-
 ---
 
-## Part 3 — Maya Plugin Deployment
+## Part 4 — Maya Plugin Deployment
 
 The Maya plugin lets artists submit render jobs directly from inside Maya. The recommended approach is to serve it from a shared network path so updates roll out automatically.
 
-### 3.1 Set Up a Shared Network Path
+### 4.1 Set Up a Shared Network Path
 
 Copy the entire `plugins/maya/` folder to a location accessible from all artist machines:
 ```
@@ -182,7 +196,7 @@ or a mapped drive letter, e.g.:
 Z:\Pipeline\RenderHive\plugins\maya
 ```
 
-### 3.2 Configure the Plugin
+### 4.2 Configure the Plugin
 
 Open `plugins/maya/config/api_config.template.json` on the shared drive and set:
 ```json
@@ -195,7 +209,7 @@ Open `plugins/maya/config/api_config.template.json` on the shared drive and set:
 ```
 Save the file — all machines reading from the share will pick this up automatically.
 
-### 3.3 Deploy to Artists
+### 4.3 Deploy to Artists
 
 Distribute the small `plugins/maya/RenderHive.mod` file to each artist's machine.
 
@@ -213,7 +227,7 @@ Distribute the small `plugins/maya/RenderHive.mod` file to each artist's machine
 
 ---
 
-## Part 4 — First-Login Checklist
+## Part 5 — First-Login Checklist
 
 After the server is up and at least one client can reach the dashboard:
 
@@ -312,6 +326,7 @@ Then open `RenderHiveSetup.iss` in the Inno Setup Compiler and click **Build →
 |---|---|---|
 | Browser can't reach `renderhive.local` | Worker installer not run / hosts file not updated | Run `RenderHiveWorkerSetup.exe` as admin on that machine |
 | API calls fail in browser (network error) | `NEXT_PUBLIC_API_URL` is `localhost` | Set `NEXT_PUBLIC_API_URL=http://server.renderhive.local` in `.env` and rebuild |
+| CORS error mentioning `https://` | Browser's HTTPS-Only Mode is forcing an upgrade | Disable HTTPS-Only Mode / "Always use secure connections" for `.local` domains in your browser settings |
 | Worker shows `ERROR` status | Wrong API URL or token | Open Settings in the Worker daemon and verify both values |
 | Maya plugin can't connect | `base_url` in `api_config.template.json` not updated | Set `base_url` to `http://server.renderhive.local` and restart Maya |
 | `Superuser already exists, skipping` on startup | Expected on second boot onwards | Not an error — safe to ignore |
