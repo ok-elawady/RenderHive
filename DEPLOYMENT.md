@@ -94,8 +94,8 @@ On first boot the entrypoint automatically:
 To view the dashboard on the server itself, the server needs to know how to resolve the local domain names to itself.
 
 1. Navigate to the `scripts/` directory.
-2. Right-click `setup_hosts.ps1` and select **Run with PowerShell**.
-3. Accept Administrator privileges. When prompted for the IP, simply press **Enter** to use the default (`127.0.0.1`).
+2. Double-click `setup_hosts.bat`.
+3. Accept Administrator privileges when prompted. When asked for the IP, simply press **Enter** to use the default (`127.0.0.1`).
 
 Now, open a browser **on the server machine** and check:
 
@@ -114,7 +114,7 @@ If a machine (like a supervisor's laptop) only needs to view the web dashboard a
 ### 2.1 Run the Hosts Setup Script
 
 1. Navigate to the `scripts/` directory.
-2. Right-click `setup_hosts.ps1` and select **Run with PowerShell**.
+2. Double-click `setup_hosts.bat`.
 3. The script will request Administrator privileges and ask for the server's LAN IP.
 
 ### 2.2 Verify Dashboard Access

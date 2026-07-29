@@ -1,0 +1,3 @@
+@echo off
+echo Starting RenderHive Hosts Setup...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup_hosts.ps1"
