@@ -72,7 +72,8 @@ services:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_API_URL=
+      - INTERNAL_API_URL=http://api:8000
     restart: unless-stopped
 
   nginx:
@@ -86,6 +87,11 @@ services:
       - api
       - frontend
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - renderhive.local
+          - server.renderhive.local
 
 volumes:
   postgres_data:
