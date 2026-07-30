@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useRef, type ChangeEvent } from "react";
 import { 
   Pause, Play, RefreshCw, Search, Trash2, 
-  Loader2, CheckCircle2, AlertCircle, XCircle, Clock, LayoutGrid
+  Loader2, CheckCircle2, AlertCircle, XCircle, Clock, LayoutGrid, Link2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -230,7 +230,7 @@ export default function JobsPage() {
             </div>
           </div>
 
-          <Card className="border-border overflow-hidden bg-card/80 backdrop-blur-sm p-0">
+          <Card className="border-border overflow-hidden p-0 gap-0">
             <CardContent className="p-0">
               <Table>
                 <TableHeader className="bg-muted/30">
@@ -287,7 +287,19 @@ export default function JobsPage() {
                           <TableCell className="text-center text-muted-foreground py-4">{job.department}</TableCell>
                           <TableCell className="text-center text-muted-foreground py-4">{job.user}</TableCell>
                           <TableCell className="text-center py-4">
-                            {getJobStateBadge(job.state)}
+                            <div className="flex flex-col items-center gap-1">
+                              {getJobStateBadge(job.state)}
+                              {(job.depend_tasks ?? 0) > 0 && (
+                                <Badge
+                                  id={`blocked-pill-${job.id}`}
+                                  variant="warning"
+                                  className="gap-1 text-[10px] h-4 px-1.5"
+                                >
+                                  <Link2 className="size-2.5" />
+                                  {job.depend_tasks} blocked
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-center align-middle px-4 py-4">
                             <div className="flex items-center justify-center gap-3 w-full max-w-[200px] mx-auto">

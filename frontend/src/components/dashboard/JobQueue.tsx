@@ -142,30 +142,29 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
 
   return (
     <>
-      <Card className="flex flex-col justify-between h-full border-border">
-        <CardHeader>
+      <Card className="flex flex-col justify-between h-full border-border p-0 gap-0">
+        <CardHeader className="p-4 pb-3 border-b border-border/50">
           <CardTitle className="text-base font-bold text-foreground">Live Job Queue</CardTitle>
         </CardHeader>
 
-        <CardContent className="flex-1 flex flex-col">
-          <div className="rounded-md border border-border overflow-hidden flex-1 flex flex-col">
-            <div className="flex-1 overflow-auto">
-              <Table>
-                <TableHeader className="bg-muted/30">
-                  <TableRow>
-                    <TableHead className="w-[20%]">Job ID</TableHead>
-                    <TableHead className="w-[10%] text-center">Priority</TableHead>
-                    <TableHead className="w-[15%] text-center">User</TableHead>
-                    <TableHead className="w-[15%] text-center">State</TableHead>
-                    <TableHead className="w-[30%] text-center">Progress</TableHead>
-                    <TableHead className="w-[10%] text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="text-xs font-mono">
-                  {filteredJobs.length > 0 ? (
-                    filteredJobs.map((job) => (
-                      <TableRow key={job.id} className="hover:bg-muted/40 group transition-colors">
-                        <TableCell className="font-medium text-foreground py-4">
+        <CardContent className="flex-1 flex flex-col p-0">
+          <div className="flex-1 overflow-auto">
+            <Table>
+              <TableHeader className="bg-muted/30">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="pl-6 w-[20%] font-semibold">Job ID</TableHead>
+                  <TableHead className="w-[10%] text-center font-semibold">Priority</TableHead>
+                  <TableHead className="w-[15%] text-center font-semibold">User</TableHead>
+                  <TableHead className="w-[15%] text-center font-semibold">State</TableHead>
+                  <TableHead className="w-[30%] text-center font-semibold">Progress</TableHead>
+                  <TableHead className="pr-6 w-[10%] text-right font-semibold">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="text-xs font-mono">
+                {filteredJobs.length > 0 ? (
+                  filteredJobs.map((job) => (
+                    <TableRow key={job.id} className="hover:bg-muted/40 transition-colors group">
+                      <TableCell className="pl-6 font-medium text-foreground py-4">
                           <Link
                             className="text-primary hover:text-primary/80 transition-colors"
                             href={`/jobs/${job.id}`}
@@ -187,7 +186,7 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right py-4 pr-4">
+                        <TableCell className="text-right py-4 pr-6">
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               render={
@@ -252,7 +251,6 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                 </TableBody>
               </Table>
             </div>
-          </div>
         </CardContent>
       </Card>
 
