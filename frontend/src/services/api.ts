@@ -311,6 +311,51 @@ export type TaskStateFilter = NonNullable<
   >["state"]
 >;
 
+// ── Dependency types ───────────────────────────────────────────────────────────
+
+export type DependencyType = "TASK_ON_TASK" | "LAYER_ON_LAYER" | "JOB_ON_JOB";
+
+export interface Dependency {
+  id: string;
+  type: DependencyType;
+  dep_job: string;
+  dep_job_name: string;
+  dep_layer: string | null;
+  dep_layer_name: string | null;
+  dep_task: string | null;
+  dep_task_name: string | null;
+  parent_job: string;
+  parent_job_name: string;
+  parent_layer: string | null;
+  parent_layer_name: string | null;
+  parent_task: string | null;
+  parent_task_name: string | null;
+  is_satisfied: boolean;
+  created_at: string;
+  satisfied_at: string | null;
+}
+
+export interface CreateDependencyPayload {
+  type: DependencyType;
+  dep_job: string;
+  dep_layer?: string | null;
+  dep_task?: string | null;
+  parent_job: string;
+  parent_layer?: string | null;
+  parent_task?: string | null;
+}
+
+export interface DependencyFilters {
+  type?: DependencyType;
+  is_satisfied?: boolean;
+  dep_job?: string;
+  parent_job?: string;
+  dep_layer?: string;
+  parent_layer?: string;
+  dep_task?: string;
+  parent_task?: string;
+}
+
 export interface JobFilters {
   project?: string;
   department?: string;
@@ -427,6 +472,67 @@ export async function getJobLayers(jobId: string): Promise<LayerList[]> {
 
   return data?.results || [];
 }
+
+// ── Dependency API functions ───────────────────────────────────────────────────
+
+export async function getDependencies(
+  filters: DependencyFilters = {},
+): Promise<Dependency[]> {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) params.set(k, String(v));
+  });
+  const qs = params.toString();
+  const url = `${API_BASE_URL}/api/dependencies/${qs ? `?${qs}` : ""}`;
+  const response = await apiFetch(url);
+  if (!response.ok) throw new Error(`getDependencies: ${response.status}`);
+  const json = await response.json();
+  return (json.results ?? json) as Dependency[];
+}
+
+export async function getJobDependencies(jobId: string): Promise<Dependency[]> {
+  const allDeps: Dependency[] = [];
+  let url: string | null = `${API_BASE_URL}/api/jobs/${jobId}/dependencies/`;
+
+  while (url) {
+    const response = await apiFetch(url);
+    if (!response.ok) throw new Error(`getJobDependencies: ${response.status}`);
+    const json = await response.json();
+
+    if (json.results) {
+      allDeps.push(...json.results);
+      url = json.next;
+    } else {
+      allDeps.push(...json);
+      url = null;
+    }
+  }
+  return allDeps;
+}
+
+export async function createDependency(
+  payload: CreateDependencyPayload,
+): Promise<Dependency> {
+  const url = `${API_BASE_URL}/api/dependencies/`;
+  const response = await apiFetch(url, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(JSON.stringify(err));
+  }
+  return response.json() as Promise<Dependency>;
+}
+
+export async function deleteDependency(dependencyId: string): Promise<void> {
+  const url = `${API_BASE_URL}/api/dependencies/${dependencyId}/`;
+  const response = await apiFetch(url, { method: "DELETE" });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`deleteDependency: ${response.status}`);
+  }
+}
+
 
 export async function getLayer(
   jobId: string,

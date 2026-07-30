@@ -469,3 +469,373 @@ class TestJobSubmissionMultiLayer:
         assert job.total_tasks == 8  # 5 (beauty) + 3 (shadow)
         assert job.ready_tasks == 8
         assert Task.objects.count() == 8
+
+
+# ── Dependency API Tests ───────────────────────────────────────────────────────
+
+
+class TestDependencyAPI:
+    """Tests for the /api/dependencies/ endpoints."""
+
+    def _two_job_setup(self):
+        """Return two distinct jobs for dependency tests."""
+        from .factories import JobFactory
+        parent = JobFactory()
+        blocked = JobFactory()
+        return parent, blocked
+
+    def test_authenticated_user_can_list_dependencies(self, user_client):
+        resp = user_client.get("/api/dependencies/")
+        assert resp.status_code == 200
+
+    def test_anon_cannot_list_dependencies(self, anon_client):
+        resp = anon_client.get("/api/dependencies/")
+        assert resp.status_code == 403
+
+    def test_create_job_on_job_dependency(self, user_client):
+        from .factories import JobFactory
+        parent = JobFactory()
+        blocked = JobFactory()
+        payload = {
+            "type": "JOB_ON_JOB",
+            "dep_job": str(blocked.id),
+            "parent_job": str(parent.id),
+        }
+        resp = user_client.post("/api/dependencies/", payload, format="json")
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["type"] == "JOB_ON_JOB"
+        assert data["is_satisfied"] is False
+
+    def test_create_task_on_task_dependency(self, user_client):
+        from .factories import TaskFactory
+        parent_task = TaskFactory(state="READY")
+        dep_task = TaskFactory(state="WAITING")
+        payload = {
+            "type": "TASK_ON_TASK",
+            "dep_job": str(dep_task.job.id),
+            "dep_layer": str(dep_task.layer.id),
+            "dep_task": str(dep_task.id),
+            "parent_job": str(parent_task.job.id),
+            "parent_layer": str(parent_task.layer.id),
+            "parent_task": str(parent_task.id),
+        }
+        resp = user_client.post("/api/dependencies/", payload, format="json")
+        assert resp.status_code == 201
+        dep_task.refresh_from_db()
+        assert dep_task.depend_count == 1
+
+    def test_self_dependency_rejected(self, user_client):
+        from .factories import TaskFactory
+        task = TaskFactory()
+        payload = {
+            "type": "TASK_ON_TASK",
+            "dep_job": str(task.job.id),
+            "dep_layer": str(task.layer.id),
+            "dep_task": str(task.id),
+            "parent_job": str(task.job.id),
+            "parent_layer": str(task.layer.id),
+            "parent_task": str(task.id),
+        }
+        resp = user_client.post("/api/dependencies/", payload, format="json")
+        assert resp.status_code == 400
+
+    def test_cycle_detection_rejects_circular_dependency(self, user_client):
+        """A→B then B→A should be rejected as a cycle."""
+        from .factories import TaskFactory
+        task_a = TaskFactory(state="READY")
+        task_b = TaskFactory(state="WAITING")
+        # A → B (B waits on A)
+        payload_ab = {
+            "type": "TASK_ON_TASK",
+            "dep_job": str(task_b.job.id),
+            "dep_layer": str(task_b.layer.id),
+            "dep_task": str(task_b.id),
+            "parent_job": str(task_a.job.id),
+            "parent_layer": str(task_a.layer.id),
+            "parent_task": str(task_a.id),
+        }
+        resp = user_client.post("/api/dependencies/", payload_ab, format="json")
+        assert resp.status_code == 201
+
+        # B → A (A waits on B) — would close a cycle
+        payload_ba = {
+            "type": "TASK_ON_TASK",
+            "dep_job": str(task_a.job.id),
+            "dep_layer": str(task_a.layer.id),
+            "dep_task": str(task_a.id),
+            "parent_job": str(task_b.job.id),
+            "parent_layer": str(task_b.layer.id),
+            "parent_task": str(task_b.id),
+        }
+        resp = user_client.post("/api/dependencies/", payload_ba, format="json")
+        assert resp.status_code == 400
+        assert "cycle" in resp.json()["non_field_errors"][0].lower()
+
+    def test_only_staff_can_delete_dependency(self, user_client, staff_client):
+        from .factories import DependencyFactory
+        dep = DependencyFactory()
+        dep_url = f"/api/dependencies/{dep.id}/"
+        # Regular user: forbidden
+        resp = user_client.delete(dep_url)
+        assert resp.status_code == 403
+        # Staff user: allowed
+        resp = staff_client.delete(dep_url)
+        assert resp.status_code == 204
+
+    def test_delete_repairs_depend_count(self, staff_client):
+        from .factories import DependencyFactory
+        dep = DependencyFactory()
+        task = dep.dep_task
+        task.refresh_from_db()
+        assert task.depend_count == 1
+        staff_client.delete(f"/api/dependencies/{dep.id}/")
+        task.refresh_from_db()
+        assert task.depend_count == 0
+        assert task.state == "READY"
+
+    def test_job_scoped_dependency_list(self, user_client):
+        from .factories import DependencyFactory
+        dep = DependencyFactory()
+        job_id = dep.dep_job.id
+        resp = user_client.get(f"/api/jobs/{job_id}/dependencies/")
+        assert resp.status_code == 200
+        results = resp.json()["results"] if "results" in resp.json() else resp.json()
+        assert any(str(d["id"]) == str(dep.id) for d in results)
+
+
+# ── Job Submission With Dependencies ──────────────────────────────────────────
+
+
+class TestJobSubmissionWithDependencies:
+    """Tests for layer-level deps declared at job submission time."""
+
+    BASE_PAYLOAD = {
+        "visible_name": "Multi-layer Dep Job",
+        "project": "test_project",
+        "department": "lighting",
+        "user": "artist",
+        "priority": 50,
+        "log_directory": "/mnt/logs/",
+        "layers": [
+            {
+                "name": "beauty",
+                "layer_type": "RENDER",
+                "command": "render scene.ma",
+                "frame_range": "1-3",
+            },
+            {
+                "name": "composite",
+                "layer_type": "POST",
+                "command": "comp.nk",
+                "frame_range": "1-3",
+            },
+        ],
+    }
+
+    def test_submit_job_with_layer_dependency(self, user_client):
+        payload = {
+            **self.BASE_PAYLOAD,
+            "layers": [
+                {
+                    "name": "beauty",
+                    "layer_type": "RENDER",
+                    "command": "render scene.ma",
+                    "frame_range": "1-3",
+                },
+                {
+                    "name": "composite",
+                    "layer_type": "POST",
+                    "command": "comp.nk",
+                    "frame_range": "1-3",
+                    "execution_mode": "WAIT_LAYER",
+                    "depends_on_layer": "beauty",
+                    "dependency_type": "LAYER_ON_LAYER"
+                },
+            ]
+        }
+        resp = user_client.post("/api/jobs/", payload, format="json")
+        assert resp.status_code == 201, resp.json()
+
+        from apps.jobs.models import Dependency, DependencyType, Task, TaskState, Layer
+        dep = Dependency.objects.get(type=DependencyType.LAYER_ON_LAYER)
+        assert not dep.is_satisfied
+
+        # composite tasks should be WAITING
+        composite_layer = Layer.objects.get(name="composite")
+        assert Task.objects.filter(layer=composite_layer, state=TaskState.WAITING).count() == 3
+        # beauty tasks should be READY
+        beauty_layer = Layer.objects.get(name="beauty")
+        assert Task.objects.filter(layer=beauty_layer, state=TaskState.READY).count() == 3
+
+    def test_depend_tasks_counter_set_correctly(self, user_client):
+        payload = {
+            **self.BASE_PAYLOAD,
+            "layers": [
+                {
+                    "name": "beauty",
+                    "layer_type": "RENDER",
+                    "command": "render scene.ma",
+                    "frame_range": "1-3",
+                },
+                {
+                    "name": "composite",
+                    "layer_type": "POST",
+                    "command": "comp.nk",
+                    "frame_range": "1-3",
+                    "execution_mode": "WAIT_LAYER",
+                    "depends_on_layer": "beauty",
+                },
+            ]
+        }
+        resp = user_client.post("/api/jobs/", payload, format="json")
+        assert resp.status_code == 201
+
+        from apps.jobs.models import Job, Layer
+        job = Job.objects.get()
+        assert job.depend_tasks == 3  # 3 composite frames blocked
+        assert job.waiting_tasks == 3
+        assert job.ready_tasks == 3
+
+    def test_unknown_layer_name_rejected(self, user_client):
+        payload = {
+            **self.BASE_PAYLOAD,
+            "layers": [
+                {
+                    "name": "beauty",
+                    "layer_type": "RENDER",
+                    "command": "render scene.ma",
+                    "frame_range": "1-3",
+                },
+                {
+                    "name": "composite",
+                    "layer_type": "POST",
+                    "command": "comp.nk",
+                    "frame_range": "1-3",
+                    "execution_mode": "WAIT_LAYER",
+                    "depends_on_layer": "nonexistent",
+                },
+            ]
+        }
+        resp = user_client.post("/api/jobs/", payload, format="json")
+        # Transaction is rolled back — no partial data
+        assert resp.status_code in (400, 500)
+
+    def test_self_layer_dependency_rejected_at_submission(self, user_client):
+        payload = {
+            **self.BASE_PAYLOAD,
+            "dependencies": [
+                {"dep_layer_name": "beauty", "parent_layer_name": "beauty"}
+            ],
+        }
+        resp = user_client.post("/api/jobs/", payload, format="json")
+        assert resp.status_code == 400
+
+    def test_submit_without_dependencies_still_works(self, user_client):
+        """Existing tests should not regress — no dependencies key is fine."""
+        resp = user_client.post("/api/jobs/", self.BASE_PAYLOAD, format="json")
+        assert resp.status_code == 201
+
+        from apps.jobs.models import Task, TaskState
+        assert Task.objects.filter(state=TaskState.READY).count() == 6
+
+
+# ── Signal Tests: LAYER_ON_LAYER and JOB_ON_JOB ──────────────────────────────
+
+
+class TestLayerAndJobDependencySignals:
+    """Tests that LAYER_ON_LAYER and JOB_ON_JOB signals fire correctly."""
+
+    def test_layer_on_layer_satisfied_when_parent_finishes(self):
+        from apps.jobs.models import Dependency, DependencyType, Task, TaskState, Job, JobState, Layer
+        from .factories import TaskFactory, LayerFactory, JobFactory
+
+        job = JobFactory()
+        parent_layer = LayerFactory(job=job)
+        dep_layer = LayerFactory(job=job)
+
+        parent_task = TaskFactory(layer=parent_layer, job=job, state=TaskState.RUNNING)
+        dep_task = TaskFactory(layer=dep_layer, job=job, state=TaskState.WAITING)
+
+        dep = Dependency.objects.create(
+            type=DependencyType.LAYER_ON_LAYER,
+            dep_job=job,
+            dep_layer=dep_layer,
+            parent_job=job,
+            parent_layer=parent_layer,
+        )
+        dep_task.depend_count = 1
+        dep_task.save(update_fields=["depend_count", "updated_at"])
+
+        # Mark parent layer FINISHED by succeeding its task and manually pushing layer state
+        parent_task.state = TaskState.SUCCEEDED
+        parent_task.save()
+
+        # Now push parent layer to FINISHED (triggers layer_pre_save signal)
+        from django.db.models import F
+        Layer.objects.filter(pk=parent_layer.pk).update(
+            total_tasks=1,
+            succeeded_tasks=1,
+        )
+        parent_layer.refresh_from_db()
+        parent_layer.state = JobState.FINISHED
+        parent_layer.save(update_fields=["state"])
+
+        dep.refresh_from_db()
+        assert dep.is_satisfied is True
+        dep_task.refresh_from_db()
+        assert dep_task.depend_count == 0
+        assert dep_task.state == TaskState.READY
+
+    def test_job_on_job_satisfied_when_parent_finishes(self):
+        from apps.jobs.models import Dependency, DependencyType, Task, TaskState, JobState
+        from .factories import TaskFactory, JobFactory
+
+        parent_job = JobFactory()
+        dep_job = JobFactory()
+        dep_task = TaskFactory(job=dep_job, state=TaskState.WAITING)
+
+        dep = Dependency.objects.create(
+            type=DependencyType.JOB_ON_JOB,
+            dep_job=dep_job,
+            parent_job=parent_job,
+        )
+        dep_task.depend_count = 1
+        dep_task.save(update_fields=["depend_count", "updated_at"])
+
+        # Transition parent job to FINISHED — triggers job_pre_save signal
+        parent_job.state = JobState.FINISHED
+        parent_job.save(update_fields=["state"])
+
+        dep.refresh_from_db()
+        assert dep.is_satisfied is True
+        dep_task.refresh_from_db()
+        assert dep_task.depend_count == 0
+        assert dep_task.state == TaskState.READY
+
+    def test_depend_tasks_counter_increments_on_creation(self):
+        from apps.jobs.models import Dependency, DependencyType, Task, TaskState, Job, Layer
+        from .factories import TaskFactory, LayerFactory, JobFactory
+
+        job = JobFactory()
+        layer = LayerFactory(job=job)
+        task = TaskFactory(layer=layer, job=job, state=TaskState.WAITING)
+
+        job.refresh_from_db()
+        layer.refresh_from_db()
+        assert job.depend_tasks == 0
+
+        dep = Dependency.objects.create(
+            type=DependencyType.TASK_ON_TASK,
+            dep_job=job,
+            dep_layer=layer,
+            dep_task=task,
+            parent_job=job,
+            parent_layer=layer,
+            parent_task=TaskFactory(job=job, layer=layer, state=TaskState.READY),
+        )
+
+        job.refresh_from_db()
+        layer.refresh_from_db()
+        assert job.depend_tasks == 1
+        assert layer.depend_tasks == 1
