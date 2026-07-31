@@ -361,11 +361,14 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
             )}
           </CardTitle>
         </CardHeader>
-        <TabsList>
+        <TabsList className="m-0">
           <TabsTrigger value="inbound" className="text-xs px-3 py-1 gap-2">
             Waiting On
             {inbound.length > 0 && (
-              <Badge variant="destructive" className="px-1.5 py-0 text-[10px] rounded-full h-4 min-w-4 justify-center font-normal">
+              <Badge
+                variant="destructive"
+                className="px-1.5 py-0 text-[10px] rounded-full h-4 min-w-4 justify-center font-normal"
+              >
                 {inbound.length}
               </Badge>
             )}
@@ -373,7 +376,10 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
           <TabsTrigger value="outbound" className="text-xs px-3 py-1 gap-2">
             Blocking Others
             {outbound.length > 0 && (
-              <Badge variant="secondary" className="px-1.5 py-0 text-[10px] rounded-full h-4 min-w-4 justify-center font-normal">
+              <Badge
+                variant="secondary"
+                className="px-1.5 py-0 text-[10px] rounded-full h-4 min-w-4 justify-center font-normal"
+              >
                 {outbound.length}
               </Badge>
             )}
@@ -381,95 +387,95 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
         </TabsList>
         <CardContent className="p-0">
           <TabsContent value="inbound" className="m-0 border-none p-0 outline-none flex flex-col">
-          {isLoading ? (
-            <div className="space-y-2 p-4">
-              {Array.from({ length: 2 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full rounded-md" />
-              ))}
-            </div>
-          ) : (
-            <Table containerRef={inboundRef} containerClassName="max-h-[400px] overflow-y-auto">
-              <TableHeader className="sticky top-0 z-10 shadow-sm bg-card">
-                <TableRow className="hover:bg-transparent bg-muted/30">
-                  <TableHead className="pl-6 font-semibold text-xs w-[35%]">Depends On</TableHead>
-                  <TableHead className="font-semibold text-center text-xs">Type</TableHead>
-                  <TableHead className="font-semibold text-center text-xs">Created</TableHead>
-                  <TableHead className="font-semibold text-center text-xs">Satisfied</TableHead>
-                  <TableHead className="font-semibold text-center text-xs">Status</TableHead>
-                  {isStaff && <TableHead className="pr-6 font-semibold text-xs text-right">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {inbound.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={isStaff ? 6 : 5} className="h-24 text-center text-xs text-muted-foreground">
-                      No inbound dependencies — this job runs freely.
-                    </TableCell>
+            {isLoading ? (
+              <div className="space-y-2 p-4">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full rounded-md" />
+                ))}
+              </div>
+            ) : (
+              <Table containerRef={inboundRef} containerClassName="max-h-[400px] overflow-y-auto">
+                <TableHeader className="sticky top-0 z-10 shadow-sm bg-muted/30">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="pl-6 font-semibold text-xs w-[35%]">Depends On</TableHead>
+                    <TableHead className="font-semibold text-center text-xs">Type</TableHead>
+                    <TableHead className="font-semibold text-center text-xs">Created</TableHead>
+                    <TableHead className="font-semibold text-center text-xs">Satisfied</TableHead>
+                    <TableHead className="font-semibold text-center text-xs">Status</TableHead>
+                    {isStaff && <TableHead className="pr-6 font-semibold text-xs text-right">Actions</TableHead>}
                   </TableRow>
-                ) : (
-                  paginatedInbound.map((dep) => (
-                    <TableRow key={dep.id} className="hover:bg-muted/40 transition-colors group">
-                      <TableCell className="pl-6 text-xs font-medium text-foreground py-2.5">
-                        <DependencyFlow dep={dep} currentJobId={jobId} isInbound={true} />
+                </TableHeader>
+                <TableBody>
+                  {inbound.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={isStaff ? 6 : 5} className="h-24 text-center text-xs text-muted-foreground">
+                        No inbound dependencies — this job runs freely.
                       </TableCell>
-                      <TableCell className="text-center">
-                        <DependencyTypeBadge type={dep.type} />
-                      </TableCell>
-                      <TableCell className="text-center text-xs text-muted-foreground">
-                        {formatDate(dep.created_at)}
-                      </TableCell>
-                      <TableCell className="text-center text-xs text-muted-foreground">
-                        {formatDate(dep.satisfied_at)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <DependencyStatusBadge satisfied={dep.is_satisfied} />
-                      </TableCell>
-                      {isStaff && (
-                        <TableCell className="pr-6 text-right py-1">
-                          {!dep.is_satisfied && (
-                            <Button
-                              id={`delete-dep-${dep.id}`}
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => setPendingDelete(dep)}
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          )}
-                        </TableCell>
-                      )}
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
-          {inbound.length > PAGE_SIZE && (
-            <div className="flex items-center justify-end space-x-2 py-2 px-4 border-t border-border/50 bg-muted/10">
-              <span className="text-xs text-muted-foreground mr-2">
-                Page {inboundPage} of {Math.ceil(inbound.length / PAGE_SIZE)}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 w-7 p-0"
-                disabled={inboundPage === 1}
-                onClick={() => setInboundPage((p) => Math.max(1, p - 1))}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 w-7 p-0"
-                disabled={inboundPage * PAGE_SIZE >= inbound.length}
-                onClick={() => setInboundPage((p) => p + 1)}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
+                  ) : (
+                    paginatedInbound.map((dep) => (
+                      <TableRow key={dep.id} className="hover:bg-muted/40 transition-colors group">
+                        <TableCell className="pl-6 text-xs font-medium text-foreground py-2.5">
+                          <DependencyFlow dep={dep} currentJobId={jobId} isInbound={true} />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <DependencyTypeBadge type={dep.type} />
+                        </TableCell>
+                        <TableCell className="text-center text-xs text-muted-foreground">
+                          {formatDate(dep.created_at)}
+                        </TableCell>
+                        <TableCell className="text-center text-xs text-muted-foreground">
+                          {formatDate(dep.satisfied_at)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <DependencyStatusBadge satisfied={dep.is_satisfied} />
+                        </TableCell>
+                        {isStaff && (
+                          <TableCell className="pr-6 text-right py-1">
+                            {!dep.is_satisfied && (
+                              <Button
+                                id={`delete-dep-${dep.id}`}
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => setPendingDelete(dep)}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            )}
+            {inbound.length > PAGE_SIZE && (
+              <div className="flex items-center justify-end space-x-2 py-2 px-4 border-t border-border/50 bg-muted/10">
+                <span className="text-xs text-muted-foreground mr-2">
+                  Page {inboundPage} of {Math.ceil(inbound.length / PAGE_SIZE)}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  disabled={inboundPage === 1}
+                  onClick={() => setInboundPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  disabled={inboundPage * PAGE_SIZE >= inbound.length}
+                  onClick={() => setInboundPage((p) => p + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
           {/* Outbound: what is waiting on this job */}
@@ -485,25 +491,33 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedOutbound.map((dep) => (
-                  <TableRow key={dep.id} className="hover:bg-muted/40 transition-colors group">
-                    <TableCell className="pl-6 text-xs font-medium text-foreground py-2.5">
-                      <DependencyFlow dep={dep} currentJobId={jobId} isInbound={false} />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <DependencyTypeBadge type={dep.type} />
-                    </TableCell>
-                    <TableCell className="text-center text-xs text-muted-foreground">
-                      {formatDate(dep.created_at)}
-                    </TableCell>
-                    <TableCell className="text-center text-xs text-muted-foreground">
-                      {formatDate(dep.satisfied_at)}
-                    </TableCell>
-                    <TableCell className="pr-6 text-center">
-                      <DependencyStatusBadge satisfied={dep.is_satisfied} />
+                {outbound.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center text-xs text-muted-foreground">
+                      No outbound dependencies — this job does not block others.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  paginatedOutbound.map((dep) => (
+                    <TableRow key={dep.id} className="hover:bg-muted/40 transition-colors group">
+                      <TableCell className="pl-6 text-xs font-medium text-foreground py-2.5">
+                        <DependencyFlow dep={dep} currentJobId={jobId} isInbound={false} />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <DependencyTypeBadge type={dep.type} />
+                      </TableCell>
+                      <TableCell className="text-center text-xs text-muted-foreground">
+                        {formatDate(dep.created_at)}
+                      </TableCell>
+                      <TableCell className="text-center text-xs text-muted-foreground">
+                        {formatDate(dep.satisfied_at)}
+                      </TableCell>
+                      <TableCell className="pr-6 text-center">
+                        <DependencyStatusBadge satisfied={dep.is_satisfied} />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
             {outbound.length > PAGE_SIZE && (

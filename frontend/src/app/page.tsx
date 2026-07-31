@@ -150,16 +150,22 @@ export default function DashboardPage() {
         {renderKpiCards()}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">{renderJobQueue()}</div>
+          <div className="lg:col-span-2 lg:relative min-h-[400px] lg:min-h-0">
+            <div className="lg:absolute lg:inset-0 h-full w-full">
+              {renderJobQueue()}
+            </div>
+          </div>
           <div>
             <HardwareTelemetry telemetry={telemetry} />
           </div>
         </div>
 
-        <AgenticLogs logs={logs} searchQuery="" />
+        <div className="flex-1 min-h-0">
+          <AgenticLogs logs={logs} searchQuery="" />
+        </div>
       </>
     );
   };
 
-  return <div className="flex-1 p-6 space-y-6 font-mono">{renderDashboardContent()}</div>;
+  return <div className="flex-1 flex flex-col p-6 space-y-6 font-mono h-[calc(100vh-theme(spacing.16))]">{renderDashboardContent()}</div>;
 }
