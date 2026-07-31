@@ -11,8 +11,164 @@ Serializers are split by usage pattern:
 
 from rest_framework import serializers
 
-from .models import Task, Job, Layer
-from .services import create_job_with_layers
+from .models import Dependency, DependencyType, Task, Job, Layer
+from .services import check_dependency_cycle, create_job_with_layers
+
+# ── Dependency Serializers ────────────────────────────────────────────────────
+
+
+class DependencyReadSerializer(serializers.ModelSerializer):
+    """Full read-only representation of a Dependency.
+
+    Attributes:
+        id: UUID primary key.
+        type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+        dep_job: The blocked Job UUID.
+        dep_layer: The blocked Layer UUID (if applicable).
+        dep_task: The blocked Task UUID (if applicable).
+        parent_job: The blocking Job UUID.
+        parent_layer: The blocking Layer UUID (if applicable).
+        parent_task: The blocking Task UUID (if applicable).
+        is_satisfied: True once the blocking entity has completed.
+        created_at: Creation timestamp.
+        satisfied_at: Satisfaction timestamp.
+    """
+    dep_job_name = serializers.ReadOnlyField(source="dep_job.name")
+    dep_layer_name = serializers.ReadOnlyField(source="dep_layer.name")
+    dep_task_name = serializers.ReadOnlyField(source="dep_task.name")
+    parent_job_name = serializers.ReadOnlyField(source="parent_job.name")
+    parent_layer_name = serializers.ReadOnlyField(source="parent_layer.name")
+    parent_task_name = serializers.ReadOnlyField(source="parent_task.name")
+
+    class Meta:
+        model = Dependency
+        fields = [
+            "id",
+            "type",
+            "dep_job",
+            "dep_job_name",
+            "dep_layer",
+            "dep_layer_name",
+            "dep_task",
+            "dep_task_name",
+            "parent_job",
+            "parent_job_name",
+            "parent_layer",
+            "parent_layer_name",
+            "parent_task",
+            "parent_task_name",
+            "is_satisfied",
+            "created_at",
+            "satisfied_at",
+        ]
+        read_only_fields = fields
+
+
+class DependencyCreateSerializer(serializers.ModelSerializer):
+    """Write-only serializer for creating a new Dependency.
+
+    Validates that the dependency type matches the provided FKs, that no
+    self-dependency is introduced, and that adding the edge would not form
+    a cycle in the dependency graph.
+
+    Attributes:
+        type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+        dep_job: The blocked Job.
+        dep_layer: The blocked Layer (required for LAYER_ON_LAYER).
+        dep_task: The blocked Task (required for TASK_ON_TASK).
+        parent_job: The blocking Job.
+        parent_layer: The blocking Layer (required for LAYER_ON_LAYER).
+        parent_task: The blocking Task (required for TASK_ON_TASK).
+    """
+
+    class Meta:
+        model = Dependency
+        fields = [
+            "type",
+            "dep_job",
+            "dep_layer",
+            "dep_task",
+            "parent_job",
+            "parent_layer",
+            "parent_task",
+        ]
+
+    def validate(self, data: dict) -> dict:
+        dep_type = data.get("type")
+
+        # ── Type-specific FK checks (mirrors model.clean()) ────────────────────
+        if dep_type == DependencyType.TASK_ON_TASK:
+            if not data.get("dep_task") or not data.get("parent_task"):
+                raise serializers.ValidationError(
+                    "TASK_ON_TASK dependency requires both dep_task and parent_task."
+                )
+            if data["dep_task"].pk == data["parent_task"].pk:
+                raise serializers.ValidationError("A task cannot depend on itself.")
+        elif dep_type == DependencyType.LAYER_ON_LAYER:
+            if not data.get("dep_layer") or not data.get("parent_layer"):
+                raise serializers.ValidationError(
+                    "LAYER_ON_LAYER dependency requires both dep_layer and parent_layer."
+                )
+            if data["dep_layer"].pk == data["parent_layer"].pk:
+                raise serializers.ValidationError("A layer cannot depend on itself.")
+        elif dep_type == DependencyType.JOB_ON_JOB:
+            if not data.get("dep_job") or not data.get("parent_job"):
+                raise serializers.ValidationError(
+                    "JOB_ON_JOB dependency requires both dep_job and parent_job."
+                )
+            if data["dep_job"].pk == data["parent_job"].pk:
+                raise serializers.ValidationError("A job cannot depend on itself.")
+
+        # ── Cycle detection ────────────────────────────────────────────────────
+        entity_type_map = {
+            DependencyType.TASK_ON_TASK: ("task", "dep_task", "parent_task"),
+            DependencyType.LAYER_ON_LAYER: ("layer", "dep_layer", "parent_layer"),
+            DependencyType.JOB_ON_JOB: ("job", "dep_job", "parent_job"),
+        }
+        entity_type, dep_key, parent_key = entity_type_map[dep_type]
+        dep_entity = data.get(dep_key)
+        parent_entity = data.get(parent_key)
+
+        if dep_entity and parent_entity:
+            if check_dependency_cycle(dep_entity.pk, parent_entity.pk, entity_type):
+                raise serializers.ValidationError(
+                    f"Adding this dependency would create a cycle in the {entity_type} dependency graph."
+                )
+
+        return data
+
+
+# ── Job Dependency Spec Serializer ──────────────────────────────────────────────
+
+class JobDependencySpecSerializer(serializers.Serializer):
+    """Nested serializer for declaring JOB_ON_JOB deps at job submission.
+
+    Attributes:
+        parent_job: The UUID of the job that must finish first.
+        parent_layer: The name of the layer that must finish first (optional).
+        dep_layer: The name of the layer that is blocked (optional).
+    """
+
+    type = serializers.CharField(default="JOB_ON_JOB")
+    parent_job = serializers.UUIDField(
+        help_text="UUID of the job that must complete first (the blocker)."
+    )
+    parent_layer = serializers.CharField(
+        max_length=256, 
+        allow_null=True, 
+        required=False,
+        help_text="Optional name of the specific layer in the parent job that must complete."
+    )
+    dep_layer = serializers.CharField(
+        max_length=256,
+        allow_null=True,
+        required=False,
+        help_text="Optional name of the specific layer in this job that is blocked."
+    )
+
+    def validate(self, data: dict) -> dict:
+        return data
+
 
 # ── Task Serializers ─────────────────────────────────────────────────────────
 
@@ -173,7 +329,28 @@ class LayerCreateSerializer(serializers.ModelSerializer):
         env: Environment variable overrides.
         max_retries: Per-task retry ceiling.
         timeout_seconds: Task execution timeout.
+        execution_mode: Dependency logic mode.
+        depends_on_layer: The layer name to wait for (if WAIT_LAYER).
+        dependency_type: The dependency mapping type (if WAIT_LAYER).
     """
+
+    execution_mode = serializers.ChoiceField(
+        choices=["IMMEDIATE", "LAST", "WAIT_LAYER"],
+        default="IMMEDIATE",
+        write_only=True
+    )
+    depends_on_layer = serializers.CharField(
+        max_length=256,
+        allow_null=True,
+        required=False,
+        write_only=True
+    )
+    dependency_type = serializers.ChoiceField(
+        choices=["TASK_ON_TASK", "LAYER_ON_LAYER"],
+        allow_null=True,
+        required=False,
+        write_only=True
+    )
 
     class Meta:
         model = Layer
@@ -314,6 +491,12 @@ class JobCreateSerializer(serializers.ModelSerializer):
     """
 
     layers = LayerCreateSerializer(many=True)
+    dependencies = JobDependencySpecSerializer(
+        many=True,
+        required=False,
+        default=list,
+        help_text="Optional list of JOB_ON_JOB external dependencies.",
+    )
 
     class Meta:
         model = Job
@@ -328,6 +511,7 @@ class JobCreateSerializer(serializers.ModelSerializer):
             "included_pools",
             "excluded_pools",
             "layers",
+            "dependencies",
         ]
 
     def validate(self, data: dict) -> dict:
@@ -360,14 +544,26 @@ class JobCreateSerializer(serializers.ModelSerializer):
         """Delegate creation to the service layer for atomic job + layer + task creation.
 
         Args:
-            validated_data: The fully validated data dict including nested layers.
+            validated_data: The fully validated data dict including nested layers
+                and an optional ``dependencies`` list.
 
         Returns:
             The newly created :class:`Job` instance.
+
+        Raises:
+            serializers.ValidationError: If the service raises :exc:`ValueError`
+                (e.g. invalid layer name in dependency spec, self-dependency,
+                cycle detected).
         """
         request = self.context.get("request")
         submitted_by = request.user if request and request.user.is_authenticated else None
-        return create_job_with_layers(validated_data, submitted_by=submitted_by)
+        try:
+            return create_job_with_layers(
+                validated_data,
+                submitted_by=submitted_by,
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError({"dependencies": str(exc)}) from exc
 
 
 class JobPatchSerializer(serializers.ModelSerializer):

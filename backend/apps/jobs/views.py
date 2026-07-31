@@ -18,9 +18,11 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Task, TaskState, Job, JobState, Layer
+from .models import Dependency, Task, TaskState, Job, JobState, Layer
 from .permissions import IsFarmAgent, IsJobOwnerOrStaff
 from .serializers import (
+    DependencyCreateSerializer,
+    DependencyReadSerializer,
     TaskDetailSerializer,
     TaskFailSerializer,
     TaskListSerializer,
@@ -57,6 +59,28 @@ class JobFilter(django_filters.FilterSet):
     class Meta:
         model = Job
         fields = ["state", "project", "department", "user"]
+
+class DependencyFilter(django_filters.FilterSet):
+    """FilterSet for the Dependency list endpoint.
+
+    Allows filtering by type, satisfaction status, and the key entity FKs.
+    Example: ``GET /api/dependencies/?dep_job=<uuid>&is_satisfied=false``
+
+    Attributes:
+        type: Filter by dependency type (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+        is_satisfied: Filter by satisfaction status.
+        dep_job: Filter by the blocked job's UUID.
+        parent_job: Filter by the blocking job's UUID.
+        dep_layer: Filter by the blocked layer's UUID.
+        parent_layer: Filter by the blocking layer's UUID.
+        dep_task: Filter by the blocked task's UUID.
+        parent_task: Filter by the blocking task's UUID.
+    """
+
+    class Meta:
+        model = Dependency
+        fields = ["type", "is_satisfied", "dep_job", "parent_job", "dep_layer", "parent_layer", "dep_task", "parent_task"]
+
 
 
 class TaskFilter(django_filters.FilterSet):
@@ -554,3 +578,105 @@ class TaskDispatchView(generics.GenericAPIView):
                 "chunk_size": task.layer.chunk_size,
             }
         )
+
+
+# ── Dependency ViewSet ────────────────────────────────────────────────────────
+
+
+class DependencyViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+    Endpoints:
+        ``GET    /api/dependencies/``       — list all deps, supports filtering.
+        ``POST   /api/dependencies/``       — create a new dependency.
+        ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+        ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+        Read-only nested list under jobs:
+        ``GET    /api/jobs/{job_pk}/dependencies/``
+
+    All actions require authentication. Delete is restricted to staff and
+    superusers to prevent accidental removal of live dependency edges.
+
+    The pre_delete signal on Dependency automatically repairs ``depend_count``
+    and ``depend_tasks`` counters when a dependency is destroyed.
+    """
+
+    queryset = Dependency.objects.all().select_related(
+        "dep_job", "dep_layer", "dep_task", "parent_job", "parent_layer", "parent_task"
+    ).order_by("-created_at")
+    filterset_class = DependencyFilter
+    ordering_fields = ["created_at", "satisfied_at", "type", "is_satisfied"]
+
+    def get_queryset(self):
+        """Return dependencies, optionally scoped to a parent job.
+
+        When called from the nested router (job context), filters to deps
+        where the blocked entity belongs to that job.
+
+        Returns:
+            A queryset of Dependency objects.
+        """
+        qs = super().get_queryset()
+        job_pk = self.kwargs.get("job_pk")
+        if job_pk:
+            from django.db.models import Q
+            qs = qs.filter(Q(dep_job_id=job_pk) | Q(parent_job_id=job_pk))
+        return qs
+
+    def get_serializer_class(self):
+        """Return read serializer for safe methods, write serializer for create.
+
+        Returns:
+            A serializer class matched to the current action.
+        """
+        if self.action == "create":
+            return DependencyCreateSerializer
+        return DependencyReadSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Create a dependency and return the full read representation.
+
+        Validates with DependencyCreateSerializer (which runs cycle detection),
+        saves the instance, then serializes the response with DependencyReadSerializer
+        so the caller receives all fields including is_satisfied and timestamps.
+
+        Returns:
+            ``201 Created`` with the full dependency representation.
+        """
+        write_serializer = DependencyCreateSerializer(data=request.data, context=self.get_serializer_context())
+        write_serializer.is_valid(raise_exception=True)
+        instance = write_serializer.save()
+        read_serializer = DependencyReadSerializer(instance, context=self.get_serializer_context())
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
+
+    def get_permissions(self):
+        """Return per-action permission classes.
+
+        Destroy is staff-only. All other actions require basic authentication.
+
+        Returns:
+            A list of instantiated permission objects for the current action.
+        """
+        return [IsAuthenticated()]
+
+    def perform_destroy(self, instance):
+        """Delete a dependency, restricted to staff and superusers.
+
+        Args:
+            instance: The Dependency to delete.
+
+        Raises:
+            PermissionDenied: If the user is not staff or superuser.
+        """
+        from rest_framework.exceptions import PermissionDenied
+
+        if not (self.request.user.is_staff or self.request.user.is_superuser):
+            raise PermissionDenied("Only staff or superusers can delete dependencies.")
+        instance.delete()  # pre_delete signal repairs counters

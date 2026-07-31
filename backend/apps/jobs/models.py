@@ -434,9 +434,13 @@ class Dependency(models.Model):
         elif self.type == DependencyType.LAYER_ON_LAYER:
             if not self.dep_layer_id or not self.parent_layer_id:
                 raise ValidationError("LAYER_ON_LAYER dependency requires both dep_layer and parent_layer.")
+            if self.dep_task_id or self.parent_task_id:
+                raise ValidationError("LAYER_ON_LAYER dependency must not specify task fields.")
         elif self.type == DependencyType.JOB_ON_JOB:
             if not self.dep_job_id or not self.parent_job_id:
                 raise ValidationError("JOB_ON_JOB dependency requires both dep_job and parent_job.")
+            if self.dep_layer_id or self.parent_layer_id or self.dep_task_id or self.parent_task_id:
+                raise ValidationError("JOB_ON_JOB dependency must not specify layer or task fields.")
 
     def save(self, *args, **kwargs):
         self.full_clean()
