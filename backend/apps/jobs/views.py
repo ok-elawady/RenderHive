@@ -116,7 +116,7 @@ class JobViewSet(viewsets.ModelViewSet):
 
     queryset = Job.objects.all().order_by("-priority", "created_at")
     filterset_class = JobFilter
-    ordering_fields = ["priority", "created_at", "updated_at", "state"]
+    ordering_fields = ["priority", "created_at", "updated_at", "state", "project"]
     search_fields = ["name", "visible_name", "user", "project", "department"]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 

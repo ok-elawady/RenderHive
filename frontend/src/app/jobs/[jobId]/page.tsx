@@ -41,19 +41,19 @@ function LayerStateBadge({ state }: { state: string }) {
   switch (state) {
     case "FINISHED":
       return (
-        <Badge variant="secondary" className="bg-success/15 text-success hover:bg-success/20 gap-1.5 pr-2.5">
+        <Badge variant="success" className="gap-1.5 pr-2.5">
           <CheckCircle2 className="size-3.5" /> Finished
         </Badge>
       );
     case "FAILED":
       return (
-        <Badge variant="secondary" className="bg-destructive/15 text-destructive hover:bg-destructive/20 gap-1.5 pr-2.5">
+        <Badge variant="destructive" className="gap-1.5 pr-2.5">
           <XCircle className="size-3.5" /> Failed
         </Badge>
       );
     case "RUNNING":
       return (
-        <Badge variant="secondary" className="bg-primary/15 text-primary hover:bg-primary/20 gap-1.5 pr-2.5">
+        <Badge variant="default" className="gap-1.5 pr-2.5">
           <PlayCircle className="size-3.5" /> Running
         </Badge>
       );
@@ -65,7 +65,7 @@ function LayerStateBadge({ state }: { state: string }) {
       );
     case "PENDING":
       return (
-        <Badge variant="secondary" className="bg-warning/15 text-warning hover:bg-warning/20 gap-1.5 pr-2.5">
+        <Badge variant="warning" className="gap-1.5 pr-2.5">
           <Clock className="size-3.5" /> Pending
         </Badge>
       );

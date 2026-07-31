@@ -73,11 +73,7 @@ function TabsList({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function TabsTrigger({
-  value,
-  className,
-  ...props
-}: React.ComponentProps<"button"> & { value: string }) {
+function TabsTrigger({ value, className, ...props }: React.ComponentProps<"button"> & { value: string }) {
   const { value: currentValue, onValueChange, variant } = useTabsContext();
   const isActive = currentValue === value;
 
@@ -89,8 +85,10 @@ function TabsTrigger({
       data-variant={variant}
       className={cn(
         "inline-flex items-center justify-center text-sm font-medium transition-all cursor-pointer",
-        variant === "default" && "h-8 rounded-sm px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md hover:text-foreground data-[state=active]:hover:text-primary-foreground",
-        variant === "line" && "h-10 rounded-none border-b-2 border-transparent px-4 data-[state=active]:border-primary data-[state=active]:text-foreground hover:text-foreground text-muted-foreground",
+        variant === "default" &&
+          "h-8 rounded-sm px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md hover:text-foreground data-[state=active]:hover:text-primary-foreground",
+        variant === "line" &&
+          "h-10 rounded-none border-b-2 border-transparent px-4 data-[state=active]:border-primary data-[state=active]:text-foreground hover:text-foreground text-muted-foreground",
         className,
       )}
       onClick={() => onValueChange(value)}
@@ -99,22 +97,12 @@ function TabsTrigger({
   );
 }
 
-function TabsContent({
-  value,
-  className,
-  ...props
-}: React.ComponentProps<"div"> & { value: string }) {
+function TabsContent({ value, className, ...props }: React.ComponentProps<"div"> & { value: string }) {
   const { value: currentValue } = useTabsContext();
 
   if (currentValue !== value) return null;
 
-  return (
-    <div
-      data-slot="tabs-content"
-      className={cn("outline-none", className)}
-      {...props}
-    />
-  );
+  return <div data-slot="tabs-content" className={cn("outline-none", className)} {...props} />;
 }
 
 export { Tabs, TabsContent, TabsList, TabsTrigger };

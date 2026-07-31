@@ -357,6 +357,8 @@ export interface DependencyFilters {
 }
 
 export interface JobFilters {
+  search?: string;
+  ordering?: string;
   project?: string;
   department?: string;
   state?: JobStateFilter;
@@ -593,6 +595,19 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
     backendState: job.state,
     progress: getProgress(job),
     taskCounts: `${job.succeeded_tasks + job.skipped_tasks}/${job.total_tasks}`,
+    total_tasks: job.total_tasks,
+    succeeded_tasks: job.succeeded_tasks,
+    failed_tasks: job.failed_tasks,
+    running_tasks: job.running_tasks,
+    ready_tasks: job.ready_tasks,
+    waiting_tasks: job.waiting_tasks,
+    skipped_tasks: job.skipped_tasks,
+    depend_tasks: job.depend_tasks,
+    created_at: job.created_at,
+    included_pools: job.included_pools || [],
+    excluded_pools: job.excluded_pools || [],
+    project: job.project || "Unknown Project",
+    department: job.department || "General",
   };
 }
 

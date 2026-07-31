@@ -3,23 +3,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Play, Pause, MoreHorizontal, Loader2, CheckCircle2, XCircle, Clock, Trash2, Search } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Play, Pause, MoreHorizontal, Loader2, CheckCircle2, XCircle, Clock, Trash2, Search, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { deleteJob, pauseJob, resumeJob, formatApiError } from "@/services/api";
 import type { RenderJob } from "@/types/dashboard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { Badge, badgeVariants } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { SegmentedProgressBar } from "@/components/ui/segmented-progress";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -42,6 +35,21 @@ function matchesJobSearch(job: RenderJob, normalizedQuery: string): boolean {
   return [job.id, job.displayId, job.user, job.backendState].some((value) =>
     value.toLowerCase().includes(normalizedQuery),
   );
+}
+
+function formatRuntime(createdAt: string | undefined): string {
+  if (!createdAt) return "-";
+  const start = new Date(createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - start.getTime();
+  if (diffMs < 0) return "Just now";
+
+  const diffSecs = Math.floor(diffMs / 1000);
+  const hours = Math.floor(diffSecs / 3600);
+  const minutes = Math.floor((diffSecs % 3600) / 60);
+
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 const getJobStateBadge = (state: string) => {
@@ -147,92 +155,92 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
           <CardTitle className="text-base font-bold text-foreground">Live Job Queue</CardTitle>
         </CardHeader>
 
-        <CardContent className="flex-1 flex flex-col p-0">
-          <div className="flex-1 overflow-auto">
-            <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="pl-6 w-[20%] font-semibold">Job ID</TableHead>
+        <CardContent className="flex-1 p-0 overflow-hidden">
+          <Table className="table-fixed" containerClassName="h-full overflow-auto">
+              <TableHeader className="bg-card sticky top-0 z-10 shadow-sm">
+                <TableRow className="hover:bg-transparent bg-muted/30">
+                  <TableHead className="pl-6 w-[35%] font-semibold">Job ID / Project</TableHead>
+                  <TableHead className="w-[12%] text-center font-semibold">State</TableHead>
                   <TableHead className="w-[10%] text-center font-semibold">Priority</TableHead>
-                  <TableHead className="w-[15%] text-center font-semibold">User</TableHead>
-                  <TableHead className="w-[15%] text-center font-semibold">State</TableHead>
-                  <TableHead className="w-[30%] text-center font-semibold">Progress</TableHead>
-                  <TableHead className="pr-6 w-[10%] text-right font-semibold">Actions</TableHead>
+                  <TableHead className="w-[20%] text-center font-semibold">Runtime</TableHead>
+                  <TableHead className="pr-6 w-[23%] text-center font-semibold">Tasks Progress</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody className="text-xs font-mono">
+              <TableBody className="text-xs">
                 {filteredJobs.length > 0 ? (
                   filteredJobs.map((job) => (
                     <TableRow key={job.id} className="hover:bg-muted/40 transition-colors group">
-                      <TableCell className="pl-6 font-medium text-foreground py-4">
+                      <TableCell className="pl-6 py-4">
+                        <div className="flex flex-col gap-1">
                           <Link
-                            className="text-primary hover:text-primary/80 transition-colors"
+                            className="font-semibold text-primary hover:text-primary/80 transition-colors truncate"
                             href={`/jobs/${job.id}`}
                           >
                             {job.displayId}
                           </Link>
-                        </TableCell>
-                        <TableCell className="text-center font-bold text-foreground py-4">{job.priority}</TableCell>
-                        <TableCell className="text-muted-foreground text-center py-4">{job.user}</TableCell>
-                        <TableCell className="text-center py-4">{getJobStateBadge(job.backendState)}</TableCell>
-                        <TableCell className="text-center py-4">
-                          <div className="flex items-center justify-center gap-3 w-full max-w-[200px] mx-auto">
-                            <span className="text-xs text-muted-foreground w-8 text-right font-medium">
-                              {job.progress}%
-                            </span>
-                            <Progress value={job.progress} className="h-[6px] flex-1 bg-input/50 rounded-full" />
-                            <span className="text-[11px] text-muted-foreground text-left whitespace-nowrap w-12">
-                              {job.taskCounts}
-                            </span>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            <span className="font-medium text-foreground/80">{job.project}</span>
+                            <span className="opacity-50">•</span>
+                            <span>{job.department}</span>
+                            <span className="opacity-50">•</span>
+                            <span>{job.user}</span>
                           </div>
-                        </TableCell>
-                        <TableCell className="text-right py-4 pr-6">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                  <span className="sr-only">Open menu</span>
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              }
-                            />
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuGroup>
-                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                {job.backendState !== "FINISHED" && job.backendState !== "FAILED" && (
-                                  <>
-                                    <DropdownMenuItem
-                                      onClick={() =>
-                                        void handleTransition(
-                                          job.id,
-                                          job.backendState === "PAUSED" ? "resume" : "pause",
-                                        )
-                                      }
-                                      disabled={actionJobId === job.id}
-                                      className="cursor-pointer"
-                                    >
-                                      {job.backendState === "PAUSED" ? (
-                                        <Play className="mr-2 h-4 w-4" />
-                                      ) : (
-                                        <Pause className="mr-2 h-4 w-4" />
-                                      )}
-                                      {job.backendState === "PAUSED" ? "Resume job" : "Pause job"}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                  </>
-                                )}
-                                <DropdownMenuItem
-                                  className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer"
-                                  onClick={() => setJobToDelete(job)}
-                                  disabled={deletingJobId === job.id}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete job
-                                </DropdownMenuItem>
-                              </DropdownMenuGroup>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center py-4">
+                        <div className="flex flex-col items-center gap-1.5">
+                          {getJobStateBadge(job.backendState)}
+                          {(job.depend_tasks ?? 0) > 0 && (
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger className={cn(badgeVariants({ variant: "warning" }), "gap-1 text-[10px] h-4 px-1.5 cursor-help")}>
+                                  <Link2 className="size-2.5" />
+                                  {job.depend_tasks} blocked
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p>Waiting on {job.depend_tasks} upstream task{job.depend_tasks !== 1 ? 's' : ''} to complete.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center py-4">
+                        <Badge variant="outline" className="text-xs h-5 px-2 font-bold tracking-wide">
+                          {job.priority}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center py-4">
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="text-xs font-semibold text-foreground">
+                            {formatRuntime(job.created_at)}
+                          </div>
+                          {job.created_at && (
+                            <div className="text-[10px] text-muted-foreground whitespace-nowrap">
+                              {new Date(job.created_at).toLocaleString([], {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center py-4 pr-6">
+                        <div className="w-full">
+                          <SegmentedProgressBar
+                            total={job.total_tasks || 1}
+                            succeeded={job.succeeded_tasks}
+                            failed={job.failed_tasks}
+                            running={job.running_tasks}
+                            ready={job.ready_tasks}
+                            waiting={job.waiting_tasks}
+                            skipped={job.skipped_tasks}
+                            showCounts={true}
+                          />
+                        </div>
+                      </TableCell>
                       </TableRow>
                     ))
                   ) : (
@@ -250,7 +258,6 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                   )}
                 </TableBody>
               </Table>
-            </div>
         </CardContent>
       </Card>
 
