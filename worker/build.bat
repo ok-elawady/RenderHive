@@ -1,26 +1,35 @@
 @echo off
-echo Building RenderHive Worker PySide Application...
+setlocal
+cd /d "%~dp0"
 
-echo.
-echo Looking for Python...
-set PYTHON_EXE=python
-if exist ..\backend\.venv\Scripts\python.exe (
-    set PYTHON_EXE=..\backend\.venv\Scripts\python.exe
+echo ============================================================
+echo RenderHive Worker Multi-DCC Build v1.2.1
+echo ============================================================
+
+if not exist ".venv\Scripts\python.exe" (
+    echo Creating Python environment...
+    where py >nul 2>nul
+    if errorlevel 1 (
+        echo ERROR: Python launcher was not found.
+        exit /b 1
+    )
+    py -3 -m venv .venv
+    if errorlevel 1 exit /b 1
 )
 
-echo.
-echo Creating local virtual environment...
-%PYTHON_EXE% -m venv .venv
-call .venv\Scripts\activate.bat
-
-echo.
-echo Installing dependencies...
+call ".venv\Scripts\activate.bat"
+python -m pip install --upgrade pip
+if errorlevel 1 exit /b 1
 python -m pip install -r requirements.txt
+if errorlevel 1 exit /b 1
+
+python -m unittest discover -s tests -p "test_*.py"
+if errorlevel 1 exit /b 1
+
+python -m PyInstaller --noconfirm --clean RenderHiveWorker.spec
+if errorlevel 1 exit /b 1
 
 echo.
-echo Packaging with PyInstaller...
-pyinstaller --noconfirm --onedir --windowed --name "RenderHiveWorker" --icon "assets\icon.ico" --add-data "assets;assets" "app.py"
-
-echo.
-echo Build complete! You can find the executable in the 'dist/RenderHiveWorker/' folder.
-pause
+echo Build completed:
+echo %CD%\dist\RenderHiveWorker.exe
+exit /b 0

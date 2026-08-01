@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mainMenu>
+  <menuBar>
+    <subMenu id="renderhive_menu">
+      <label>RenderHive</label>
+      <scriptItem id="renderhive_open_window">
+        <label>Open RenderHive</label>
+        <scriptCode><![CDATA[
+from renderhive_houdini.bootstrap import show
+show()
+        ]]></scriptCode>
+      </scriptItem>
+      <separatorItem id="renderhive_menu_separator"/>
+      <scriptItem id="renderhive_refresh_shelf">
+        <label>Reload RenderHive Shelf</label>
+        <scriptCode><![CDATA[
+import hou
+hou.shelves.reloadShelfFiles()
+hou.ui.setStatusMessage("RenderHive shelf files reloaded.")
+        ]]></scriptCode>
+      </scriptItem>
+    </subMenu>
+  </menuBar>
+</mainMenu>
