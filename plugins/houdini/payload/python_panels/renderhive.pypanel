@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pythonPanelDocument>
+  <interface name="renderhive" label="RenderHive" icon="renderhive">
+    <script><![CDATA[
+from renderhive_houdini.integration.python_panel import create_interface
+return create_interface()
+    ]]></script>
+  </interface>
+</pythonPanelDocument>

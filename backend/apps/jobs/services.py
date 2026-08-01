@@ -8,6 +8,7 @@ themselves thin.
 
 import re
 import time
+import uuid
 
 from django.db import transaction
 from django.db.models import F
@@ -158,6 +159,75 @@ def expand_frame_range(frame_range: str, chunk_size: int = 1) -> list[tuple[int,
     return chunks
 
 
+
+def _submission_metadata(layers_data: list[dict]) -> tuple[dict, bool]:
+    """Return worker-targeting metadata and start-suspended state.
+
+    Current DCC submitters keep these values in ``Layer.scene_info`` so the
+    backend can support pool routing without forcing every plugin release to
+    know the latest top-level serializer contract.
+    """
+
+    targeting: dict = {}
+    start_suspended = False
+    for layer_data in layers_data:
+        if not isinstance(layer_data, dict):
+            continue
+        scene_info = layer_data.get("scene_info")
+        if not isinstance(scene_info, dict):
+            continue
+        if not targeting:
+            candidate = scene_info.get("worker_targeting")
+            if isinstance(candidate, dict):
+                targeting = candidate
+        start_suspended = start_suspended or bool(scene_info.get("start_suspended"))
+    return targeting, start_suspended
+
+
+def _resolve_targeting_pools(targeting: dict) -> tuple[list, list]:
+    """Resolve submitter pool IDs into WorkerPool model instances."""
+
+    from apps.workers.models import WorkerPool
+
+    strategy = str(targeting.get("strategy") or "all").strip().lower()
+    if strategy in {"selected", "selected-only", "selected_pools_only"}:
+        strategy = "selected_only"
+    elif strategy in {"exclude", "all-except-selected", "all_except"}:
+        strategy = "all_except_selected"
+
+    if strategy == "selected_only":
+        raw_ids = targeting.get("effective_pool_ids") or targeting.get("selected_pool_ids") or []
+        destination = "included"
+    elif strategy == "all_except_selected":
+        raw_ids = targeting.get("excluded_pool_ids") or targeting.get("selected_pool_ids") or []
+        destination = "excluded"
+    else:
+        return [], []
+
+    normalized_ids = []
+    for value in raw_ids:
+        try:
+            normalized_ids.append(uuid.UUID(str(value)))
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError(f"Invalid worker pool id: {value}") from exc
+
+    if not normalized_ids:
+        if strategy == "selected_only":
+            raise ValueError("Selected Pools Only requires at least one worker pool.")
+        return [], []
+
+    pools_by_id = {
+        pool.pk: pool
+        for pool in WorkerPool.objects.filter(pk__in=normalized_ids)
+    }
+    missing = [str(pool_id) for pool_id in normalized_ids if pool_id not in pools_by_id]
+    if missing:
+        raise ValueError("Unknown worker pool id(s): {}".format(", ".join(missing)))
+
+    pools = [pools_by_id[pool_id] for pool_id in normalized_ids]
+    return (pools, []) if destination == "included" else ([], pools)
+
+
 @transaction.atomic
 def create_job_with_layers(validated_data: dict, submitted_by=None):
     """Create a Job with its Layers and Tasks in a single atomic transaction.
@@ -188,12 +258,20 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
         ValueError: If any layer's ``frame_range`` is invalid or a layer name
             referenced in ``dependencies`` does not exist on this job.
     """
-    from apps.jobs.models import Dependency, DependencyType, Task, TaskState, Job, Layer
+    from apps.jobs.models import Dependency, DependencyType, Job, JobState, Layer, Task, TaskState
 
     layers_data = validated_data.pop("layers")
     dependencies_data = validated_data.pop("dependencies", [])
     included_pools = validated_data.pop("included_pools", [])
     excluded_pools = validated_data.pop("excluded_pools", [])
+
+    targeting, start_suspended = _submission_metadata(layers_data)
+    if not included_pools and not excluded_pools and targeting:
+        included_pools, excluded_pools = _resolve_targeting_pools(targeting)
+
+    if start_suspended:
+        validated_data["is_paused"] = True
+        validated_data["state"] = JobState.PAUSED
 
     # Guard against overlapping pools. At the API layer this is caught by the
     # serializer's validate() method, but this service may also be called
