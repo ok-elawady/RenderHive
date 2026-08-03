@@ -578,7 +578,12 @@ class JobCreateSerializer(serializers.ModelSerializer):
                 submitted_by=submitted_by,
             )
         except ValueError as exc:
-            raise serializers.ValidationError({"dependencies": str(exc)}) from exc
+            msg = str(exc)
+            # Pool targeting errors originate from scene_info inside layers; route them
+            # there so API consumers see a meaningful field name. Dependency cycle errors
+            # keep the "dependencies" key.
+            key = "dependencies" if "cycle" in msg.lower() or "dependency" in msg.lower() else "layers"
+            raise serializers.ValidationError({key: msg}) from exc
 
 
 class JobPatchSerializer(serializers.ModelSerializer):

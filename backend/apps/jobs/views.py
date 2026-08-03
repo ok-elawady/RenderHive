@@ -27,17 +27,17 @@ from .permissions import IsFarmAgent, IsJobOwnerOrStaff
 from .serializers import (
     DependencyCreateSerializer,
     DependencyReadSerializer,
-    TaskDetailSerializer,
-    TaskFailSerializer,
-    TaskListSerializer,
-    TaskStartSerializer,
-    TaskSucceedSerializer,
     JobCreateSerializer,
     JobDetailSerializer,
     JobListSerializer,
     JobPatchSerializer,
     LayerDetailSerializer,
     LayerListSerializer,
+    TaskDetailSerializer,
+    TaskFailSerializer,
+    TaskListSerializer,
+    TaskStartSerializer,
+    TaskSucceedSerializer,
 )
 
 # ── Filters ───────────────────────────────────────────────────────────────────
@@ -83,7 +83,12 @@ class DependencyFilter(django_filters.FilterSet):
 
     class Meta:
         model = Dependency
-        fields = ["type", "is_satisfied", "dep_job", "parent_job", "dep_layer", "parent_layer", "dep_task", "parent_task"]
+        fields = [
+            "type", "is_satisfied",
+            "dep_job", "parent_job",
+            "dep_layer", "parent_layer",
+            "dep_task", "parent_task",
+        ]
 
 
 
@@ -593,6 +598,9 @@ class TaskDispatchView(generics.GenericAPIView):
         env = layer.env if isinstance(layer.env, dict) else {}
         requirements = extract_layer_requirements(layer)
 
+        # Extract the frame step from the range string if it is uniform across all
+        # segments. Mixed-step ranges (e.g. "1-50x2,51-100x5") fall back to 1 so
+        # the worker processes every frame in the chunk independently.
         frame_step = 1
         step_matches = {
             int(value)
@@ -600,7 +608,7 @@ class TaskDispatchView(generics.GenericAPIView):
             if int(value) > 0
         }
         if len(step_matches) == 1:
-            frame_step = step_matches.pop()
+            frame_step = next(iter(step_matches))
 
         dcc = requirements["dcc"]
         dcc_version = requirements["dcc_version"]
