@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { Pencil, RefreshCw, Trash2, Hash, LayoutList, Server, Folder, Layers, ShieldAlert, CheckCircle2, Clock, PlayCircle, PauseCircle, XCircle } from "lucide-react";
+import { Pencil, RefreshCw, Trash2, Hash, LayoutList, Server, Folder, Layers, ShieldAlert, CheckCircle2, Clock, PlayCircle, PauseCircle, XCircle, Terminal, Calendar, Network } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -26,52 +26,48 @@ import {
   type LayerList,
 } from "@/services/api";
 
-const counters: Array<keyof Pick<JobDetail, "ready_tasks" | "running_tasks" | "failed_tasks" | "succeeded_tasks">> = [
-  "ready_tasks",
-  "running_tasks",
-  "failed_tasks",
-  "succeeded_tasks",
-];
+const COUNTER_CONFIG = {
+  ready_tasks: { label: "Ready Tasks", icon: Clock, color: "text-muted-foreground", bg: "bg-muted/30" },
+  running_tasks: { label: "Running Tasks", icon: PlayCircle, color: "text-info", bg: "bg-info/10" },
+  succeeded_tasks: { label: "Succeeded", icon: CheckCircle2, color: "text-success", bg: "bg-success/10" },
+  failed_tasks: { label: "Failed", icon: XCircle, color: "text-destructive", bg: "bg-destructive/10" },
+} as const;
 
-function prettyCounterLabel(key: string): string {
-  return key.replace("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function LayerStateBadge({ state }: { state: string }) {
+function StateBadge({ state, className }: { state: string; className?: string }) {
   switch (state) {
     case "FINISHED":
       return (
-        <Badge variant="success" className="gap-1.5 pr-2.5">
-          <CheckCircle2 className="size-3.5" /> Finished
+        <Badge variant="success" className={`gap-1.5 pr-2.5 ${className || ""}`}>
+          <CheckCircle2 className="size-3.5 fill-success/20" /> Finished
         </Badge>
       );
     case "FAILED":
       return (
-        <Badge variant="destructive" className="gap-1.5 pr-2.5">
-          <XCircle className="size-3.5" /> Failed
+        <Badge variant="destructive" className={`gap-1.5 pr-2.5 ${className || ""}`}>
+          <XCircle className="size-3.5 fill-destructive/20" /> Failed
         </Badge>
       );
     case "RUNNING":
       return (
-        <Badge variant="default" className="gap-1.5 pr-2.5">
-          <PlayCircle className="size-3.5" /> Running
+        <Badge variant="info" className={`gap-1.5 pr-2.5 ${className || ""}`}>
+          <PlayCircle className="size-3.5 fill-info/20 animate-pulse" /> Running
         </Badge>
       );
     case "PAUSED":
       return (
-        <Badge variant="secondary" className="gap-1.5 pr-2.5 text-muted-foreground">
-          <PauseCircle className="size-3.5" /> Paused
+        <Badge variant="secondary" className={`gap-1.5 pr-2.5 text-muted-foreground ${className || ""}`}>
+          <PauseCircle className="size-3.5 fill-muted" /> Paused
         </Badge>
       );
     case "PENDING":
       return (
-        <Badge variant="warning" className="gap-1.5 pr-2.5">
-          <Clock className="size-3.5" /> Pending
+        <Badge variant="warning" className={`gap-1.5 pr-2.5 ${className || ""}`}>
+          <Clock className="size-3.5 fill-warning/20" /> Pending
         </Badge>
       );
     default:
       return (
-        <Badge variant="secondary" className="gap-1.5 pr-2.5 text-muted-foreground">
+        <Badge variant="secondary" className={`gap-1.5 pr-2.5 text-muted-foreground ${className || ""}`}>
           <Clock className="size-3.5" /> {state.charAt(0) + state.slice(1).toLowerCase()}
         </Badge>
       );
@@ -189,76 +185,137 @@ export default function JobDetailPage() {
           ) : (
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-                <Card className="border-border md:col-span-1">
+                <Card className="border-border md:col-span-1 relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
                   <CardHeader>
                     <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">State</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <Badge
-                      variant={job.state === "FAILED" ? "destructive" : job.state === "RUNNING" ? "info" : "secondary"}
-                    >
-                      {job.state}
-                    </Badge>
+                    <StateBadge state={job.state} />
                     <p className="mt-3 text-xs text-muted-foreground">
-                      {completedTasks}/{job.total_tasks} tasks completed
+                      <span className="font-semibold text-foreground">{completedTasks}</span> of {job.total_tasks} tasks completed
                     </p>
+                    <div className="w-full h-1.5 rounded-full bg-muted mt-2 overflow-hidden">
+                      <div 
+                         className="h-full bg-primary transition-all duration-500" 
+                         style={{ width: `${job.total_tasks > 0 ? (completedTasks / job.total_tasks) * 100 : 0}%` }}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
 
-                {counters.map((counter) => (
-                  <Card key={counter} className="border-border">
-                    <CardHeader>
-                      <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">
-                        {prettyCounterLabel(counter)}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-3xl font-black text-foreground">{job[counter]}</p>
-                    </CardContent>
-                  </Card>
-                ))}
+                {(Object.entries(COUNTER_CONFIG) as [keyof typeof COUNTER_CONFIG, typeof COUNTER_CONFIG[keyof typeof COUNTER_CONFIG]][]).map(([key, config]) => {
+                  const Icon = config.icon;
+                  return (
+                    <Card key={key} className="border-border relative overflow-hidden group">
+                      <div className={`absolute inset-0 ${config.bg} opacity-50 pointer-events-none transition-opacity group-hover:opacity-100`} />
+                      <CardHeader className="relative z-10 pb-2">
+                        <CardTitle className={`text-xs uppercase tracking-wider flex items-center gap-1.5 ${config.color}`}>
+                          <Icon size={14} className="opacity-80" />
+                          {config.label}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="relative z-10">
+                        <p className="text-3xl font-black text-foreground">{job[key]}</p>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
 
               {/* Job Context Panel */}
-              <Card className="border-border">
-                <CardHeader className="pb-3 border-b border-border/50">
+              <Card className="border-border p-0 gap-0">
+                <CardHeader className="p-4 pb-3 border-b border-border/50">
                   <CardTitle className="flex items-center gap-2 text-sm font-bold">
                     <Server size={16} className="text-info" />
                     Job Context
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-y-5 gap-x-6 text-sm">
-                  <div>
-                    <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                      <Hash size={12} /> System Name
+                <CardContent className="p-4 flex flex-col gap-5">
+                  <div className="flex flex-col gap-1.5 px-2">
+                    <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                      Command
                     </div>
-                    <div className="font-medium font-mono text-xs truncate" title={job.name}>
+                    <div className="font-semibold font-mono text-xs break-all text-foreground/90" title={job.name}>
                       {job.name || "—"}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                      <ShieldAlert size={12} /> Priority
+
+                  <div className="flex flex-col gap-1.5 px-2">
+                    <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                      Log Directory
                     </div>
-                    <div className="font-medium">
-                      <Badge variant="secondary" className="rounded-sm px-1.5 py-0 text-xs font-normal">
-                        {job.priority}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="md:col-span-1">
-                    <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                      <Folder size={12} /> Log Directory
-                    </div>
-                    <div className="font-medium truncate text-xs" title={job.log_directory}>
+                    <div className="font-semibold font-mono text-xs break-all text-foreground/90" title={job.log_directory}>
                       {job.log_directory || "—"}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                      <Layers size={12} /> Max Tasks / Worker
+
+                  <div className="h-px bg-border/40 mx-2" />
+
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div className="flex flex-col gap-1.5 px-2">
+                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                        Priority
+                      </div>
+                      <div className="font-semibold">
+                        <Badge variant="outline" className="rounded-md px-2 py-0.5 text-xs font-medium border-warning/30 bg-warning/5 text-warning">
+                          {job.priority}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="font-medium">{job.max_tasks_per_worker} tasks</div>
+
+                    <div className="flex flex-col gap-1.5 px-2">
+                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                        Max Tasks
+                      </div>
+                      <div className="font-semibold text-sm text-foreground/90 flex items-center gap-1.5">
+                        <span className="text-xl font-black">{job.max_tasks_per_worker}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 px-2">
+                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                        Submit Time
+                      </div>
+                      <div className="font-semibold text-xs text-foreground/80">
+                        {new Date(job.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 px-2">
+                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                        Runtime
+                      </div>
+                      <div className="font-semibold text-xs text-foreground/80">
+                        {(() => {
+                          if (!job.created_at) return "—";
+                          const start = new Date(job.created_at).getTime();
+                          const end = job.stopped_at ? new Date(job.stopped_at).getTime() : Date.now();
+                          const diffMins = Math.floor((end - start) / 60000);
+                          if (diffMins < 1) return "< 1m";
+                          const hours = Math.floor(diffMins / 60);
+                          const mins = diffMins % 60;
+                          return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+                        })()}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 px-2">
+                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                        Target Pools
+                      </div>
+                      <div className="font-semibold text-xs flex flex-wrap gap-1">
+                        {job.included_pools?.length > 0 ? (
+                          job.included_pools.map((pool) => (
+                            <Badge key={pool} variant="secondary" className="px-1.5 py-0 text-[10px]">
+                              {pool}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-muted-foreground">Any</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -295,11 +352,23 @@ export default function JobDetailPage() {
                           </TableCell>
                           <TableCell className="text-center">{layer.layer_type}</TableCell>
                           <TableCell className="text-center">
-                            <LayerStateBadge state={layer.state} />
+                            <StateBadge state={layer.state} />
                           </TableCell>
-                          <TableCell className="text-center">{layer.frame_range}</TableCell>
-                          <TableCell className="text-right text-muted-foreground pr-6">
-                            {layer.succeeded_tasks + layer.skipped_tasks}/{layer.total_tasks}
+                          <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                            {layer.frame_range || "—"}
+                          </TableCell>
+                          <TableCell className="text-right pr-6">
+                            <div className="flex items-center gap-3 justify-end">
+                              <div className="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div 
+                                  className="h-full bg-primary transition-all duration-500" 
+                                  style={{ width: `${Math.round(((layer.succeeded_tasks + layer.skipped_tasks) / Math.max(1, layer.total_tasks)) * 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-muted-foreground tabular-nums text-xs font-medium w-12 text-right">
+                                {layer.succeeded_tasks + layer.skipped_tasks}/{layer.total_tasks}
+                              </span>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
