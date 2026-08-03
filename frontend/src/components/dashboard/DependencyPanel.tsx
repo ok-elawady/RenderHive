@@ -340,7 +340,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
 
   return (
     <Card className="border-border overflow-hidden p-0 gap-0">
-      <Tabs variant="line" defaultValue="inbound" className="flex flex-col">
+      <Tabs defaultValue="inbound" className="flex flex-col">
         <CardHeader className="p-4 pb-3 mb-0 border-b border-border/50">
           <CardTitle className="flex items-center justify-between text-sm font-bold w-full">
             <div className="flex items-center gap-2">

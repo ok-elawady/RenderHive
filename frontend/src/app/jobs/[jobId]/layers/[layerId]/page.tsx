@@ -393,7 +393,6 @@ export default function LayerInspectorPage() {
 
           <Card className="border-border p-0 gap-0">
             <Tabs
-              variant="line"
               value={stateFilter}
               onValueChange={(value) => setStateFilter(value as TaskStateFilter | "ALL")}
             >

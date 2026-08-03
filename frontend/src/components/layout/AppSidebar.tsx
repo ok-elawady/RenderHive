@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   Bot,
   Cpu,
+  Layers,
   LayoutDashboard,
   ListOrdered,
   LogOut,
@@ -47,7 +48,7 @@ const usersItem: SidebarItem = {
 };
 
 const remainingSidebarItems: SidebarItem[] = [
-  { icon: <Cpu size={18} />, label: "Node Pool", href: "/nodes" },
+  { icon: <Cpu size={18} />, label: "Infrastructure", href: "/nodes" },
   { icon: <Bot size={18} />, label: "AI Rules", href: "/logs" },
   { icon: <Settings size={18} />, label: "Settings", href: "/settings" },
 ];

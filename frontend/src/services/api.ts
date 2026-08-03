@@ -969,3 +969,59 @@ export function deriveTelemetryFromJobs(jobs: RenderJob[]): TelemetryMetrics {
     points,
   };
 }
+
+// ── Worker Pool API functions ──────────────────────────────────────────────────
+
+export type WorkerPool = components["schemas"]["WorkerPool"];
+export type CreateWorkerPoolPayload = Omit<WorkerPool, "id" | "created_at" | "updated_at">;
+export type UpdateWorkerPoolPayload = Partial<CreateWorkerPoolPayload>;
+
+export async function getPools(): Promise<WorkerPool[]> {
+  const { data, error } = await client.GET("/api/pools/");
+  if (error) throw new Error(JSON.stringify(error));
+  return data?.results || [];
+}
+
+export async function createPool(payload: CreateWorkerPoolPayload): Promise<WorkerPool> {
+  const { data, error } = await client.POST("/api/pools/", {
+    body: payload as any,
+  });
+  if (error) throw new Error(JSON.stringify(error));
+  return data as unknown as WorkerPool;
+}
+
+export async function updatePool(poolId: string, payload: UpdateWorkerPoolPayload): Promise<WorkerPool> {
+  const { data, error } = await client.PATCH("/api/pools/{id}/", {
+    params: { path: { id: poolId } },
+    body: payload as any,
+  });
+  if (error) throw new Error(JSON.stringify(error));
+  return data as unknown as WorkerPool;
+}
+
+export async function deletePool(poolId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/pools/${poolId}/`, {
+    method: "DELETE",
+    headers: getApiHeaders(),
+    cache: "no-store",
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const contentType = response.headers.get("content-type") ?? "";
+    const errorPayload: unknown = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+    throw new Error(JSON.stringify(errorPayload));
+  }
+}
+
+// ── Worker Node API functions ──────────────────────────────────────────────────
+
+export type WorkerNode = components["schemas"]["WorkerNode"];
+
+export async function getNodes(): Promise<WorkerNode[]> {
+  const { data, error } = await client.GET("/api/workers/");
+  if (error) throw new Error(JSON.stringify(error));
+  return data?.results || [];
+}
+

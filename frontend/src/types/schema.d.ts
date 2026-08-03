@@ -4,6 +4,102 @@
  */
 
 export interface paths {
+    "/api/dependencies/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        get: operations["dependencies_list"];
+        put?: never;
+        /**
+         * @description Create a dependency and return the full read representation.
+         *
+         *     Validates with DependencyCreateSerializer (which runs cycle detection),
+         *     saves the instance, then serializes the response with DependencyReadSerializer
+         *     so the caller receives all fields including is_satisfied and timestamps.
+         *
+         *     Returns:
+         *         ``201 Created`` with the full dependency representation.
+         */
+        post: operations["dependencies_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dependencies/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        get: operations["dependencies_retrieve"];
+        put?: never;
+        post?: never;
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        delete: operations["dependencies_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/": {
         parameters: {
             query?: never;
@@ -39,6 +135,102 @@ export interface paths {
          */
         post: operations["jobs_create"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_pk}/dependencies/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        get: operations["jobs_dependencies_list"];
+        put?: never;
+        /**
+         * @description Create a dependency and return the full read representation.
+         *
+         *     Validates with DependencyCreateSerializer (which runs cycle detection),
+         *     saves the instance, then serializes the response with DependencyReadSerializer
+         *     so the caller receives all fields including is_satisfied and timestamps.
+         *
+         *     Returns:
+         *         ``201 Created`` with the full dependency representation.
+         */
+        post: operations["jobs_dependencies_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_pk}/dependencies/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        get: operations["jobs_dependencies_retrieve"];
+        put?: never;
+        post?: never;
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        delete: operations["jobs_dependencies_destroy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -793,6 +985,142 @@ export interface components {
          */
         AccessLevelEnum: "Superuser" | "Staff" | "Client";
         /**
+         * @description Write-only serializer for creating a new Dependency.
+         *
+         *     Validates that the dependency type matches the provided FKs, that no
+         *     self-dependency is introduced, and that adding the edge would not form
+         *     a cycle in the dependency graph.
+         *
+         *     Attributes:
+         *         type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+         *         dep_job: The blocked Job.
+         *         dep_layer: The blocked Layer (required for LAYER_ON_LAYER).
+         *         dep_task: The blocked Task (required for TASK_ON_TASK).
+         *         parent_job: The blocking Job.
+         *         parent_layer: The blocking Layer (required for LAYER_ON_LAYER).
+         *         parent_task: The blocking Task (required for TASK_ON_TASK).
+         */
+        DependencyCreate: {
+            type: components["schemas"]["TypeEnum"];
+            /**
+             * Blocked job
+             * Format: uuid
+             * @description The job that is WAITING. It cannot start until the blocking (parent) entity completes.
+             */
+            dep_job: string;
+            /**
+             * Blocked layer
+             * Format: uuid
+             * @description The specific layer that is WAITING (required for LAYER_ON_LAYER dependencies).
+             */
+            dep_layer?: string | null;
+            /**
+             * Blocked task
+             * Format: uuid
+             * @description The specific task that is WAITING (required for TASK_ON_TASK dependencies).
+             */
+            dep_task?: string | null;
+            /**
+             * Blocking job
+             * Format: uuid
+             * @description The job that must complete FIRST before the blocked entity is released.
+             */
+            parent_job: string;
+            /**
+             * Blocking layer
+             * Format: uuid
+             * @description The specific layer that must complete FIRST (required for LAYER_ON_LAYER dependencies).
+             */
+            parent_layer?: string | null;
+            /**
+             * Blocking task
+             * Format: uuid
+             * @description The specific task that must complete FIRST (required for TASK_ON_TASK dependencies).
+             */
+            parent_task?: string | null;
+        };
+        /**
+         * @description Full read-only representation of a Dependency.
+         *
+         *     Attributes:
+         *         id: UUID primary key.
+         *         type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+         *         dep_job: The blocked Job UUID.
+         *         dep_layer: The blocked Layer UUID (if applicable).
+         *         dep_task: The blocked Task UUID (if applicable).
+         *         parent_job: The blocking Job UUID.
+         *         parent_layer: The blocking Layer UUID (if applicable).
+         *         parent_task: The blocking Task UUID (if applicable).
+         *         is_satisfied: True once the blocking entity has completed.
+         *         created_at: Creation timestamp.
+         *         satisfied_at: Satisfaction timestamp.
+         */
+        DependencyRead: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly type: components["schemas"]["TypeEnum"];
+            /**
+             * Blocked job
+             * Format: uuid
+             * @description The job that is WAITING. It cannot start until the blocking (parent) entity completes.
+             */
+            readonly dep_job: string;
+            readonly dep_job_name: string;
+            /**
+             * Blocked layer
+             * Format: uuid
+             * @description The specific layer that is WAITING (required for LAYER_ON_LAYER dependencies).
+             */
+            readonly dep_layer: string | null;
+            readonly dep_layer_name: string;
+            /**
+             * Blocked task
+             * Format: uuid
+             * @description The specific task that is WAITING (required for TASK_ON_TASK dependencies).
+             */
+            readonly dep_task: string | null;
+            readonly dep_task_name: string;
+            /**
+             * Blocking job
+             * Format: uuid
+             * @description The job that must complete FIRST before the blocked entity is released.
+             */
+            readonly parent_job: string;
+            readonly parent_job_name: string;
+            /**
+             * Blocking layer
+             * Format: uuid
+             * @description The specific layer that must complete FIRST (required for LAYER_ON_LAYER dependencies).
+             */
+            readonly parent_layer: string | null;
+            readonly parent_layer_name: string;
+            /**
+             * Blocking task
+             * Format: uuid
+             * @description The specific task that must complete FIRST (required for TASK_ON_TASK dependencies).
+             */
+            readonly parent_task: string | null;
+            readonly parent_task_name: string;
+            readonly is_satisfied: boolean;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly satisfied_at: string | null;
+        };
+        /**
+         * @description * `TASK_ON_TASK` - TASK_ON_TASK
+         *     * `LAYER_ON_LAYER` - LAYER_ON_LAYER
+         * @enum {string}
+         */
+        DependencyTypeEnum: "TASK_ON_TASK" | "LAYER_ON_LAYER";
+        /**
+         * @description * `IMMEDIATE` - IMMEDIATE
+         *     * `LAST` - LAST
+         *     * `WAIT_LAYER` - WAIT_LAYER
+         * @enum {string}
+         */
+        ExecutionModeEnum: "IMMEDIATE" | "LAST" | "WAIT_LAYER";
+        /**
          * @description Write-only serializer for job submission.
          *
          *     Accepts a nested ``layers`` array. The ``name`` field is auto-generated
@@ -827,6 +1155,29 @@ export interface components {
             /** @description If specified, workers in these pools are strictly prevented from processing this job. */
             excluded_pools?: string[];
             layers: components["schemas"]["LayerCreate"][];
+            /** @description Optional list of JOB_ON_JOB external dependencies. */
+            dependencies?: components["schemas"]["JobDependencySpec"][];
+        };
+        /**
+         * @description Nested serializer for declaring JOB_ON_JOB deps at job submission.
+         *
+         *     Attributes:
+         *         parent_job: The UUID of the job that must finish first.
+         *         parent_layer: The name of the layer that must finish first (optional).
+         *         dep_layer: The name of the layer that is blocked (optional).
+         */
+        JobDependencySpec: {
+            /** @default JOB_ON_JOB */
+            type: string;
+            /**
+             * Format: uuid
+             * @description UUID of the job that must complete first (the blocker).
+             */
+            parent_job: string;
+            /** @description Optional name of the specific layer in the parent job that must complete. */
+            parent_layer?: string | null;
+            /** @description Optional name of the specific layer in this job that is blocked. */
+            dep_layer?: string | null;
         };
         /**
          * @description Full read-only job representation for detail views.
@@ -976,8 +1327,15 @@ export interface components {
          *         env: Environment variable overrides.
          *         max_retries: Per-task retry ceiling.
          *         timeout_seconds: Task execution timeout.
+         *         execution_mode: Dependency logic mode.
+         *         depends_on_layer: The layer name to wait for (if WAIT_LAYER).
+         *         dependency_type: The dependency mapping type (if WAIT_LAYER).
          */
         LayerCreate: {
+            /** @default IMMEDIATE */
+            execution_mode: components["schemas"]["ExecutionModeEnum"];
+            depends_on_layer?: string | null;
+            dependency_type?: (components["schemas"]["DependencyTypeEnum"] | components["schemas"]["NullEnum"]) | null;
             name: string;
             /** Render pass type */
             layer_type?: components["schemas"]["LayerTypeEnum"];
@@ -1098,6 +1456,23 @@ export interface components {
          * @enum {string}
          */
         LayerTypeEnum: "RENDER" | "UTIL" | "POST";
+        /** @enum {unknown} */
+        NullEnum: null;
+        PaginatedDependencyReadList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=4
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=2
+             */
+            previous?: string | null;
+            results: components["schemas"]["DependencyRead"][];
+        };
         PaginatedJobListList: {
             /** @example 123 */
             count: number;
@@ -1213,6 +1588,8 @@ export interface components {
             readonly id?: string;
             name?: string;
             description?: string;
+            readonly worker_count?: number;
+            readonly workers?: string[];
             /** Format: date-time */
             readonly created_at?: string;
             /** Format: date-time */
@@ -1369,6 +1746,13 @@ export interface components {
          * @enum {string}
          */
         TitleRoleEnum: "Technical Director" | "Animator" | "Pipeline Engineer" | "FX Artist" | "Lighting Lead" | "Render User";
+        /**
+         * @description * `JOB_ON_JOB` - Job on Job
+         *     * `LAYER_ON_LAYER` - Layer on Layer
+         *     * `TASK_ON_TASK` - Task on Task
+         * @enum {string}
+         */
+        TypeEnum: "JOB_ON_JOB" | "LAYER_ON_LAYER" | "TASK_ON_TASK";
         User: {
             readonly id: number;
             readonly first_name: string;
@@ -1447,6 +1831,8 @@ export interface components {
             readonly id: string;
             name: string;
             description?: string;
+            readonly worker_count: number;
+            readonly workers: string[];
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1461,6 +1847,113 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    dependencies_list: {
+        parameters: {
+            query?: {
+                dep_job?: string;
+                dep_layer?: string;
+                dep_task?: string;
+                is_satisfied?: boolean;
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                parent_job?: string;
+                parent_layer?: string;
+                parent_task?: string;
+                /** @description A search term. */
+                search?: string;
+                /**
+                 * @description * `JOB_ON_JOB` - Job on Job
+                 *     * `LAYER_ON_LAYER` - Layer on Layer
+                 *     * `TASK_ON_TASK` - Task on Task
+                 */
+                type?: "JOB_ON_JOB" | "LAYER_ON_LAYER" | "TASK_ON_TASK";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedDependencyReadList"];
+                };
+            };
+        };
+    };
+    dependencies_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DependencyCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["DependencyCreate"];
+                "multipart/form-data": components["schemas"]["DependencyCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyCreate"];
+                };
+            };
+        };
+    };
+    dependencies_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this dependency. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyRead"];
+                };
+            };
+        };
+    };
+    dependencies_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this dependency. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     jobs_list: {
         parameters: {
             query?: {
@@ -1520,6 +2013,119 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["JobCreate"];
                 };
+            };
+        };
+    };
+    jobs_dependencies_list: {
+        parameters: {
+            query?: {
+                dep_job?: string;
+                dep_layer?: string;
+                dep_task?: string;
+                is_satisfied?: boolean;
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                parent_job?: string;
+                parent_layer?: string;
+                parent_task?: string;
+                /** @description A search term. */
+                search?: string;
+                /**
+                 * @description * `JOB_ON_JOB` - Job on Job
+                 *     * `LAYER_ON_LAYER` - Layer on Layer
+                 *     * `TASK_ON_TASK` - Task on Task
+                 */
+                type?: "JOB_ON_JOB" | "LAYER_ON_LAYER" | "TASK_ON_TASK";
+            };
+            header?: never;
+            path: {
+                job_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedDependencyReadList"];
+                };
+            };
+        };
+    };
+    jobs_dependencies_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DependencyCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["DependencyCreate"];
+                "multipart/form-data": components["schemas"]["DependencyCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyCreate"];
+                };
+            };
+        };
+    };
+    jobs_dependencies_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this dependency. */
+                id: string;
+                job_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyRead"];
+                };
+            };
+        };
+    };
+    jobs_dependencies_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this dependency. */
+                id: string;
+                job_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

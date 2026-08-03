@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 interface TabsContextValue {
   value: string;
   onValueChange: (value: string) => void;
-  variant?: "default" | "line";
 }
 
 const TabsContext = React.createContext<TabsContextValue | null>(null);
@@ -32,7 +31,6 @@ function Tabs({
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
-  variant?: "default" | "line";
 }) {
   const [internalValue, setInternalValue] = React.useState(defaultValue ?? "");
   const currentValue = value ?? internalValue;
@@ -44,9 +42,8 @@ function Tabs({
         setInternalValue(nextValue);
         onValueChange?.(nextValue);
       },
-      variant: props.variant ?? "default",
     }),
-    [currentValue, onValueChange, props.variant],
+    [currentValue, onValueChange],
   );
 
   return (
@@ -57,15 +54,12 @@ function Tabs({
 }
 
 function TabsList({ className, ...props }: React.ComponentProps<"div">) {
-  const { variant } = useTabsContext();
   return (
     <div
       data-slot="tabs-list"
-      data-variant={variant}
       className={cn(
         "inline-flex items-center text-muted-foreground",
-        variant === "default" && "h-10 justify-center rounded-md border border-border bg-card p-1",
-        variant === "line" && "h-10 w-full justify-center rounded-none border-b border-border bg-transparent p-0",
+        "h-10 w-full justify-start rounded-none border-b border-border bg-transparent p-0",
         className,
       )}
       {...props}
@@ -74,7 +68,7 @@ function TabsList({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function TabsTrigger({ value, className, ...props }: React.ComponentProps<"button"> & { value: string }) {
-  const { value: currentValue, onValueChange, variant } = useTabsContext();
+  const { value: currentValue, onValueChange } = useTabsContext();
   const isActive = currentValue === value;
 
   return (
@@ -82,13 +76,9 @@ function TabsTrigger({ value, className, ...props }: React.ComponentProps<"butto
       type="button"
       data-slot="tabs-trigger"
       data-state={isActive ? "active" : "inactive"}
-      data-variant={variant}
       className={cn(
         "inline-flex items-center justify-center text-sm font-medium transition-all cursor-pointer",
-        variant === "default" &&
-          "h-8 rounded-sm px-4 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md hover:text-foreground data-[state=active]:hover:text-primary-foreground",
-        variant === "line" &&
-          "h-10 rounded-none border-b-2 border-transparent px-4 data-[state=active]:border-primary data-[state=active]:text-foreground hover:text-foreground text-muted-foreground",
+        "h-10 rounded-none border-b-2 border-transparent px-4 data-[state=active]:border-primary data-[state=active]:text-foreground hover:text-foreground text-muted-foreground",
         className,
       )}
       onClick={() => onValueChange(value)}
