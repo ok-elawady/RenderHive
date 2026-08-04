@@ -30,9 +30,6 @@ services:
       dockerfile: Dockerfile
       args:
         DEV: "true"
-    volumes:
-      - ./backend:/app
-      - /app/.venv # Prevents host .venv from shadowing container .venv
     ports:
       - "8000:8000"
     environment:
@@ -63,10 +60,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     command: pnpm run dev:docker
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules # Prevent host node_modules from overriding container's
-      - /app/.next # Prevent host .next from overriding container's
     ports:
       - "3000:3000"
     environment:
