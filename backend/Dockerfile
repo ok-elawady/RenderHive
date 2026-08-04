@@ -36,9 +36,11 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Copy application source code
 COPY . .
 
-# Ensure entrypoint is executable
-RUN chmod +x entrypoint.sh
+# Copy entrypoint to a location outside the volume mount to prevent Windows host from shadowing it with a CRLF version
+RUN cp entrypoint.sh /usr/local/bin/entrypoint.sh && \
+    sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
