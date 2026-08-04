@@ -85,14 +85,12 @@ begin
         begin
           HostsLines[i] := IpAddress + ' server.renderhive.local';
           HasServerLocal := True;
-        end;
-        if Pos('renderhive.local', Line) > 0 then
+        end
+        else if Pos('renderhive.local', Line) > 0 then
         begin
-          if Pos('server.renderhive.local', Line) = 0 then
-          begin
-            HostsLines[i] := IpAddress + ' renderhive.local';
-            HasRenderLocal := True;
-          end;
+          // Since we already checked for server.renderhive.local above, this is strictly the root domain
+          HostsLines[i] := IpAddress + ' renderhive.local';
+          HasRenderLocal := True;
         end;
       end;
       

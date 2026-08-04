@@ -112,51 +112,9 @@ def build_maya_command(task, config):
     ]
 
     if renderer.lower() == "arnold":
-        image_name = _text(task.get("image_name"))
-        image_format = _text(task.get("image_format"), default="exr") or "exr"
-        padding = _integer(task.get("frame_padding"), 4, minimum=1)
-
-        py_script = [
-            "import maya.cmds as cmds",
-            "cmds.loadPlugin('mtoa', quiet=True)",
-            "import mtoa.core",
-            "mtoa.core.createOptions()",
-        ]
-
-        if image_name:
-            py_script.append(
-                "cmds.setAttr('defaultRenderGlobals.imageFilePrefix', {}, type='string')".format(
-                    _python_literal(image_name)
-                )
-            )
-        if image_format:
-            py_script.append(
-                "cmds.setAttr('defaultArnoldDriver.aiTranslator', {}, type='string')".format(
-                    _python_literal(image_format)
-                )
-            )
-        py_script.append(
-            "cmds.setAttr('defaultRenderGlobals.extensionPadding', {})".format(
-                padding
-            )
-        )
-        py_script.append(
-            "cmds.setAttr('defaultArnoldRenderOptions.abortOnLicenseFail', 0)"
-        )
-
-        encoded_script = base64.b64encode(
-            "; ".join(py_script).encode("utf-8")
-        ).decode("ascii")
-        runner = (
-            "import base64;exec(base64.b64decode('{}').decode('utf-8'))"
-        ).format(encoded_script)
-
-        parts.extend([
-            "-preRender",
-            _quote(_mel_python_command([runner])),
-            "-fnc",
-            "3",
-        ])
+        # The worker daemon will read `scene_info` and inject the base64 -preRender 
+        # python script at runtime to avoid bloated command payloads in the database.
+        pass
     else:
         parts.extend([
             "-im", _quote(task.get("image_name")),
