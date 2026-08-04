@@ -122,6 +122,3 @@ server/downloads/
 server/staging/
 server/test_pg/
 server/test_tar/
-
-# Local dev Docker overrides (not for cloud/server deployments)
-docker-compose.override.yml
