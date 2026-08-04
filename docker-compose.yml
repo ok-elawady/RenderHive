@@ -36,7 +36,7 @@ services:
       PYTHONUNBUFFERED: "1"
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-123456}
       DEBUG: ${DEBUG:-True}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,api}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,api,renderhive.local,server.renderhive.local}
       DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/renderhive}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
       CORS_ALLOW_ALL_ORIGINS: ${CORS_ALLOW_ALL_ORIGINS:-False}
