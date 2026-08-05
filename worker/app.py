@@ -443,6 +443,43 @@ class WorkerThread(QThread):
             log=self.log_signal.emit,
             line_callback=lambda line: self._process_output_line(task, line),
         )
+
+        arnold_gpu_failed = False
+        scene_info = task.raw.get("scene_info") or task.raw.get("layer", {}).get("scene_info") or {}
+        is_arnold = task.renderer.lower() == "arnold" if task.renderer else (scene_info.get("renderer", "").lower() == "arnold")
+        
+        if result.exit_code == 0 and is_arnold:
+            try:
+                with open(result.log_path, "r") as log_r:
+                    log_contents = log_r.read()
+                gpu_failure_patterns = [
+                    "Unable to load Optix library",
+                    "GPU rendering is not available",
+                    "Failed to initialize GPU",
+                ]
+                if any(p in log_contents for p in gpu_failure_patterns) and not result.output_image_path:
+                    arnold_gpu_failed = True
+            except Exception:
+                pass
+
+        if arnold_gpu_failed:
+            self.log_signal.emit(f"Task {task.task_id}: Arnold GPU/OptiX failed. Auto-retrying with CPU rendering...")
+            task.raw["force_cpu"] = True
+            try:
+                plan = adapter.build_plan(task)
+                result = run_process(
+                    command=plan.command,
+                    task_id=task.task_id + "_cpu_retry",
+                    env=plan.env,
+                    cwd=plan.cwd,
+                    is_cancelled=lambda: (not self.is_running) or self.cancel_current_requested,
+                    heartbeat=self.send_heartbeat,
+                    log=self.log_signal.emit,
+                    line_callback=lambda line: self._process_output_line(task, line),
+                )
+            except Exception as error:
+                self.log_signal.emit(f"Task retry preparation failed: {error}")
+
         duration = max(0.0, time.monotonic() - started)
         cancelled = self.cancel_current_requested
         self.current_task_id = ""
