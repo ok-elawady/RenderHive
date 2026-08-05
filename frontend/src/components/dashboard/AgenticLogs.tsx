@@ -39,15 +39,15 @@ export default function AgenticLogs({ logs, searchQuery }: AgenticLogsProps) {
   }, [filteredLogs.length]);
 
   return (
-    <Card className="flex flex-col border-border">
+    <Card className="flex flex-col border-border h-full">
       <CardHeader>
         <CardTitle className="text-base font-bold text-foreground">Agentic Routing Logs</CardTitle>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="flex-1 flex flex-col min-h-0">
         <div
           ref={terminalRef}
-          className="bg-surface-deep border border-input rounded-lg p-4 font-mono text-[11px] leading-relaxed space-y-2 h-44 overflow-y-auto box-border scroll-smooth"
+          className="bg-surface-deep border border-input rounded-lg p-4 font-mono text-[11px] leading-relaxed space-y-2 flex-1 h-full overflow-y-auto box-border scroll-smooth"
         >
           {filteredLogs.length > 0 ? (
             filteredLogs.map((log, idx) => (

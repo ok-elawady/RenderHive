@@ -300,18 +300,65 @@ export type JobDetail = components["schemas"]["JobDetail"];
 export type JobPatch = components["schemas"]["PatchedJobPatch"];
 export type LayerList = components["schemas"]["LayerList"];
 export type LayerDetail = components["schemas"]["LayerDetail"];
-export type FrameList = components["schemas"]["FrameList"];
-export type FrameDetail = components["schemas"]["FrameDetail"];
+export type TaskList = components["schemas"]["TaskList"];
+export type TaskDetail = components["schemas"]["TaskDetail"];
 export type JobStateFilter = NonNullable<
   NonNullable<paths["/api/jobs/"]["get"]["parameters"]["query"]>["state"]
 >;
-export type FrameStateFilter = NonNullable<
+export type TaskStateFilter = NonNullable<
   NonNullable<
-    paths["/api/jobs/{job_pk}/layers/{layer_pk}/frames/"]["get"]["parameters"]["query"]
+    paths["/api/jobs/{job_pk}/layers/{layer_pk}/tasks/"]["get"]["parameters"]["query"]
   >["state"]
 >;
 
+// ── Dependency types ───────────────────────────────────────────────────────────
+
+export type DependencyType = "TASK_ON_TASK" | "LAYER_ON_LAYER" | "JOB_ON_JOB";
+
+export interface Dependency {
+  id: string;
+  type: DependencyType;
+  dep_job: string;
+  dep_job_name: string;
+  dep_layer: string | null;
+  dep_layer_name: string | null;
+  dep_task: string | null;
+  dep_task_name: string | null;
+  parent_job: string;
+  parent_job_name: string;
+  parent_layer: string | null;
+  parent_layer_name: string | null;
+  parent_task: string | null;
+  parent_task_name: string | null;
+  is_satisfied: boolean;
+  created_at: string;
+  satisfied_at: string | null;
+}
+
+export interface CreateDependencyPayload {
+  type: DependencyType;
+  dep_job: string;
+  dep_layer?: string | null;
+  dep_task?: string | null;
+  parent_job: string;
+  parent_layer?: string | null;
+  parent_task?: string | null;
+}
+
+export interface DependencyFilters {
+  type?: DependencyType;
+  is_satisfied?: boolean;
+  dep_job?: string;
+  parent_job?: string;
+  dep_layer?: string;
+  parent_layer?: string;
+  dep_task?: string;
+  parent_task?: string;
+}
+
 export interface JobFilters {
+  search?: string;
+  ordering?: string;
   project?: string;
   department?: string;
   state?: JobStateFilter;
@@ -329,10 +376,10 @@ function mapStatus(state: BackendJobState): RenderJob["status"] {
 }
 
 function getProgress(job: BackendJob): number {
-  if (job.total_frames <= 0) return 0;
+  if (job.total_tasks <= 0) return 0;
 
   return Math.round(
-    ((job.succeeded_frames + job.skipped_frames) / job.total_frames) * 100,
+    ((job.succeeded_tasks + job.skipped_tasks) / job.total_tasks) * 100,
   );
 }
 
@@ -428,6 +475,67 @@ export async function getJobLayers(jobId: string): Promise<LayerList[]> {
   return data?.results || [];
 }
 
+// ── Dependency API functions ───────────────────────────────────────────────────
+
+export async function getDependencies(
+  filters: DependencyFilters = {},
+): Promise<Dependency[]> {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) params.set(k, String(v));
+  });
+  const qs = params.toString();
+  const url = `${API_BASE_URL}/api/dependencies/${qs ? `?${qs}` : ""}`;
+  const response = await apiFetch(url);
+  if (!response.ok) throw new Error(`getDependencies: ${response.status}`);
+  const json = await response.json();
+  return (json.results ?? json) as Dependency[];
+}
+
+export async function getJobDependencies(jobId: string): Promise<Dependency[]> {
+  const allDeps: Dependency[] = [];
+  let url: string | null = `${API_BASE_URL}/api/jobs/${jobId}/dependencies/`;
+
+  while (url) {
+    const response = await apiFetch(url);
+    if (!response.ok) throw new Error(`getJobDependencies: ${response.status}`);
+    const json = await response.json();
+
+    if (json.results) {
+      allDeps.push(...json.results);
+      url = json.next;
+    } else {
+      allDeps.push(...json);
+      url = null;
+    }
+  }
+  return allDeps;
+}
+
+export async function createDependency(
+  payload: CreateDependencyPayload,
+): Promise<Dependency> {
+  const url = `${API_BASE_URL}/api/dependencies/`;
+  const response = await apiFetch(url, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(JSON.stringify(err));
+  }
+  return response.json() as Promise<Dependency>;
+}
+
+export async function deleteDependency(dependencyId: string): Promise<void> {
+  const url = `${API_BASE_URL}/api/dependencies/${dependencyId}/`;
+  const response = await apiFetch(url, { method: "DELETE" });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`deleteDependency: ${response.status}`);
+  }
+}
+
+
 export async function getLayer(
   jobId: string,
   layerId: string,
@@ -443,13 +551,13 @@ export async function getLayer(
   return data;
 }
 
-export async function getLayerFrames(
+export async function getLayerTasks(
   jobId: string,
   layerId: string,
-  state?: FrameStateFilter,
-): Promise<FrameList[]> {
+  state?: TaskStateFilter,
+): Promise<TaskList[]> {
   const { data, error } = await client.GET(
-    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/",
+    "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/",
     {
       params: {
         path: { job_pk: jobId, layer_pk: layerId },
@@ -465,9 +573,9 @@ export async function getLayerFrames(
   return data?.results || [];
 }
 
-export async function skipFrame(frameId: string): Promise<FrameDetail> {
-  const { data, error } = await client.POST("/api/frames/{id}/skip/", {
-    params: { path: { id: frameId } },
+export async function skipTask(taskId: string): Promise<TaskDetail> {
+  const { data, error } = await client.POST("/api/tasks/{id}/skip/", {
+    params: { path: { id: taskId } },
   });
 
   if (error) {
@@ -486,7 +594,20 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
     status: mapStatus(job.state),
     backendState: job.state,
     progress: getProgress(job),
-    frameCounts: `${job.succeeded_frames + job.skipped_frames}/${job.total_frames}`,
+    taskCounts: `${job.succeeded_tasks + job.skipped_tasks}/${job.total_tasks}`,
+    total_tasks: job.total_tasks,
+    succeeded_tasks: job.succeeded_tasks,
+    failed_tasks: job.failed_tasks,
+    running_tasks: job.running_tasks,
+    ready_tasks: job.ready_tasks,
+    waiting_tasks: job.waiting_tasks,
+    skipped_tasks: job.skipped_tasks,
+    depend_tasks: job.depend_tasks,
+    created_at: job.created_at,
+    included_pools: job.included_pools || [],
+    excluded_pools: job.excluded_pools || [],
+    project: job.project || "Unknown Project",
+    department: job.department || "General",
   };
 }
 
@@ -848,3 +969,59 @@ export function deriveTelemetryFromJobs(jobs: RenderJob[]): TelemetryMetrics {
     points,
   };
 }
+
+// ── Worker Pool API functions ──────────────────────────────────────────────────
+
+export type WorkerPool = components["schemas"]["WorkerPool"];
+export type CreateWorkerPoolPayload = Omit<WorkerPool, "id" | "created_at" | "updated_at">;
+export type UpdateWorkerPoolPayload = Partial<CreateWorkerPoolPayload>;
+
+export async function getPools(): Promise<WorkerPool[]> {
+  const { data, error } = await client.GET("/api/pools/");
+  if (error) throw new Error(JSON.stringify(error));
+  return data?.results || [];
+}
+
+export async function createPool(payload: CreateWorkerPoolPayload): Promise<WorkerPool> {
+  const { data, error } = await client.POST("/api/pools/", {
+    body: payload as any,
+  });
+  if (error) throw new Error(JSON.stringify(error));
+  return data as unknown as WorkerPool;
+}
+
+export async function updatePool(poolId: string, payload: UpdateWorkerPoolPayload): Promise<WorkerPool> {
+  const { data, error } = await client.PATCH("/api/pools/{id}/", {
+    params: { path: { id: poolId } },
+    body: payload as any,
+  });
+  if (error) throw new Error(JSON.stringify(error));
+  return data as unknown as WorkerPool;
+}
+
+export async function deletePool(poolId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/pools/${poolId}/`, {
+    method: "DELETE",
+    headers: getApiHeaders(),
+    cache: "no-store",
+  });
+
+  if (!response.ok && response.status !== 204) {
+    const contentType = response.headers.get("content-type") ?? "";
+    const errorPayload: unknown = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+    throw new Error(JSON.stringify(errorPayload));
+  }
+}
+
+// ── Worker Node API functions ──────────────────────────────────────────────────
+
+export type WorkerNode = components["schemas"]["WorkerNode"];
+
+export async function getNodes(): Promise<WorkerNode[]> {
+  const { data, error } = await client.GET("/api/workers/");
+  if (error) throw new Error(JSON.stringify(error));
+  return data?.results || [];
+}
+

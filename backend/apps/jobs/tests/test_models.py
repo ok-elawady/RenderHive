@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 
 from apps.jobs.models import Dependency, DependencyType, JobState
 
-from .factories import FrameFactory, JobFactory, LayerFactory
+from .factories import TaskFactory, JobFactory, LayerFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -13,45 +13,45 @@ class TestJobModel:
         job = JobFactory()
         assert job.state == JobState.PENDING
         assert job.priority == 50
-        assert job.max_frames_per_worker == 1
+        assert job.max_tasks_per_worker == 1
         assert job.is_paused is False
-        assert job.total_frames == 0
+        assert job.total_tasks == 0
 
 
 class TestDependencyModel:
-    def test_clean_frame_on_frame_valid(self):
-        dep_frame = FrameFactory()
-        parent_frame = FrameFactory()
+    def test_clean_task_on_task_valid(self):
+        dep_task = TaskFactory()
+        parent_task = TaskFactory()
         dependency = Dependency(
-            type=DependencyType.FRAME_ON_FRAME,
-            dep_job=dep_frame.job,
-            parent_job=parent_frame.job,
-            dep_frame=dep_frame,
-            parent_frame=parent_frame,
+            type=DependencyType.TASK_ON_TASK,
+            dep_job=dep_task.job,
+            parent_job=parent_task.job,
+            dep_task=dep_task,
+            parent_task=parent_task,
         )
         dependency.clean()  # Should not raise
 
-    def test_clean_frame_on_frame_missing_fks(self):
-        dep_frame = FrameFactory()
+    def test_clean_task_on_task_missing_fks(self):
+        dep_task = TaskFactory()
         dependency = Dependency(
-            type=DependencyType.FRAME_ON_FRAME,
-            dep_job=dep_frame.job,
-            dep_frame=dep_frame,
-            # Missing parent_frame
+            type=DependencyType.TASK_ON_TASK,
+            dep_job=dep_task.job,
+            dep_task=dep_task,
+            # Missing parent_task
         )
-        with pytest.raises(ValidationError, match="requires both dep_frame and parent_frame"):
+        with pytest.raises(ValidationError, match="requires both dep_task and parent_task"):
             dependency.clean()
 
-    def test_clean_frame_on_frame_self_dependency(self):
-        frame = FrameFactory()
+    def test_clean_task_on_task_self_dependency(self):
+        task = TaskFactory()
         dependency = Dependency(
-            type=DependencyType.FRAME_ON_FRAME,
-            dep_job=frame.job,
-            parent_job=frame.job,
-            dep_frame=frame,
-            parent_frame=frame,
+            type=DependencyType.TASK_ON_TASK,
+            dep_job=task.job,
+            parent_job=task.job,
+            dep_task=task,
+            parent_task=task,
         )
-        with pytest.raises(ValidationError, match="A frame cannot depend on itself"):
+        with pytest.raises(ValidationError, match="A task cannot depend on itself"):
             dependency.clean()
 
     def test_clean_layer_on_layer_missing_fks(self):

@@ -6,24 +6,181 @@ Serializers are split by usage pattern:
 - Detail serializers: full read-only representations for retrieve views.
 - Create serializers: write-only, used for POST endpoints.
 - Patch serializers: write-only, limited fields for PATCH endpoints.
-- Action serializers: write-only, used for frame state transition endpoints.
+- Action serializers: write-only, used for task state transition endpoints.
 """
 
 from rest_framework import serializers
 
-from .models import Frame, Job, Layer
-from .services import create_job_with_layers
+from .models import Dependency, DependencyType, Task, Job, Layer
+from .services import check_dependency_cycle, create_job_with_layers
 
-# ── Frame Serializers ─────────────────────────────────────────────────────────
+# ── Dependency Serializers ────────────────────────────────────────────────────
 
 
-class FrameListSerializer(serializers.ModelSerializer):
-    """Slim read-only frame representation for list views.
+class DependencyReadSerializer(serializers.ModelSerializer):
+    """Full read-only representation of a Dependency.
+
+    Attributes:
+        id: UUID primary key.
+        type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+        dep_job: The blocked Job UUID.
+        dep_layer: The blocked Layer UUID (if applicable).
+        dep_task: The blocked Task UUID (if applicable).
+        parent_job: The blocking Job UUID.
+        parent_layer: The blocking Layer UUID (if applicable).
+        parent_task: The blocking Task UUID (if applicable).
+        is_satisfied: True once the blocking entity has completed.
+        created_at: Creation timestamp.
+        satisfied_at: Satisfaction timestamp.
+    """
+    dep_job_name = serializers.ReadOnlyField(source="dep_job.name")
+    dep_layer_name = serializers.ReadOnlyField(source="dep_layer.name")
+    dep_task_name = serializers.ReadOnlyField(source="dep_task.name")
+    parent_job_name = serializers.ReadOnlyField(source="parent_job.name")
+    parent_layer_name = serializers.ReadOnlyField(source="parent_layer.name")
+    parent_task_name = serializers.ReadOnlyField(source="parent_task.name")
+
+    class Meta:
+        model = Dependency
+        fields = [
+            "id",
+            "type",
+            "dep_job",
+            "dep_job_name",
+            "dep_layer",
+            "dep_layer_name",
+            "dep_task",
+            "dep_task_name",
+            "parent_job",
+            "parent_job_name",
+            "parent_layer",
+            "parent_layer_name",
+            "parent_task",
+            "parent_task_name",
+            "is_satisfied",
+            "created_at",
+            "satisfied_at",
+        ]
+        read_only_fields = fields
+
+
+class DependencyCreateSerializer(serializers.ModelSerializer):
+    """Write-only serializer for creating a new Dependency.
+
+    Validates that the dependency type matches the provided FKs, that no
+    self-dependency is introduced, and that adding the edge would not form
+    a cycle in the dependency graph.
+
+    Attributes:
+        type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+        dep_job: The blocked Job.
+        dep_layer: The blocked Layer (required for LAYER_ON_LAYER).
+        dep_task: The blocked Task (required for TASK_ON_TASK).
+        parent_job: The blocking Job.
+        parent_layer: The blocking Layer (required for LAYER_ON_LAYER).
+        parent_task: The blocking Task (required for TASK_ON_TASK).
+    """
+
+    class Meta:
+        model = Dependency
+        fields = [
+            "type",
+            "dep_job",
+            "dep_layer",
+            "dep_task",
+            "parent_job",
+            "parent_layer",
+            "parent_task",
+        ]
+
+    def validate(self, data: dict) -> dict:
+        dep_type = data.get("type")
+
+        # ── Type-specific FK checks (mirrors model.clean()) ────────────────────
+        if dep_type == DependencyType.TASK_ON_TASK:
+            if not data.get("dep_task") or not data.get("parent_task"):
+                raise serializers.ValidationError(
+                    "TASK_ON_TASK dependency requires both dep_task and parent_task."
+                )
+            if data["dep_task"].pk == data["parent_task"].pk:
+                raise serializers.ValidationError("A task cannot depend on itself.")
+        elif dep_type == DependencyType.LAYER_ON_LAYER:
+            if not data.get("dep_layer") or not data.get("parent_layer"):
+                raise serializers.ValidationError(
+                    "LAYER_ON_LAYER dependency requires both dep_layer and parent_layer."
+                )
+            if data["dep_layer"].pk == data["parent_layer"].pk:
+                raise serializers.ValidationError("A layer cannot depend on itself.")
+        elif dep_type == DependencyType.JOB_ON_JOB:
+            if not data.get("dep_job") or not data.get("parent_job"):
+                raise serializers.ValidationError(
+                    "JOB_ON_JOB dependency requires both dep_job and parent_job."
+                )
+            if data["dep_job"].pk == data["parent_job"].pk:
+                raise serializers.ValidationError("A job cannot depend on itself.")
+
+        # ── Cycle detection ────────────────────────────────────────────────────
+        entity_type_map = {
+            DependencyType.TASK_ON_TASK: ("task", "dep_task", "parent_task"),
+            DependencyType.LAYER_ON_LAYER: ("layer", "dep_layer", "parent_layer"),
+            DependencyType.JOB_ON_JOB: ("job", "dep_job", "parent_job"),
+        }
+        entity_type, dep_key, parent_key = entity_type_map[dep_type]
+        dep_entity = data.get(dep_key)
+        parent_entity = data.get(parent_key)
+
+        if dep_entity and parent_entity:
+            if check_dependency_cycle(dep_entity.pk, parent_entity.pk, entity_type):
+                raise serializers.ValidationError(
+                    f"Adding this dependency would create a cycle in the {entity_type} dependency graph."
+                )
+
+        return data
+
+
+# ── Job Dependency Spec Serializer ──────────────────────────────────────────────
+
+class JobDependencySpecSerializer(serializers.Serializer):
+    """Nested serializer for declaring JOB_ON_JOB deps at job submission.
+
+    Attributes:
+        parent_job: The UUID of the job that must finish first.
+        parent_layer: The name of the layer that must finish first (optional).
+        dep_layer: The name of the layer that is blocked (optional).
+    """
+
+    type = serializers.CharField(default="JOB_ON_JOB")
+    parent_job = serializers.UUIDField(
+        help_text="UUID of the job that must complete first (the blocker)."
+    )
+    parent_layer = serializers.CharField(
+        max_length=256, 
+        allow_null=True, 
+        required=False,
+        help_text="Optional name of the specific layer in the parent job that must complete."
+    )
+    dep_layer = serializers.CharField(
+        max_length=256,
+        allow_null=True,
+        required=False,
+        help_text="Optional name of the specific layer in this job that is blocked."
+    )
+
+    def validate(self, data: dict) -> dict:
+        return data
+
+
+# ── Task Serializers ─────────────────────────────────────────────────────────
+
+
+class TaskListSerializer(serializers.ModelSerializer):
+    """Slim read-only task representation for list views.
 
     Attributes:
         id: UUID primary key.
         name: Display name (e.g. 'beauty_0042').
-        number: Render frame index.
+        frame_start: First render frame index.
+        frame_end: Last render frame index.
         state: Current execution state.
         depend_count: Number of unresolved dependencies.
         retries: Execution attempt count.
@@ -34,11 +191,12 @@ class FrameListSerializer(serializers.ModelSerializer):
     """
 
     class Meta:
-        model = Frame
+        model = Task
         fields = [
             "id",
             "name",
-            "number",
+            "frame_start",
+            "frame_end",
             "state",
             "depend_count",
             "retries",
@@ -50,10 +208,10 @@ class FrameListSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class FrameDetailSerializer(FrameListSerializer):
-    """Full read-only frame representation for detail and Worker poll views.
+class TaskDetailSerializer(TaskListSerializer):
+    """Full read-only task representation for detail and Worker poll views.
 
-    Extends :class:`FrameListSerializer` with execution telemetry fields.
+    Extends :class:`TaskListSerializer` with execution telemetry fields.
 
     Attributes:
         max_memory_used_mb: Peak RSS memory in MB.
@@ -62,8 +220,8 @@ class FrameDetailSerializer(FrameListSerializer):
         dispatch_order: Dispatch priority within the layer.
     """
 
-    class Meta(FrameListSerializer.Meta):
-        fields = FrameListSerializer.Meta.fields + [
+    class Meta(TaskListSerializer.Meta):
+        fields = TaskListSerializer.Meta.fields + [
             "max_memory_used_mb",
             "cores_used",
             "checkpoint_count",
@@ -84,14 +242,14 @@ class LayerListSerializer(serializers.ModelSerializer):
         layer_type: Render pass type.
         state: Current execution state.
         frame_range: VFX frame range descriptor.
-        total_frames: Counter cache.
-        waiting_frames: Counter cache.
-        ready_frames: Counter cache.
-        running_frames: Counter cache.
-        succeeded_frames: Counter cache.
-        failed_frames: Counter cache.
-        skipped_frames: Counter cache.
-        depend_frames: Counter cache.
+        total_tasks: Counter cache.
+        waiting_tasks: Counter cache.
+        ready_tasks: Counter cache.
+        running_tasks: Counter cache.
+        succeeded_tasks: Counter cache.
+        failed_tasks: Counter cache.
+        skipped_tasks: Counter cache.
+        depend_tasks: Counter cache.
     """
 
     class Meta:
@@ -102,14 +260,14 @@ class LayerListSerializer(serializers.ModelSerializer):
             "layer_type",
             "state",
             "frame_range",
-            "total_frames",
-            "waiting_frames",
-            "ready_frames",
-            "running_frames",
-            "succeeded_frames",
-            "failed_frames",
-            "skipped_frames",
-            "depend_frames",
+            "total_tasks",
+            "waiting_tasks",
+            "ready_tasks",
+            "running_tasks",
+            "succeeded_tasks",
+            "failed_tasks",
+            "skipped_tasks",
+            "depend_tasks",
         ]
         read_only_fields = fields
 
@@ -129,8 +287,8 @@ class LayerDetailSerializer(LayerListSerializer):
         scene_path: DCC scene file path.
         scene_info: DCC scene metadata JSON.
         env: Environment variable overrides.
-        max_retries: Per-frame retry ceiling.
-        timeout_seconds: Frame execution timeout.
+        max_retries: Per-task retry ceiling.
+        timeout_seconds: Task execution timeout.
     """
 
     class Meta(LayerListSerializer.Meta):
@@ -169,9 +327,30 @@ class LayerCreateSerializer(serializers.ModelSerializer):
         scene_path: DCC scene file path.
         scene_info: DCC scene metadata JSON.
         env: Environment variable overrides.
-        max_retries: Per-frame retry ceiling.
-        timeout_seconds: Frame execution timeout.
+        max_retries: Per-task retry ceiling.
+        timeout_seconds: Task execution timeout.
+        execution_mode: Dependency logic mode.
+        depends_on_layer: The layer name to wait for (if WAIT_LAYER).
+        dependency_type: The dependency mapping type (if WAIT_LAYER).
     """
+
+    execution_mode = serializers.ChoiceField(
+        choices=["IMMEDIATE", "LAST", "WAIT_LAYER"],
+        default="IMMEDIATE",
+        write_only=True
+    )
+    depends_on_layer = serializers.CharField(
+        max_length=256,
+        allow_null=True,
+        required=False,
+        write_only=True
+    )
+    dependency_type = serializers.ChoiceField(
+        choices=["TASK_ON_TASK", "LAYER_ON_LAYER"],
+        allow_null=True,
+        required=False,
+        write_only=True
+    )
 
     class Meta:
         model = Layer
@@ -179,14 +358,14 @@ class LayerCreateSerializer(serializers.ModelSerializer):
             "id",
             "job",
             "state",
-            "total_frames",
-            "waiting_frames",
-            "ready_frames",
-            "running_frames",
-            "succeeded_frames",
-            "failed_frames",
-            "skipped_frames",
-            "depend_frames",
+            "total_tasks",
+            "waiting_tasks",
+            "ready_tasks",
+            "running_tasks",
+            "succeeded_tasks",
+            "failed_tasks",
+            "skipped_tasks",
+            "depend_tasks",
         ]
 
     def validate_frame_range(self, value: str) -> str:
@@ -228,14 +407,14 @@ class JobListSerializer(serializers.ModelSerializer):
         state: Current execution state.
         priority: Dispatch priority (1-100).
         is_paused: Standalone pause flag.
-        total_frames: Counter cache.
-        waiting_frames: Counter cache.
-        ready_frames: Counter cache.
-        running_frames: Counter cache.
-        succeeded_frames: Counter cache.
-        failed_frames: Counter cache.
-        skipped_frames: Counter cache.
-        depend_frames: Counter cache.
+        total_tasks: Counter cache.
+        waiting_tasks: Counter cache.
+        ready_tasks: Counter cache.
+        running_tasks: Counter cache.
+        succeeded_tasks: Counter cache.
+        failed_tasks: Counter cache.
+        skipped_tasks: Counter cache.
+        depend_tasks: Counter cache.
         created_at: Submission timestamp.
         updated_at: Last update timestamp.
     """
@@ -252,14 +431,14 @@ class JobListSerializer(serializers.ModelSerializer):
             "state",
             "priority",
             "is_paused",
-            "total_frames",
-            "waiting_frames",
-            "ready_frames",
-            "running_frames",
-            "succeeded_frames",
-            "failed_frames",
-            "skipped_frames",
-            "depend_frames",
+            "total_tasks",
+            "waiting_tasks",
+            "ready_tasks",
+            "running_tasks",
+            "succeeded_tasks",
+            "failed_tasks",
+            "skipped_tasks",
+            "depend_tasks",
             "created_at",
             "updated_at",
             "included_pools",
@@ -276,8 +455,8 @@ class JobDetailSerializer(JobListSerializer):
 
     Attributes:
         layers: Nested list of all layers belonging to this job.
-        log_directory: Absolute path for frame logs.
-        max_frames_per_worker: Concurrent frames per Worker limit.
+        log_directory: Absolute path for task logs.
+        max_tasks_per_worker: Concurrent tasks per Worker limit.
         stopped_at: Timestamp when job reached FINISHED or FAILED.
     """
 
@@ -287,7 +466,7 @@ class JobDetailSerializer(JobListSerializer):
         fields = JobListSerializer.Meta.fields + [
             "layers",
             "log_directory",
-            "max_frames_per_worker",
+            "max_tasks_per_worker",
             "stopped_at",
         ]
         read_only_fields = fields
@@ -307,11 +486,17 @@ class JobCreateSerializer(serializers.ModelSerializer):
         department: Department name.
         user: Submitter's display name.
         priority: Dispatch priority (1-100).
-        log_directory: Absolute path for frame logs.
-        max_frames_per_worker: Concurrent frames per Worker limit.
+        log_directory: Absolute path for task logs.
+        max_tasks_per_worker: Concurrent tasks per Worker limit.
     """
 
     layers = LayerCreateSerializer(many=True)
+    dependencies = JobDependencySpecSerializer(
+        many=True,
+        required=False,
+        default=list,
+        help_text="Optional list of JOB_ON_JOB external dependencies.",
+    )
 
     class Meta:
         model = Job
@@ -322,10 +507,11 @@ class JobCreateSerializer(serializers.ModelSerializer):
             "user",
             "priority",
             "log_directory",
-            "max_frames_per_worker",
+            "max_tasks_per_worker",
             "included_pools",
             "excluded_pools",
             "layers",
+            "dependencies",
         ]
 
     def validate(self, data: dict) -> dict:
@@ -355,17 +541,29 @@ class JobCreateSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data: dict) -> Job:
-        """Delegate creation to the service layer for atomic job + layer + frame creation.
+        """Delegate creation to the service layer for atomic job + layer + task creation.
 
         Args:
-            validated_data: The fully validated data dict including nested layers.
+            validated_data: The fully validated data dict including nested layers
+                and an optional ``dependencies`` list.
 
         Returns:
             The newly created :class:`Job` instance.
+
+        Raises:
+            serializers.ValidationError: If the service raises :exc:`ValueError`
+                (e.g. invalid layer name in dependency spec, self-dependency,
+                cycle detected).
         """
         request = self.context.get("request")
         submitted_by = request.user if request and request.user.is_authenticated else None
-        return create_job_with_layers(validated_data, submitted_by=submitted_by)
+        try:
+            return create_job_with_layers(
+                validated_data,
+                submitted_by=submitted_by,
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError({"dependencies": str(exc)}) from exc
 
 
 class JobPatchSerializer(serializers.ModelSerializer):
@@ -377,7 +575,7 @@ class JobPatchSerializer(serializers.ModelSerializer):
     Attributes:
         visible_name: Human-readable label.
         priority: Dispatch priority (1-100).
-        max_frames_per_worker: Concurrent frames per Worker limit.
+        max_tasks_per_worker: Concurrent tasks per Worker limit.
     """
 
     class Meta:
@@ -385,7 +583,7 @@ class JobPatchSerializer(serializers.ModelSerializer):
         fields = [
             "visible_name",
             "priority",
-            "max_frames_per_worker",
+            "max_tasks_per_worker",
             "included_pools",
             "excluded_pools",
         ]
@@ -402,21 +600,21 @@ class JobPatchSerializer(serializers.ModelSerializer):
         return data
 
 
-# ── Frame Action Serializers ──────────────────────────────────────────────────
+# ── Task Action Serializers ──────────────────────────────────────────────────
 
 
-class FrameStartSerializer(serializers.Serializer):
-    """Validates payload when a Worker marks a frame as RUNNING.
+class TaskStartSerializer(serializers.Serializer):
+    """Validates payload when a Worker marks a task as RUNNING.
 
     Attributes:
-        worker_name: Hostname of the Worker claiming this frame.
+        worker_name: Hostname of the Worker claiming this task.
     """
 
-    worker_name = serializers.CharField(max_length=256, help_text="Hostname of the Worker claiming this frame.")
+    worker_name = serializers.CharField(max_length=256, help_text="Hostname of the Worker claiming this task.")
 
 
-class FrameSucceedSerializer(serializers.Serializer):
-    """Validates payload when a Worker reports a frame as SUCCEEDED.
+class TaskSucceedSerializer(serializers.Serializer):
+    """Validates payload when a Worker reports a task as SUCCEEDED.
 
     Attributes:
         exit_status: Process exit code (should be 0).
@@ -436,8 +634,8 @@ class FrameSucceedSerializer(serializers.Serializer):
     )
 
 
-class FrameFailSerializer(serializers.Serializer):
-    """Validates payload when a Worker reports a frame as FAILED.
+class TaskFailSerializer(serializers.Serializer):
+    """Validates payload when a Worker reports a task as FAILED.
 
     Attributes:
         exit_status: Non-zero process exit code.

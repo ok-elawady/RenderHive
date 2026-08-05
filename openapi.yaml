@@ -1,27 +1,49 @@
-﻿openapi: 3.0.3
+openapi: 3.0.3
 info:
   title: RenderHive API
   version: 0.1.0
   description: REST API for the RenderHive render farm management system.
 paths:
-  /api/frames/:
+  /api/dependencies/:
     get:
-      operationId: frames_list
+      operationId: dependencies_list
       description: |-
-        ViewSet for listing frames and handling Worker state transition actions.
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
 
-        List/retrieve endpoints are nested under a layer:
-            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/``
-            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/``
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
 
-        State transition action endpoints are on the top-level ``/api/frames/``
-        router, identified by UUID only (no nesting required for Workers):
-            ``POST /api/frames/{id}/start/``
-            ``POST /api/frames/{id}/succeed/``
-            ``POST /api/frames/{id}/fail/``
-            ``POST /api/frames/{id}/skip/``
-            ``POST /api/frames/{id}/checkpoint/``
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
       parameters:
+      - in: query
+        name: dep_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_task
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: is_satisfied
+        schema:
+          type: boolean
       - name: ordering
         required: false
         in: query
@@ -34,6 +56,21 @@ paths:
         description: A page number within the paginated result set.
         schema:
           type: integer
+      - in: query
+        name: parent_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_task
+        schema:
+          type: string
+          format: uuid
       - name: search
         required: false
         in: query
@@ -41,27 +78,19 @@ paths:
         schema:
           type: string
       - in: query
-        name: state
+        name: type
         schema:
           type: string
           enum:
-          - CHECKPOINT
-          - FAILED
-          - READY
-          - RUNNING
-          - SKIPPED
-          - SUCCEEDED
-          - WAITING
+          - JOB_ON_JOB
+          - LAYER_ON_LAYER
+          - TASK_ON_TASK
         description: |-
-          * `WAITING` - Waiting
-          * `READY` - Ready
-          * `RUNNING` - Running
-          * `CHECKPOINT` - Checkpointing
-          * `SUCCEEDED` - Succeeded
-          * `FAILED` - Failed
-          * `SKIPPED` - Skipped
+          * `JOB_ON_JOB` - Job on Job
+          * `LAYER_ON_LAYER` - Layer on Layer
+          * `TASK_ON_TASK` - Task on Task
       tags:
-      - frames
+      - dependencies
       security:
       - cookieAuth: []
       - tokenAuth: []
@@ -71,35 +100,74 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedFrameListList'
+                $ref: '#/components/schemas/PaginatedDependencyReadList'
           description: ''
-  /api/frames/{id}/:
+    post:
+      operationId: dependencies_create
+      description: |-
+        Create a dependency and return the full read representation.
+
+        Validates with DependencyCreateSerializer (which runs cycle detection),
+        saves the instance, then serializes the response with DependencyReadSerializer
+        so the caller receives all fields including is_satisfied and timestamps.
+
+        Returns:
+            ``201 Created`` with the full dependency representation.
+      tags:
+      - dependencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyCreate'
+          description: ''
+  /api/dependencies/{id}/:
     get:
-      operationId: frames_retrieve
+      operationId: dependencies_retrieve
       description: |-
-        ViewSet for listing frames and handling Worker state transition actions.
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
 
-        List/retrieve endpoints are nested under a layer:
-            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/``
-            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/``
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
 
-        State transition action endpoints are on the top-level ``/api/frames/``
-        router, identified by UUID only (no nesting required for Workers):
-            ``POST /api/frames/{id}/start/``
-            ``POST /api/frames/{id}/succeed/``
-            ``POST /api/frames/{id}/fail/``
-            ``POST /api/frames/{id}/skip/``
-            ``POST /api/frames/{id}/checkpoint/``
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
       parameters:
       - in: path
         name: id
         schema:
           type: string
           format: uuid
-        description: A UUID string identifying this frame.
+        description: A UUID string identifying this dependency.
         required: true
       tags:
-      - frames
+      - dependencies
       security:
       - cookieAuth: []
       - tokenAuth: []
@@ -109,274 +177,44 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FrameDetail'
+                $ref: '#/components/schemas/DependencyRead'
           description: ''
-  /api/frames/{id}/checkpoint/:
-    post:
-      operationId: frames_checkpoint_create
+    delete:
+      operationId: dependencies_destroy
       description: |-
-        Increment the checkpoint counter for a frame in progress.
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
 
-        Called by a Worker when it saves a resume checkpoint (e.g. a V-Ray
-        ``.vrimg`` file). The frame transitions to ``CHECKPOINT`` state to
-        indicate that progress has been persisted.
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
 
-        Args:
-            request: HTTP request.
-            pk: Frame UUID.
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
 
-        Returns:
-            ``200 OK`` with the new checkpoint count.
-            ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
       parameters:
       - in: path
         name: id
         schema:
           type: string
           format: uuid
-        description: A UUID string identifying this frame.
+        description: A UUID string identifying this dependency.
         required: true
       tags:
-      - frames
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FrameDetail'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/FrameDetail'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/FrameDetail'
+      - dependencies
       security:
       - cookieAuth: []
       - tokenAuth: []
       - XSessionTokenAuth: []
       responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FrameDetail'
-          description: ''
-  /api/frames/{id}/fail/:
-    post:
-      operationId: frames_fail_create
-      description: |-
-        Mark a frame as FAILED or retry it based on the retry budget.
-
-        Increments the retry counter. If ``retries >= max_retries``, the frame
-        transitions to ``FAILED`` permanently. Otherwise it reverts to ``READY``
-        for re-dispatch.
-
-        Args:
-            request: HTTP request containing ``exit_status``.
-            pk: Frame UUID.
-
-        Returns:
-            ``200 OK`` with the resulting state (``failed`` or ``retrying``).
-            ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: string
-          format: uuid
-        description: A UUID string identifying this frame.
-        required: true
-      tags:
-      - frames
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FrameFail'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/FrameFail'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/FrameFail'
-        required: true
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - XSessionTokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FrameFail'
-          description: ''
-  /api/frames/{id}/skip/:
-    post:
-      operationId: frames_skip_create
-      description: |-
-        Dismiss a failed frame, allowing its dependents to proceed.
-
-        Only available to staff users. Sets the frame state to ``SKIPPED``,
-        which (via signals) satisfies any dependencies blocked on this frame.
-
-        Args:
-            request: HTTP request.
-            pk: Frame UUID.
-
-        Returns:
-            ``200 OK`` on success.
-            ``403 Forbidden`` if the requesting user is not staff.
-            ``409 Conflict`` if the frame is not in FAILED state.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: string
-          format: uuid
-        description: A UUID string identifying this frame.
-        required: true
-      tags:
-      - frames
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FrameDetail'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/FrameDetail'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/FrameDetail'
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - XSessionTokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FrameDetail'
-          description: ''
-  /api/frames/{id}/start/:
-    post:
-      operationId: frames_start_create
-      description: |-
-        Mark a frame as RUNNING when a Worker begins execution.
-
-        Records the Worker hostname and execution start timestamp. Only
-        valid when the frame is in ``READY`` state.
-
-        Args:
-            request: HTTP request containing ``worker_name``.
-            pk: Frame UUID.
-
-        Returns:
-            ``200 OK`` on success.
-            ``409 Conflict`` if the frame is not in READY state.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: string
-          format: uuid
-        description: A UUID string identifying this frame.
-        required: true
-      tags:
-      - frames
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FrameStart'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/FrameStart'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/FrameStart'
-        required: true
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - XSessionTokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FrameStart'
-          description: ''
-  /api/frames/{id}/succeed/:
-    post:
-      operationId: frames_succeed_create
-      description: |-
-        Mark a frame as SUCCEEDED and record telemetry.
-
-        Transitions state, logs exit code and stop timestamp.
-        Returns 409 if the frame isn't currently running/checkpointing.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: string
-          format: uuid
-        description: A UUID string identifying this frame.
-        required: true
-      tags:
-      - frames
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FrameSucceed'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/FrameSucceed'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/FrameSucceed'
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - XSessionTokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FrameSucceed'
-          description: ''
-  /api/frames/dispatch/:
-    post:
-      operationId: frames_dispatch_create
-      description: Atomically find, lock, and dispatch a READY frame to a worker.
-      tags:
-      - frames
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FrameStart'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/FrameStart'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/FrameStart'
-        required: true
-      security:
-      - cookieAuth: []
-      - tokenAuth: []
-      - XSessionTokenAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FrameStart'
-          description: ''
+        '204':
+          description: No response body
   /api/jobs/:
     get:
       operationId: jobs_list
@@ -384,13 +222,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-            ``POST   /api/jobs/``         ù submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+            ``GET    /api/jobs/``         — list all jobs, supports filtering.
+            ``POST   /api/jobs/``         — submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+            ``POST   /api/jobs/{id}/pause/``  — pause the job.
+            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
       parameters:
       - in: query
         name: department
@@ -457,13 +295,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-            ``POST   /api/jobs/``         ù submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+            ``GET    /api/jobs/``         — list all jobs, supports filtering.
+            ``POST   /api/jobs/``         — submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+            ``POST   /api/jobs/{id}/pause/``  — pause the job.
+            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
       tags:
       - jobs
       requestBody:
@@ -489,6 +327,238 @@ paths:
               schema:
                 $ref: '#/components/schemas/JobCreate'
           description: ''
+  /api/jobs/{job_pk}/dependencies/:
+    get:
+      operationId: jobs_dependencies_list
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: query
+        name: dep_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_task
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: is_satisfied
+        schema:
+          type: boolean
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - in: query
+        name: parent_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_task
+        schema:
+          type: string
+          format: uuid
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - JOB_ON_JOB
+          - LAYER_ON_LAYER
+          - TASK_ON_TASK
+        description: |-
+          * `JOB_ON_JOB` - Job on Job
+          * `LAYER_ON_LAYER` - Layer on Layer
+          * `TASK_ON_TASK` - Task on Task
+      tags:
+      - jobs
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDependencyReadList'
+          description: ''
+    post:
+      operationId: jobs_dependencies_create
+      description: |-
+        Create a dependency and return the full read representation.
+
+        Validates with DependencyCreateSerializer (which runs cycle detection),
+        saves the instance, then serializes the response with DependencyReadSerializer
+        so the caller receives all fields including is_satisfied and timestamps.
+
+        Returns:
+            ``201 Created`` with the full dependency representation.
+      parameters:
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      tags:
+      - jobs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyCreate'
+          description: ''
+  /api/jobs/{job_pk}/dependencies/{id}/:
+    get:
+      operationId: jobs_dependencies_retrieve
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      tags:
+      - jobs
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyRead'
+          description: ''
+    delete:
+      operationId: jobs_dependencies_destroy
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      tags:
+      - jobs
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/jobs/{job_pk}/layers/:
     get:
       operationId: jobs_layers_list
@@ -496,8 +566,8 @@ paths:
         Read-only ViewSet for listing and retrieving layers scoped to a job.
 
         Endpoints (nested under /api/jobs/{job_pk}/):
-            ``GET  /api/jobs/{job_pk}/layers/``         ù list all layers for a job.
-            ``GET  /api/jobs/{job_pk}/layers/{id}/``    ù retrieve a single layer.
+            ``GET  /api/jobs/{job_pk}/layers/``         — list all layers for a job.
+            ``GET  /api/jobs/{job_pk}/layers/{id}/``    — retrieve a single layer.
 
         All endpoints require authentication. Layers are scoped to the parent job
         via the ``job_pk`` URL kwarg.
@@ -538,23 +608,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedLayerListList'
           description: ''
-  /api/jobs/{job_pk}/layers/{layer_pk}/frames/:
+  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/:
     get:
-      operationId: jobs_layers_frames_list
+      operationId: jobs_layers_tasks_list
       description: |-
-        ViewSet for listing frames and handling Worker state transition actions.
+        ViewSet for listing tasks and handling Worker state transition actions.
 
         List/retrieve endpoints are nested under a layer:
-            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/``
-            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/``
+            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/``
+            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/``
 
-        State transition action endpoints are on the top-level ``/api/frames/``
+        State transition action endpoints are on the top-level ``/api/tasks/``
         router, identified by UUID only (no nesting required for Workers):
-            ``POST /api/frames/{id}/start/``
-            ``POST /api/frames/{id}/succeed/``
-            ``POST /api/frames/{id}/fail/``
-            ``POST /api/frames/{id}/skip/``
-            ``POST /api/frames/{id}/checkpoint/``
+            ``POST /api/tasks/{id}/start/``
+            ``POST /api/tasks/{id}/succeed/``
+            ``POST /api/tasks/{id}/fail/``
+            ``POST /api/tasks/{id}/skip/``
+            ``POST /api/tasks/{id}/checkpoint/``
       parameters:
       - in: path
         name: job_pk
@@ -617,32 +687,32 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedFrameListList'
+                $ref: '#/components/schemas/PaginatedTaskListList'
           description: ''
-  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/:
+  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/:
     get:
-      operationId: jobs_layers_frames_retrieve
+      operationId: jobs_layers_tasks_retrieve
       description: |-
-        ViewSet for listing frames and handling Worker state transition actions.
+        ViewSet for listing tasks and handling Worker state transition actions.
 
         List/retrieve endpoints are nested under a layer:
-            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/``
-            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/``
+            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/``
+            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/``
 
-        State transition action endpoints are on the top-level ``/api/frames/``
+        State transition action endpoints are on the top-level ``/api/tasks/``
         router, identified by UUID only (no nesting required for Workers):
-            ``POST /api/frames/{id}/start/``
-            ``POST /api/frames/{id}/succeed/``
-            ``POST /api/frames/{id}/fail/``
-            ``POST /api/frames/{id}/skip/``
-            ``POST /api/frames/{id}/checkpoint/``
+            ``POST /api/tasks/{id}/start/``
+            ``POST /api/tasks/{id}/succeed/``
+            ``POST /api/tasks/{id}/fail/``
+            ``POST /api/tasks/{id}/skip/``
+            ``POST /api/tasks/{id}/checkpoint/``
       parameters:
       - in: path
         name: id
         schema:
           type: string
           format: uuid
-        description: A UUID string identifying this frame.
+        description: A UUID string identifying this task.
         required: true
       - in: path
         name: job_pk
@@ -667,32 +737,32 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FrameDetail'
+                $ref: '#/components/schemas/TaskDetail'
           description: ''
-  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/checkpoint/:
+  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/checkpoint/:
     post:
-      operationId: jobs_layers_frames_checkpoint_create
+      operationId: jobs_layers_tasks_checkpoint_create
       description: |-
-        Increment the checkpoint counter for a frame in progress.
+        Increment the checkpoint counter for a task in progress.
 
         Called by a Worker when it saves a resume checkpoint (e.g. a V-Ray
-        ``.vrimg`` file). The frame transitions to ``CHECKPOINT`` state to
+        ``.vrimg`` file). The task transitions to ``CHECKPOINT`` state to
         indicate that progress has been persisted.
 
         Args:
             request: HTTP request.
-            pk: Frame UUID.
+            pk: Task UUID.
 
         Returns:
             ``200 OK`` with the new checkpoint count.
-            ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
+            ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
       parameters:
       - in: path
         name: id
         schema:
           type: string
           format: uuid
-        description: A UUID string identifying this frame.
+        description: A UUID string identifying this task.
         required: true
       - in: path
         name: job_pk
@@ -712,13 +782,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FrameDetail'
+              $ref: '#/components/schemas/TaskDetail'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/FrameDetail'
+              $ref: '#/components/schemas/TaskDetail'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/FrameDetail'
+              $ref: '#/components/schemas/TaskDetail'
       security:
       - cookieAuth: []
       - tokenAuth: []
@@ -728,32 +798,32 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FrameDetail'
+                $ref: '#/components/schemas/TaskDetail'
           description: ''
-  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/fail/:
+  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/fail/:
     post:
-      operationId: jobs_layers_frames_fail_create
+      operationId: jobs_layers_tasks_fail_create
       description: |-
-        Mark a frame as FAILED or retry it based on the retry budget.
+        Mark a task as FAILED or retry it based on the retry budget.
 
-        Increments the retry counter. If ``retries >= max_retries``, the frame
+        Increments the retry counter. If ``retries >= max_retries``, the task
         transitions to ``FAILED`` permanently. Otherwise it reverts to ``READY``
         for re-dispatch.
 
         Args:
             request: HTTP request containing ``exit_status``.
-            pk: Frame UUID.
+            pk: Task UUID.
 
         Returns:
             ``200 OK`` with the resulting state (``failed`` or ``retrying``).
-            ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
+            ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
       parameters:
       - in: path
         name: id
         schema:
           type: string
           format: uuid
-        description: A UUID string identifying this frame.
+        description: A UUID string identifying this task.
         required: true
       - in: path
         name: job_pk
@@ -773,13 +843,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FrameFail'
+              $ref: '#/components/schemas/TaskFail'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/FrameFail'
+              $ref: '#/components/schemas/TaskFail'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/FrameFail'
+              $ref: '#/components/schemas/TaskFail'
         required: true
       security:
       - cookieAuth: []
@@ -790,32 +860,32 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FrameFail'
+                $ref: '#/components/schemas/TaskFail'
           description: ''
-  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/skip/:
+  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/skip/:
     post:
-      operationId: jobs_layers_frames_skip_create
+      operationId: jobs_layers_tasks_skip_create
       description: |-
-        Dismiss a failed frame, allowing its dependents to proceed.
+        Dismiss a failed task, allowing its dependents to proceed.
 
-        Only available to staff users. Sets the frame state to ``SKIPPED``,
-        which (via signals) satisfies any dependencies blocked on this frame.
+        Only available to staff users. Sets the task state to ``SKIPPED``,
+        which (via signals) satisfies any dependencies blocked on this task.
 
         Args:
             request: HTTP request.
-            pk: Frame UUID.
+            pk: Task UUID.
 
         Returns:
             ``200 OK`` on success.
             ``403 Forbidden`` if the requesting user is not staff.
-            ``409 Conflict`` if the frame is not in FAILED state.
+            ``409 Conflict`` if the task is not in FAILED state.
       parameters:
       - in: path
         name: id
         schema:
           type: string
           format: uuid
-        description: A UUID string identifying this frame.
+        description: A UUID string identifying this task.
         required: true
       - in: path
         name: job_pk
@@ -835,13 +905,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FrameDetail'
+              $ref: '#/components/schemas/TaskDetail'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/FrameDetail'
+              $ref: '#/components/schemas/TaskDetail'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/FrameDetail'
+              $ref: '#/components/schemas/TaskDetail'
       security:
       - cookieAuth: []
       - tokenAuth: []
@@ -851,31 +921,31 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FrameDetail'
+                $ref: '#/components/schemas/TaskDetail'
           description: ''
-  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/start/:
+  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/start/:
     post:
-      operationId: jobs_layers_frames_start_create
+      operationId: jobs_layers_tasks_start_create
       description: |-
-        Mark a frame as RUNNING when a Worker begins execution.
+        Mark a task as RUNNING when a Worker begins execution.
 
         Records the Worker hostname and execution start timestamp. Only
-        valid when the frame is in ``READY`` state.
+        valid when the task is in ``READY`` state.
 
         Args:
             request: HTTP request containing ``worker_name``.
-            pk: Frame UUID.
+            pk: Task UUID.
 
         Returns:
             ``200 OK`` on success.
-            ``409 Conflict`` if the frame is not in READY state.
+            ``409 Conflict`` if the task is not in READY state.
       parameters:
       - in: path
         name: id
         schema:
           type: string
           format: uuid
-        description: A UUID string identifying this frame.
+        description: A UUID string identifying this task.
         required: true
       - in: path
         name: job_pk
@@ -895,13 +965,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FrameStart'
+              $ref: '#/components/schemas/TaskStart'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/FrameStart'
+              $ref: '#/components/schemas/TaskStart'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/FrameStart'
+              $ref: '#/components/schemas/TaskStart'
         required: true
       security:
       - cookieAuth: []
@@ -912,23 +982,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FrameStart'
+                $ref: '#/components/schemas/TaskStart'
           description: ''
-  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/succeed/:
+  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/succeed/:
     post:
-      operationId: jobs_layers_frames_succeed_create
+      operationId: jobs_layers_tasks_succeed_create
       description: |-
-        Mark a frame as SUCCEEDED and record telemetry.
+        Mark a task as SUCCEEDED and record telemetry.
 
         Transitions state, logs exit code and stop timestamp.
-        Returns 409 if the frame isn't currently running/checkpointing.
+        Returns 409 if the task isn't currently running/checkpointing.
       parameters:
       - in: path
         name: id
         schema:
           type: string
           format: uuid
-        description: A UUID string identifying this frame.
+        description: A UUID string identifying this task.
         required: true
       - in: path
         name: job_pk
@@ -948,13 +1018,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FrameSucceed'
+              $ref: '#/components/schemas/TaskSucceed'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/FrameSucceed'
+              $ref: '#/components/schemas/TaskSucceed'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/FrameSucceed'
+              $ref: '#/components/schemas/TaskSucceed'
       security:
       - cookieAuth: []
       - tokenAuth: []
@@ -964,7 +1034,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FrameSucceed'
+                $ref: '#/components/schemas/TaskSucceed'
           description: ''
   /api/jobs/{job_pk}/layers/{id}/:
     get:
@@ -973,8 +1043,8 @@ paths:
         Read-only ViewSet for listing and retrieving layers scoped to a job.
 
         Endpoints (nested under /api/jobs/{job_pk}/):
-            ``GET  /api/jobs/{job_pk}/layers/``         ù list all layers for a job.
-            ``GET  /api/jobs/{job_pk}/layers/{id}/``    ù retrieve a single layer.
+            ``GET  /api/jobs/{job_pk}/layers/``         — list all layers for a job.
+            ``GET  /api/jobs/{job_pk}/layers/{id}/``    — retrieve a single layer.
 
         All endpoints require authentication. Layers are scoped to the parent job
         via the ``job_pk`` URL kwarg.
@@ -1009,13 +1079,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-            ``POST   /api/jobs/``         ù submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+            ``GET    /api/jobs/``         — list all jobs, supports filtering.
+            ``POST   /api/jobs/``         — submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+            ``POST   /api/jobs/{id}/pause/``  — pause the job.
+            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
       parameters:
       - in: path
         name: id
@@ -1043,13 +1113,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-            ``POST   /api/jobs/``         ù submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+            ``GET    /api/jobs/``         — list all jobs, supports filtering.
+            ``POST   /api/jobs/``         — submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+            ``POST   /api/jobs/{id}/pause/``  — pause the job.
+            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
       parameters:
       - in: path
         name: id
@@ -1088,13 +1158,13 @@ paths:
         ViewSet for listing, submitting, updating, and deleting jobs.
 
         Endpoints:
-            ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-            ``POST   /api/jobs/``         ù submit a new job with nested layers.
-            ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-            ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-            ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-            ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-            ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+            ``GET    /api/jobs/``         — list all jobs, supports filtering.
+            ``POST   /api/jobs/``         — submit a new job with nested layers.
+            ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+            ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+            ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+            ``POST   /api/jobs/{id}/pause/``  — pause the job.
+            ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
       parameters:
       - in: path
         name: id
@@ -1116,10 +1186,10 @@ paths:
     post:
       operationId: jobs_pause_create
       description: |-
-        Pause a job, preventing new frames from being dispatched.
+        Pause a job, preventing new tasks from being dispatched.
 
         Sets ``is_paused=True`` on the job. Does not terminate currently
-        running frames ù they will complete their current render.
+        running tasks — they will complete their current render.
 
         Args:
             request: The HTTP request.
@@ -1163,7 +1233,7 @@ paths:
     post:
       operationId: jobs_resume_create
       description: |-
-        Resume a paused job, allowing frames to be dispatched again.
+        Resume a paused job, allowing tasks to be dispatched again.
 
         Sets ``is_paused=False`` on the job.
 
@@ -1385,6 +1455,613 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/tasks/:
+    get:
+      operationId: tasks_list
+      description: |-
+        ViewSet for listing tasks and handling Worker state transition actions.
+
+        List/retrieve endpoints are nested under a layer:
+            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/``
+            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/``
+
+        State transition action endpoints are on the top-level ``/api/tasks/``
+        router, identified by UUID only (no nesting required for Workers):
+            ``POST /api/tasks/{id}/start/``
+            ``POST /api/tasks/{id}/succeed/``
+            ``POST /api/tasks/{id}/fail/``
+            ``POST /api/tasks/{id}/skip/``
+            ``POST /api/tasks/{id}/checkpoint/``
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: state
+        schema:
+          type: string
+          enum:
+          - CHECKPOINT
+          - FAILED
+          - READY
+          - RUNNING
+          - SKIPPED
+          - SUCCEEDED
+          - WAITING
+        description: |-
+          * `WAITING` - Waiting
+          * `READY` - Ready
+          * `RUNNING` - Running
+          * `CHECKPOINT` - Checkpointing
+          * `SUCCEEDED` - Succeeded
+          * `FAILED` - Failed
+          * `SKIPPED` - Skipped
+      tags:
+      - tasks
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTaskListList'
+          description: ''
+  /api/tasks/{id}/:
+    get:
+      operationId: tasks_retrieve
+      description: |-
+        ViewSet for listing tasks and handling Worker state transition actions.
+
+        List/retrieve endpoints are nested under a layer:
+            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/``
+            ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/``
+
+        State transition action endpoints are on the top-level ``/api/tasks/``
+        router, identified by UUID only (no nesting required for Workers):
+            ``POST /api/tasks/{id}/start/``
+            ``POST /api/tasks/{id}/succeed/``
+            ``POST /api/tasks/{id}/fail/``
+            ``POST /api/tasks/{id}/skip/``
+            ``POST /api/tasks/{id}/checkpoint/``
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this task.
+        required: true
+      tags:
+      - tasks
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDetail'
+          description: ''
+  /api/tasks/{id}/checkpoint/:
+    post:
+      operationId: tasks_checkpoint_create
+      description: |-
+        Increment the checkpoint counter for a task in progress.
+
+        Called by a Worker when it saves a resume checkpoint (e.g. a V-Ray
+        ``.vrimg`` file). The task transitions to ``CHECKPOINT`` state to
+        indicate that progress has been persisted.
+
+        Args:
+            request: HTTP request.
+            pk: Task UUID.
+
+        Returns:
+            ``200 OK`` with the new checkpoint count.
+            ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskDetail'
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDetail'
+          description: ''
+  /api/tasks/{id}/fail/:
+    post:
+      operationId: tasks_fail_create
+      description: |-
+        Mark a task as FAILED or retry it based on the retry budget.
+
+        Increments the retry counter. If ``retries >= max_retries``, the task
+        transitions to ``FAILED`` permanently. Otherwise it reverts to ``READY``
+        for re-dispatch.
+
+        Args:
+            request: HTTP request containing ``exit_status``.
+            pk: Task UUID.
+
+        Returns:
+            ``200 OK`` with the resulting state (``failed`` or ``retrying``).
+            ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskFail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskFail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskFail'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskFail'
+          description: ''
+  /api/tasks/{id}/skip/:
+    post:
+      operationId: tasks_skip_create
+      description: |-
+        Dismiss a failed task, allowing its dependents to proceed.
+
+        Only available to staff users. Sets the task state to ``SKIPPED``,
+        which (via signals) satisfies any dependencies blocked on this task.
+
+        Args:
+            request: HTTP request.
+            pk: Task UUID.
+
+        Returns:
+            ``200 OK`` on success.
+            ``403 Forbidden`` if the requesting user is not staff.
+            ``409 Conflict`` if the task is not in FAILED state.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskDetail'
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDetail'
+          description: ''
+  /api/tasks/{id}/start/:
+    post:
+      operationId: tasks_start_create
+      description: |-
+        Mark a task as RUNNING when a Worker begins execution.
+
+        Records the Worker hostname and execution start timestamp. Only
+        valid when the task is in ``READY`` state.
+
+        Args:
+            request: HTTP request containing ``worker_name``.
+            pk: Task UUID.
+
+        Returns:
+            ``200 OK`` on success.
+            ``409 Conflict`` if the task is not in READY state.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskStart'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskStart'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskStart'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStart'
+          description: ''
+  /api/tasks/{id}/succeed/:
+    post:
+      operationId: tasks_succeed_create
+      description: |-
+        Mark a task as SUCCEEDED and record telemetry.
+
+        Transitions state, logs exit code and stop timestamp.
+        Returns 409 if the task isn't currently running/checkpointing.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this task.
+        required: true
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskSucceed'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskSucceed'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskSucceed'
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskSucceed'
+          description: ''
+  /api/tasks/dispatch/:
+    post:
+      operationId: tasks_dispatch_create
+      description: Atomically find, lock, and dispatch a READY task to a worker.
+      tags:
+      - tasks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskStart'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskStart'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskStart'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskStart'
+          description: ''
+  /api/users/:
+    get:
+      operationId: users_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - users
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+          description: ''
+    post:
+      operationId: users_create
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserCreate'
+          description: ''
+  /api/users/{id}/:
+    get:
+      operationId: users_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - users
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+    put:
+      operationId: users_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserUpdate'
+          description: ''
+    patch:
+      operationId: users_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserUpdate'
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserUpdate'
+          description: ''
+    delete:
+      operationId: users_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - users
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/users/{id}/password/:
+    put:
+      operationId: users_password_update
+      description: |-
+        Dedicated view for Superusers to reset any user's password.
+        Inherits from UpdateAPIView to ensure only PUT/PATCH requests are supported.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPasswordReset'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserPasswordReset'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserPasswordReset'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPasswordReset'
+          description: ''
+    patch:
+      operationId: users_password_partial_update
+      description: |-
+        Dedicated view for Superusers to reset any user's password.
+        Inherits from UpdateAPIView to ensure only PUT/PATCH requests are supported.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserPasswordReset'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserPasswordReset'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserPasswordReset'
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPasswordReset'
+          description: ''
   /api/workers/:
     get:
       operationId: workers_list
@@ -1476,213 +2153,218 @@ paths:
           description: ''
 components:
   schemas:
-    FrameDetail:
+    AccessLevelEnum:
+      enum:
+      - Superuser
+      - Staff
+      - Client
+      type: string
+      description: |-
+        * `Superuser` - Superuser
+        * `Staff` - Staff
+        * `Client` - Client
+    DependencyCreate:
       type: object
       description: |-
-        Full read-only frame representation for detail and Worker poll views.
+        Write-only serializer for creating a new Dependency.
 
-        Extends :class:`FrameListSerializer` with execution telemetry fields.
+        Validates that the dependency type matches the provided FKs, that no
+        self-dependency is introduced, and that adding the edge would not form
+        a cycle in the dependency graph.
 
         Attributes:
-            max_memory_used_mb: Peak RSS memory in MB.
-            cores_used: CPU cores reserved at dispatch time.
-            checkpoint_count: Number of resume checkpoints saved.
-            dispatch_order: Dispatch priority within the layer.
+            type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+            dep_job: The blocked Job.
+            dep_layer: The blocked Layer (required for LAYER_ON_LAYER).
+            dep_task: The blocked Task (required for TASK_ON_TASK).
+            parent_job: The blocking Job.
+            parent_layer: The blocking Layer (required for LAYER_ON_LAYER).
+            parent_task: The blocking Task (required for TASK_ON_TASK).
       properties:
-        id:
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        dep_job:
           type: string
           format: uuid
-          readOnly: true
-        name:
+          title: Blocked job
+          description: The job that is WAITING. It cannot start until the blocking
+            (parent) entity completes.
+        dep_layer:
           type: string
-          readOnly: true
-        number:
-          type: integer
-          readOnly: true
-        state:
-          allOf:
-          - $ref: '#/components/schemas/State23dEnum'
-          readOnly: true
-        depend_count:
-          type: integer
-          readOnly: true
-          title: Dependency count
-        retries:
-          type: integer
-          readOnly: true
-        worker_name:
+          format: uuid
+          nullable: true
+          title: Blocked layer
+          description: The specific layer that is WAITING (required for LAYER_ON_LAYER
+            dependencies).
+        dep_task:
           type: string
-          readOnly: true
+          format: uuid
           nullable: true
-          title: Worker hostname
-        exit_status:
-          type: integer
-          readOnly: true
-          description: Raw process exit code returned by the worker. -1 means the
-            frame has not completed.
-        started_at:
+          title: Blocked task
+          description: The specific task that is WAITING (required for TASK_ON_TASK
+            dependencies).
+        parent_job:
           type: string
-          format: date-time
-          readOnly: true
-          nullable: true
-        stopped_at:
+          format: uuid
+          title: Blocking job
+          description: The job that must complete FIRST before the blocked entity
+            is released.
+        parent_layer:
           type: string
-          format: date-time
-          readOnly: true
+          format: uuid
           nullable: true
-        max_memory_used_mb:
-          type: integer
-          readOnly: true
-          title: Peak memory used (MB)
-        cores_used:
-          type: integer
-          readOnly: true
+          title: Blocking layer
+          description: The specific layer that must complete FIRST (required for LAYER_ON_LAYER
+            dependencies).
+        parent_task:
+          type: string
+          format: uuid
           nullable: true
-        checkpoint_count:
-          type: integer
-          readOnly: true
-          description: How many times the worker has reported saving intermediate
-            progress (useful for resuming aborted frames).
-        dispatch_order:
-          type: integer
-          readOnly: true
-          description: Scheduler priority within the layer. Lower numbers are dispatched
-            first.
+          title: Blocking task
+          description: The specific task that must complete FIRST (required for TASK_ON_TASK
+            dependencies).
       required:
-      - checkpoint_count
-      - cores_used
-      - depend_count
-      - dispatch_order
-      - exit_status
-      - id
-      - max_memory_used_mb
-      - name
-      - number
-      - retries
-      - started_at
-      - state
-      - stopped_at
-      - worker_name
-    FrameFail:
+      - dep_job
+      - parent_job
+      - type
+    DependencyRead:
       type: object
       description: |-
-        Validates payload when a Worker reports a frame as FAILED.
-
-        Attributes:
-            exit_status: Non-zero process exit code.
-      properties:
-        exit_status:
-          type: integer
-          description: Non-zero process exit code from the render process.
-      required:
-      - exit_status
-    FrameList:
-      type: object
-      description: |-
-        Slim read-only frame representation for list views.
+        Full read-only representation of a Dependency.
 
         Attributes:
             id: UUID primary key.
-            name: Display name (e.g. 'beauty_0042').
-            number: Render frame index.
-            state: Current execution state.
-            depend_count: Number of unresolved dependencies.
-            retries: Execution attempt count.
-            worker_name: Hostname of the executing Worker.
-            exit_status: Process exit code (-1 if not yet run).
-            started_at: Execution start timestamp.
-            stopped_at: Execution stop timestamp.
+            type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+            dep_job: The blocked Job UUID.
+            dep_layer: The blocked Layer UUID (if applicable).
+            dep_task: The blocked Task UUID (if applicable).
+            parent_job: The blocking Job UUID.
+            parent_layer: The blocking Layer UUID (if applicable).
+            parent_task: The blocking Task UUID (if applicable).
+            is_satisfied: True once the blocking entity has completed.
+            created_at: Creation timestamp.
+            satisfied_at: Satisfaction timestamp.
       properties:
         id:
           type: string
           format: uuid
           readOnly: true
-        name:
-          type: string
-          readOnly: true
-        number:
-          type: integer
-          readOnly: true
-        state:
+        type:
           allOf:
-          - $ref: '#/components/schemas/State23dEnum'
+          - $ref: '#/components/schemas/TypeEnum'
           readOnly: true
-        depend_count:
-          type: integer
+        dep_job:
+          type: string
+          format: uuid
           readOnly: true
-          title: Dependency count
-        retries:
-          type: integer
-          readOnly: true
-        worker_name:
+          title: Blocked job
+          description: The job that is WAITING. It cannot start until the blocking
+            (parent) entity completes.
+        dep_job_name:
           type: string
           readOnly: true
-          nullable: true
-          title: Worker hostname
-        exit_status:
-          type: integer
+        dep_layer:
+          type: string
+          format: uuid
           readOnly: true
-          description: Raw process exit code returned by the worker. -1 means the
-            frame has not completed.
-        started_at:
+          nullable: true
+          title: Blocked layer
+          description: The specific layer that is WAITING (required for LAYER_ON_LAYER
+            dependencies).
+        dep_layer_name:
+          type: string
+          readOnly: true
+        dep_task:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocked task
+          description: The specific task that is WAITING (required for TASK_ON_TASK
+            dependencies).
+        dep_task_name:
+          type: string
+          readOnly: true
+        parent_job:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Blocking job
+          description: The job that must complete FIRST before the blocked entity
+            is released.
+        parent_job_name:
+          type: string
+          readOnly: true
+        parent_layer:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocking layer
+          description: The specific layer that must complete FIRST (required for LAYER_ON_LAYER
+            dependencies).
+        parent_layer_name:
+          type: string
+          readOnly: true
+        parent_task:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocking task
+          description: The specific task that must complete FIRST (required for TASK_ON_TASK
+            dependencies).
+        parent_task_name:
+          type: string
+          readOnly: true
+        is_satisfied:
+          type: boolean
+          readOnly: true
+        created_at:
           type: string
           format: date-time
           readOnly: true
-          nullable: true
-        stopped_at:
+        satisfied_at:
           type: string
           format: date-time
           readOnly: true
           nullable: true
       required:
-      - depend_count
-      - exit_status
+      - created_at
+      - dep_job
+      - dep_job_name
+      - dep_layer
+      - dep_layer_name
+      - dep_task
+      - dep_task_name
       - id
-      - name
-      - number
-      - retries
-      - started_at
-      - state
-      - stopped_at
-      - worker_name
-    FrameStart:
-      type: object
+      - is_satisfied
+      - parent_job
+      - parent_job_name
+      - parent_layer
+      - parent_layer_name
+      - parent_task
+      - parent_task_name
+      - satisfied_at
+      - type
+    DependencyTypeEnum:
+      enum:
+      - TASK_ON_TASK
+      - LAYER_ON_LAYER
+      type: string
       description: |-
-        Validates payload when a Worker marks a frame as RUNNING.
-
-        Attributes:
-            worker_name: Hostname of the Worker claiming this frame.
-      properties:
-        worker_name:
-          type: string
-          description: Hostname of the Worker claiming this frame.
-          maxLength: 256
-      required:
-      - worker_name
-    FrameSucceed:
-      type: object
+        * `TASK_ON_TASK` - TASK_ON_TASK
+        * `LAYER_ON_LAYER` - LAYER_ON_LAYER
+    ExecutionModeEnum:
+      enum:
+      - IMMEDIATE
+      - LAST
+      - WAIT_LAYER
+      type: string
       description: |-
-        Validates payload when a Worker reports a frame as SUCCEEDED.
-
-        Attributes:
-            exit_status: Process exit code (should be 0).
-            max_memory_used_mb: Peak RSS memory in MB.
-            cores_used: Actual CPU cores used.
-      properties:
-        exit_status:
-          type: integer
-          default: 0
-          description: Process exit code. Should be 0 on success.
-        max_memory_used_mb:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Peak RSS memory used by the render process, in MB.
-        cores_used:
-          type: integer
-          minimum: 1
-          nullable: true
-          description: Actual CPU cores reserved by the Worker at dispatch time.
+        * `IMMEDIATE` - IMMEDIATE
+        * `LAST` - LAST
+        * `WAIT_LAYER` - WAIT_LAYER
     JobCreate:
       type: object
       description: |-
@@ -1699,8 +2381,8 @@ components:
             department: Department name.
             user: Submitter's display name.
             priority: Dispatch priority (1-100).
-            log_directory: Absolute path for frame logs.
-            max_frames_per_worker: Concurrent frames per Worker limit.
+            log_directory: Absolute path for task logs.
+            max_tasks_per_worker: Concurrent tasks per Worker limit.
       properties:
         visible_name:
           type: string
@@ -1723,12 +2405,12 @@ components:
         log_directory:
           type: string
           maxLength: 2048
-        max_frames_per_worker:
+        max_tasks_per_worker:
           type: integer
           maximum: 2147483647
           minimum: 0
-          title: Max concurrent frames per worker
-          description: Limits how many frames from this job a single machine can run
+          title: Max concurrent tasks per worker
+          description: Limits how many tasks from this job a single machine can run
             at once. Used to prevent a single job from monopolizing nodes with high
             core counts.
         included_pools:
@@ -1749,11 +2431,46 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LayerCreate'
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobDependencySpec'
+          description: Optional list of JOB_ON_JOB external dependencies.
       required:
       - layers
       - log_directory
       - project
       - user
+    JobDependencySpec:
+      type: object
+      description: |-
+        Nested serializer for declaring JOB_ON_JOB deps at job submission.
+
+        Attributes:
+            parent_job: The UUID of the job that must finish first.
+            parent_layer: The name of the layer that must finish first (optional).
+            dep_layer: The name of the layer that is blocked (optional).
+      properties:
+        type:
+          type: string
+          default: JOB_ON_JOB
+        parent_job:
+          type: string
+          format: uuid
+          description: UUID of the job that must complete first (the blocker).
+        parent_layer:
+          type: string
+          nullable: true
+          description: Optional name of the specific layer in the parent job that
+            must complete.
+          maxLength: 256
+        dep_layer:
+          type: string
+          nullable: true
+          description: Optional name of the specific layer in this job that is blocked.
+          maxLength: 256
+      required:
+      - parent_job
     JobDetail:
       type: object
       description: |-
@@ -1764,8 +2481,8 @@ components:
 
         Attributes:
             layers: Nested list of all layers belonging to this job.
-            log_directory: Absolute path for frame logs.
-            max_frames_per_worker: Concurrent frames per Worker limit.
+            log_directory: Absolute path for task logs.
+            max_tasks_per_worker: Concurrent tasks per Worker limit.
             stopped_at: Timestamp when job reached FINISHED or FAILED.
       properties:
         id:
@@ -1799,28 +2516,28 @@ components:
         is_paused:
           type: boolean
           readOnly: true
-        total_frames:
+        total_tasks:
           type: integer
           readOnly: true
-        waiting_frames:
+        waiting_tasks:
           type: integer
           readOnly: true
-        ready_frames:
+        ready_tasks:
           type: integer
           readOnly: true
-        running_frames:
+        running_tasks:
           type: integer
           readOnly: true
-        succeeded_frames:
+        succeeded_tasks:
           type: integer
           readOnly: true
-        failed_frames:
+        failed_tasks:
           type: integer
           readOnly: true
-        skipped_frames:
+        skipped_tasks:
           type: integer
           readOnly: true
-        depend_frames:
+        depend_tasks:
           type: integer
           readOnly: true
         created_at:
@@ -1855,11 +2572,11 @@ components:
         log_directory:
           type: string
           readOnly: true
-        max_frames_per_worker:
+        max_tasks_per_worker:
           type: integer
           readOnly: true
-          title: Max concurrent frames per worker
-          description: Limits how many frames from this job a single machine can run
+          title: Max concurrent tasks per worker
+          description: Limits how many tasks from this job a single machine can run
             at once. Used to prevent a single job from monopolizing nodes with high
             core counts.
         stopped_at:
@@ -1870,29 +2587,29 @@ components:
       required:
       - created_at
       - department
-      - depend_frames
+      - depend_tasks
       - excluded_pools
-      - failed_frames
+      - failed_tasks
       - id
       - included_pools
       - is_paused
       - layers
       - log_directory
-      - max_frames_per_worker
+      - max_tasks_per_worker
       - name
       - priority
       - project
-      - ready_frames
-      - running_frames
-      - skipped_frames
+      - ready_tasks
+      - running_tasks
+      - skipped_tasks
       - state
       - stopped_at
-      - succeeded_frames
-      - total_frames
+      - succeeded_tasks
+      - total_tasks
       - updated_at
       - user
       - visible_name
-      - waiting_frames
+      - waiting_tasks
     JobList:
       type: object
       description: |-
@@ -1908,14 +2625,14 @@ components:
             state: Current execution state.
             priority: Dispatch priority (1-100).
             is_paused: Standalone pause flag.
-            total_frames: Counter cache.
-            waiting_frames: Counter cache.
-            ready_frames: Counter cache.
-            running_frames: Counter cache.
-            succeeded_frames: Counter cache.
-            failed_frames: Counter cache.
-            skipped_frames: Counter cache.
-            depend_frames: Counter cache.
+            total_tasks: Counter cache.
+            waiting_tasks: Counter cache.
+            ready_tasks: Counter cache.
+            running_tasks: Counter cache.
+            succeeded_tasks: Counter cache.
+            failed_tasks: Counter cache.
+            skipped_tasks: Counter cache.
+            depend_tasks: Counter cache.
             created_at: Submission timestamp.
             updated_at: Last update timestamp.
       properties:
@@ -1950,28 +2667,28 @@ components:
         is_paused:
           type: boolean
           readOnly: true
-        total_frames:
+        total_tasks:
           type: integer
           readOnly: true
-        waiting_frames:
+        waiting_tasks:
           type: integer
           readOnly: true
-        ready_frames:
+        ready_tasks:
           type: integer
           readOnly: true
-        running_frames:
+        running_tasks:
           type: integer
           readOnly: true
-        succeeded_frames:
+        succeeded_tasks:
           type: integer
           readOnly: true
-        failed_frames:
+        failed_tasks:
           type: integer
           readOnly: true
-        skipped_frames:
+        skipped_tasks:
           type: integer
           readOnly: true
-        depend_frames:
+        depend_tasks:
           type: integer
           readOnly: true
         created_at:
@@ -2001,25 +2718,25 @@ components:
       required:
       - created_at
       - department
-      - depend_frames
+      - depend_tasks
       - excluded_pools
-      - failed_frames
+      - failed_tasks
       - id
       - included_pools
       - is_paused
       - name
       - priority
       - project
-      - ready_frames
-      - running_frames
-      - skipped_frames
+      - ready_tasks
+      - running_tasks
+      - skipped_tasks
       - state
-      - succeeded_frames
-      - total_frames
+      - succeeded_tasks
+      - total_tasks
       - updated_at
       - user
       - visible_name
-      - waiting_frames
+      - waiting_tasks
     JobPatch:
       type: object
       description: |-
@@ -2031,7 +2748,7 @@ components:
         Attributes:
             visible_name: Human-readable label.
             priority: Dispatch priority (1-100).
-            max_frames_per_worker: Concurrent frames per Worker limit.
+            max_tasks_per_worker: Concurrent tasks per Worker limit.
       properties:
         visible_name:
           type: string
@@ -2040,12 +2757,12 @@ components:
           type: integer
           maximum: 100
           minimum: 1
-        max_frames_per_worker:
+        max_tasks_per_worker:
           type: integer
           maximum: 2147483647
           minimum: 0
-          title: Max concurrent frames per worker
-          description: Limits how many frames from this job a single machine can run
+          title: Max concurrent tasks per worker
+          description: Limits how many tasks from this job a single machine can run
             at once. Used to prevent a single job from monopolizing nodes with high
             core counts.
         included_pools:
@@ -2083,9 +2800,28 @@ components:
             scene_path: DCC scene file path.
             scene_info: DCC scene metadata JSON.
             env: Environment variable overrides.
-            max_retries: Per-frame retry ceiling.
-            timeout_seconds: Frame execution timeout.
+            max_retries: Per-task retry ceiling.
+            timeout_seconds: Task execution timeout.
+            execution_mode: Dependency logic mode.
+            depends_on_layer: The layer name to wait for (if WAIT_LAYER).
+            dependency_type: The dependency mapping type (if WAIT_LAYER).
       properties:
+        execution_mode:
+          allOf:
+          - $ref: '#/components/schemas/ExecutionModeEnum'
+          writeOnly: true
+          default: IMMEDIATE
+        depends_on_layer:
+          type: string
+          writeOnly: true
+          nullable: true
+          maxLength: 256
+        dependency_type:
+          writeOnly: true
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/DependencyTypeEnum'
+          - $ref: '#/components/schemas/NullEnum'
         name:
           type: string
           maxLength: 256
@@ -2162,8 +2898,8 @@ components:
             scene_path: DCC scene file path.
             scene_info: DCC scene metadata JSON.
             env: Environment variable overrides.
-            max_retries: Per-frame retry ceiling.
-            timeout_seconds: Frame execution timeout.
+            max_retries: Per-task retry ceiling.
+            timeout_seconds: Task execution timeout.
       properties:
         id:
           type: string
@@ -2184,28 +2920,28 @@ components:
         frame_range:
           type: string
           readOnly: true
-        total_frames:
+        total_tasks:
           type: integer
           readOnly: true
-        waiting_frames:
+        waiting_tasks:
           type: integer
           readOnly: true
-        ready_frames:
+        ready_tasks:
           type: integer
           readOnly: true
-        running_frames:
+        running_tasks:
           type: integer
           readOnly: true
-        succeeded_frames:
+        succeeded_tasks:
           type: integer
           readOnly: true
-        failed_frames:
+        failed_tasks:
           type: integer
           readOnly: true
-        skipped_frames:
+        skipped_tasks:
           type: integer
           readOnly: true
-        depend_frames:
+        depend_tasks:
           type: integer
           readOnly: true
         command:
@@ -2254,9 +2990,9 @@ components:
       required:
       - chunk_size
       - command
-      - depend_frames
+      - depend_tasks
       - env
-      - failed_frames
+      - failed_tasks
       - frame_range
       - id
       - layer_type
@@ -2265,17 +3001,17 @@ components:
       - min_gpus
       - min_memory_mb
       - name
-      - ready_frames
-      - running_frames
+      - ready_tasks
+      - running_tasks
       - scene_info
       - scene_path
-      - skipped_frames
+      - skipped_tasks
       - state
-      - succeeded_frames
+      - succeeded_tasks
       - tags
       - timeout_seconds
-      - total_frames
-      - waiting_frames
+      - total_tasks
+      - waiting_tasks
     LayerList:
       type: object
       description: |-
@@ -2287,14 +3023,14 @@ components:
             layer_type: Render pass type.
             state: Current execution state.
             frame_range: VFX frame range descriptor.
-            total_frames: Counter cache.
-            waiting_frames: Counter cache.
-            ready_frames: Counter cache.
-            running_frames: Counter cache.
-            succeeded_frames: Counter cache.
-            failed_frames: Counter cache.
-            skipped_frames: Counter cache.
-            depend_frames: Counter cache.
+            total_tasks: Counter cache.
+            waiting_tasks: Counter cache.
+            ready_tasks: Counter cache.
+            running_tasks: Counter cache.
+            succeeded_tasks: Counter cache.
+            failed_tasks: Counter cache.
+            skipped_tasks: Counter cache.
+            depend_tasks: Counter cache.
       properties:
         id:
           type: string
@@ -2315,44 +3051,44 @@ components:
         frame_range:
           type: string
           readOnly: true
-        total_frames:
+        total_tasks:
           type: integer
           readOnly: true
-        waiting_frames:
+        waiting_tasks:
           type: integer
           readOnly: true
-        ready_frames:
+        ready_tasks:
           type: integer
           readOnly: true
-        running_frames:
+        running_tasks:
           type: integer
           readOnly: true
-        succeeded_frames:
+        succeeded_tasks:
           type: integer
           readOnly: true
-        failed_frames:
+        failed_tasks:
           type: integer
           readOnly: true
-        skipped_frames:
+        skipped_tasks:
           type: integer
           readOnly: true
-        depend_frames:
+        depend_tasks:
           type: integer
           readOnly: true
       required:
-      - depend_frames
-      - failed_frames
+      - depend_tasks
+      - failed_tasks
       - frame_range
       - id
       - layer_type
       - name
-      - ready_frames
-      - running_frames
-      - skipped_frames
+      - ready_tasks
+      - running_tasks
+      - skipped_tasks
       - state
-      - succeeded_frames
-      - total_frames
-      - waiting_frames
+      - succeeded_tasks
+      - total_tasks
+      - waiting_tasks
     LayerTypeEnum:
       enum:
       - RENDER
@@ -2363,7 +3099,10 @@ components:
         * `RENDER` - Render
         * `UTIL` - Utility
         * `POST` - Post
-    PaginatedFrameListList:
+    NullEnum:
+      enum:
+      - null
+    PaginatedDependencyReadList:
       type: object
       required:
       - count
@@ -2385,7 +3124,7 @@ components:
         results:
           type: array
           items:
-            $ref: '#/components/schemas/FrameList'
+            $ref: '#/components/schemas/DependencyRead'
     PaginatedJobListList:
       type: object
       required:
@@ -2432,6 +3171,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LayerList'
+    PaginatedTaskListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskList'
     PaginatedWorkerNodeList:
       type: object
       required:
@@ -2489,7 +3251,7 @@ components:
         Attributes:
             visible_name: Human-readable label.
             priority: Dispatch priority (1-100).
-            max_frames_per_worker: Concurrent frames per Worker limit.
+            max_tasks_per_worker: Concurrent tasks per Worker limit.
       properties:
         visible_name:
           type: string
@@ -2498,12 +3260,12 @@ components:
           type: integer
           maximum: 100
           minimum: 1
-        max_frames_per_worker:
+        max_tasks_per_worker:
           type: integer
           maximum: 2147483647
           minimum: 0
-          title: Max concurrent frames per worker
-          description: Limits how many frames from this job a single machine can run
+          title: Max concurrent tasks per worker
+          description: Limits how many tasks from this job a single machine can run
             at once. Used to prevent a single job from monopolizing nodes with high
             core counts.
         included_pools:
@@ -2520,6 +3282,28 @@ components:
             format: uuid
           description: If specified, workers in these pools are strictly prevented
             from processing this job.
+    PatchedUserPasswordReset:
+      type: object
+      properties:
+        password:
+          type: string
+          writeOnly: true
+    PatchedUserUpdate:
+      type: object
+      properties:
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+        title_role:
+          $ref: '#/components/schemas/TitleRoleEnum'
+        access_level:
+          $ref: '#/components/schemas/AccessLevelEnum'
     PatchedWorkerPool:
       type: object
       properties:
@@ -2532,6 +3316,14 @@ components:
           maxLength: 128
         description:
           type: string
+        worker_count:
+          type: integer
+          readOnly: true
+        workers:
+          type: array
+          items:
+            type: string
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -2582,6 +3374,378 @@ components:
         * `ONLINE` - Online
         * `OFFLINE` - Offline
         * `RENDERING` - Rendering
+    TaskDetail:
+      type: object
+      description: |-
+        Full read-only task representation for detail and Worker poll views.
+
+        Extends :class:`TaskListSerializer` with execution telemetry fields.
+
+        Attributes:
+            max_memory_used_mb: Peak RSS memory in MB.
+            cores_used: CPU cores reserved at dispatch time.
+            checkpoint_count: Number of resume checkpoints saved.
+            dispatch_order: Dispatch priority within the layer.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        frame_start:
+          type: integer
+          readOnly: true
+        frame_end:
+          type: integer
+          readOnly: true
+        state:
+          allOf:
+          - $ref: '#/components/schemas/State23dEnum'
+          readOnly: true
+        depend_count:
+          type: integer
+          readOnly: true
+          title: Dependency count
+        retries:
+          type: integer
+          readOnly: true
+        worker_name:
+          type: string
+          readOnly: true
+          nullable: true
+          title: Worker hostname
+        exit_status:
+          type: integer
+          readOnly: true
+          description: Raw process exit code returned by the worker. -1 means the
+            task has not completed.
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        stopped_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        max_memory_used_mb:
+          type: integer
+          readOnly: true
+          title: Peak memory used (MB)
+        cores_used:
+          type: integer
+          readOnly: true
+          nullable: true
+        checkpoint_count:
+          type: integer
+          readOnly: true
+          description: How many times the worker has reported saving intermediate
+            progress (useful for resuming aborted tasks).
+        dispatch_order:
+          type: integer
+          readOnly: true
+          description: Scheduler priority within the layer. Lower numbers are dispatched
+            first.
+      required:
+      - checkpoint_count
+      - cores_used
+      - depend_count
+      - dispatch_order
+      - exit_status
+      - frame_end
+      - frame_start
+      - id
+      - max_memory_used_mb
+      - name
+      - retries
+      - started_at
+      - state
+      - stopped_at
+      - worker_name
+    TaskFail:
+      type: object
+      description: |-
+        Validates payload when a Worker reports a task as FAILED.
+
+        Attributes:
+            exit_status: Non-zero process exit code.
+      properties:
+        exit_status:
+          type: integer
+          description: Non-zero process exit code from the render process.
+      required:
+      - exit_status
+    TaskList:
+      type: object
+      description: |-
+        Slim read-only task representation for list views.
+
+        Attributes:
+            id: UUID primary key.
+            name: Display name (e.g. 'beauty_0042').
+            frame_start: First render frame index.
+            frame_end: Last render frame index.
+            state: Current execution state.
+            depend_count: Number of unresolved dependencies.
+            retries: Execution attempt count.
+            worker_name: Hostname of the executing Worker.
+            exit_status: Process exit code (-1 if not yet run).
+            started_at: Execution start timestamp.
+            stopped_at: Execution stop timestamp.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        frame_start:
+          type: integer
+          readOnly: true
+        frame_end:
+          type: integer
+          readOnly: true
+        state:
+          allOf:
+          - $ref: '#/components/schemas/State23dEnum'
+          readOnly: true
+        depend_count:
+          type: integer
+          readOnly: true
+          title: Dependency count
+        retries:
+          type: integer
+          readOnly: true
+        worker_name:
+          type: string
+          readOnly: true
+          nullable: true
+          title: Worker hostname
+        exit_status:
+          type: integer
+          readOnly: true
+          description: Raw process exit code returned by the worker. -1 means the
+            task has not completed.
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        stopped_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - depend_count
+      - exit_status
+      - frame_end
+      - frame_start
+      - id
+      - name
+      - retries
+      - started_at
+      - state
+      - stopped_at
+      - worker_name
+    TaskStart:
+      type: object
+      description: |-
+        Validates payload when a Worker marks a task as RUNNING.
+
+        Attributes:
+            worker_name: Hostname of the Worker claiming this task.
+      properties:
+        worker_name:
+          type: string
+          description: Hostname of the Worker claiming this task.
+          maxLength: 256
+      required:
+      - worker_name
+    TaskSucceed:
+      type: object
+      description: |-
+        Validates payload when a Worker reports a task as SUCCEEDED.
+
+        Attributes:
+            exit_status: Process exit code (should be 0).
+            max_memory_used_mb: Peak RSS memory in MB.
+            cores_used: Actual CPU cores used.
+      properties:
+        exit_status:
+          type: integer
+          default: 0
+          description: Process exit code. Should be 0 on success.
+        max_memory_used_mb:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Peak RSS memory used by the render process, in MB.
+        cores_used:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Actual CPU cores reserved by the Worker at dispatch time.
+    TitleRoleEnum:
+      enum:
+      - Technical Director
+      - Animator
+      - Pipeline Engineer
+      - FX Artist
+      - Lighting Lead
+      - Render User
+      type: string
+      description: |-
+        * `Technical Director` - Technical Director
+        * `Animator` - Animator
+        * `Pipeline Engineer` - Pipeline Engineer
+        * `FX Artist` - FX Artist
+        * `Lighting Lead` - Lighting Lead
+        * `Render User` - Render User
+    TypeEnum:
+      enum:
+      - JOB_ON_JOB
+      - LAYER_ON_LAYER
+      - TASK_ON_TASK
+      type: string
+      description: |-
+        * `JOB_ON_JOB` - Job on Job
+        * `LAYER_ON_LAYER` - Layer on Layer
+        * `TASK_ON_TASK` - Task on Task
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Email address
+        title_role:
+          type: string
+          readOnly: true
+        access_level:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+          title: Active
+          description: Designates whether this user should be treated as active. Unselect
+            this instead of deleting accounts.
+        is_staff:
+          type: boolean
+          readOnly: true
+          title: Staff status
+          description: Designates whether the user can log into this admin site.
+        is_superuser:
+          type: boolean
+          readOnly: true
+          title: Superuser status
+          description: Designates that this user has all permissions without explicitly
+            assigning them.
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+        last_login:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - access_level
+      - date_joined
+      - email
+      - first_name
+      - full_name
+      - id
+      - is_active
+      - is_staff
+      - is_superuser
+      - last_login
+      - last_name
+      - title_role
+      - username
+    UserCreate:
+      type: object
+      properties:
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        username:
+          type: string
+          description: Required. 150 characters or fewer. Letters, digits and @/./+/-/_
+            only.
+          pattern: ^[\w.@+-]+$
+          maxLength: 150
+        email:
+          type: string
+          format: email
+        title_role:
+          $ref: '#/components/schemas/TitleRoleEnum'
+        access_level:
+          $ref: '#/components/schemas/AccessLevelEnum'
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - access_level
+      - email
+      - password
+      - title_role
+      - username
+    UserPasswordReset:
+      type: object
+      properties:
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - password
+    UserUpdate:
+      type: object
+      properties:
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+        title_role:
+          $ref: '#/components/schemas/TitleRoleEnum'
+        access_level:
+          $ref: '#/components/schemas/AccessLevelEnum'
+      required:
+      - access_level
+      - email
+      - title_role
     WorkerNode:
       type: object
       properties:
@@ -2647,6 +3811,14 @@ components:
           maxLength: 128
         description:
           type: string
+        worker_count:
+          type: integer
+          readOnly: true
+        workers:
+          type: array
+          items:
+            type: string
+          readOnly: true
         created_at:
           type: string
           format: date-time
@@ -2660,6 +3832,8 @@ components:
       - id
       - name
       - updated_at
+      - worker_count
+      - workers
   securitySchemes:
     XSessionTokenAuth:
       type: apiKey

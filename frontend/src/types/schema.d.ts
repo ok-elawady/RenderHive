@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/api/frames/": {
+    "/api/dependencies/": {
         parameters: {
             query?: never;
             header?: never;
@@ -12,217 +12,89 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * @description ViewSet for listing frames and handling Worker state transition actions.
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
          *
-         *     List/retrieve endpoints are nested under a layer:
-         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/``
-         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/``
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
          *
-         *     State transition action endpoints are on the top-level ``/api/frames/``
-         *     router, identified by UUID only (no nesting required for Workers):
-         *         ``POST /api/frames/{id}/start/``
-         *         ``POST /api/frames/{id}/succeed/``
-         *         ``POST /api/frames/{id}/fail/``
-         *         ``POST /api/frames/{id}/skip/``
-         *         ``POST /api/frames/{id}/checkpoint/``
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
          */
-        get: operations["frames_list"];
+        get: operations["dependencies_list"];
+        put?: never;
+        /**
+         * @description Create a dependency and return the full read representation.
+         *
+         *     Validates with DependencyCreateSerializer (which runs cycle detection),
+         *     saves the instance, then serializes the response with DependencyReadSerializer
+         *     so the caller receives all fields including is_satisfied and timestamps.
+         *
+         *     Returns:
+         *         ``201 Created`` with the full dependency representation.
+         */
+        post: operations["dependencies_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dependencies/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        get: operations["dependencies_retrieve"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/frames/{id}/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
         /**
-         * @description ViewSet for listing frames and handling Worker state transition actions.
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
          *
-         *     List/retrieve endpoints are nested under a layer:
-         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/``
-         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/``
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
          *
-         *     State transition action endpoints are on the top-level ``/api/frames/``
-         *     router, identified by UUID only (no nesting required for Workers):
-         *         ``POST /api/frames/{id}/start/``
-         *         ``POST /api/frames/{id}/succeed/``
-         *         ``POST /api/frames/{id}/fail/``
-         *         ``POST /api/frames/{id}/skip/``
-         *         ``POST /api/frames/{id}/checkpoint/``
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
          */
-        get: operations["frames_retrieve"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/frames/{id}/checkpoint/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * @description Increment the checkpoint counter for a frame in progress.
-         *
-         *     Called by a Worker when it saves a resume checkpoint (e.g. a V-Ray
-         *     ``.vrimg`` file). The frame transitions to ``CHECKPOINT`` state to
-         *     indicate that progress has been persisted.
-         *
-         *     Args:
-         *         request: HTTP request.
-         *         pk: Frame UUID.
-         *
-         *     Returns:
-         *         ``200 OK`` with the new checkpoint count.
-         *         ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
-         */
-        post: operations["frames_checkpoint_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/frames/{id}/fail/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * @description Mark a frame as FAILED or retry it based on the retry budget.
-         *
-         *     Increments the retry counter. If ``retries >= max_retries``, the frame
-         *     transitions to ``FAILED`` permanently. Otherwise it reverts to ``READY``
-         *     for re-dispatch.
-         *
-         *     Args:
-         *         request: HTTP request containing ``exit_status``.
-         *         pk: Frame UUID.
-         *
-         *     Returns:
-         *         ``200 OK`` with the resulting state (``failed`` or ``retrying``).
-         *         ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
-         */
-        post: operations["frames_fail_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/frames/{id}/skip/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * @description Dismiss a failed frame, allowing its dependents to proceed.
-         *
-         *     Only available to staff users. Sets the frame state to ``SKIPPED``,
-         *     which (via signals) satisfies any dependencies blocked on this frame.
-         *
-         *     Args:
-         *         request: HTTP request.
-         *         pk: Frame UUID.
-         *
-         *     Returns:
-         *         ``200 OK`` on success.
-         *         ``403 Forbidden`` if the requesting user is not staff.
-         *         ``409 Conflict`` if the frame is not in FAILED state.
-         */
-        post: operations["frames_skip_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/frames/{id}/start/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * @description Mark a frame as RUNNING when a Worker begins execution.
-         *
-         *     Records the Worker hostname and execution start timestamp. Only
-         *     valid when the frame is in ``READY`` state.
-         *
-         *     Args:
-         *         request: HTTP request containing ``worker_name``.
-         *         pk: Frame UUID.
-         *
-         *     Returns:
-         *         ``200 OK`` on success.
-         *         ``409 Conflict`` if the frame is not in READY state.
-         */
-        post: operations["frames_start_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/frames/{id}/succeed/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * @description Mark a frame as SUCCEEDED and record telemetry.
-         *
-         *     Transitions state, logs exit code and stop timestamp.
-         *     Returns 409 if the frame isn't currently running/checkpointing.
-         */
-        post: operations["frames_succeed_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/frames/dispatch/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** @description Atomically find, lock, and dispatch a READY frame to a worker. */
-        post: operations["frames_dispatch_create"];
-        delete?: never;
+        delete: operations["dependencies_destroy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -239,13 +111,13 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
          */
         get: operations["jobs_list"];
         put?: never;
@@ -253,16 +125,112 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
          */
         post: operations["jobs_create"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_pk}/dependencies/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        get: operations["jobs_dependencies_list"];
+        put?: never;
+        /**
+         * @description Create a dependency and return the full read representation.
+         *
+         *     Validates with DependencyCreateSerializer (which runs cycle detection),
+         *     saves the instance, then serializes the response with DependencyReadSerializer
+         *     so the caller receives all fields including is_satisfied and timestamps.
+         *
+         *     Returns:
+         *         ``201 Created`` with the full dependency representation.
+         */
+        post: operations["jobs_dependencies_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_pk}/dependencies/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        get: operations["jobs_dependencies_retrieve"];
+        put?: never;
+        post?: never;
+        /**
+         * @description ViewSet for listing, retrieving, creating, and deleting dependencies.
+         *
+         *     Endpoints:
+         *         ``GET    /api/dependencies/``       — list all deps, supports filtering.
+         *         ``POST   /api/dependencies/``       — create a new dependency.
+         *         ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+         *         ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+         *
+         *         Read-only nested list under jobs:
+         *         ``GET    /api/jobs/{job_pk}/dependencies/``
+         *
+         *     All actions require authentication. Delete is restricted to staff and
+         *     superusers to prevent accidental removal of live dependency edges.
+         *
+         *     The pre_delete signal on Dependency automatically repairs ``depend_count``
+         *     and ``depend_tasks`` counters when a dependency is destroyed.
+         */
+        delete: operations["jobs_dependencies_destroy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -279,8 +247,8 @@ export interface paths {
          * @description Read-only ViewSet for listing and retrieving layers scoped to a job.
          *
          *     Endpoints (nested under /api/jobs/{job_pk}/):
-         *         ``GET  /api/jobs/{job_pk}/layers/``         ù list all layers for a job.
-         *         ``GET  /api/jobs/{job_pk}/layers/{id}/``    ù retrieve a single layer.
+         *         ``GET  /api/jobs/{job_pk}/layers/``         — list all layers for a job.
+         *         ``GET  /api/jobs/{job_pk}/layers/{id}/``    — retrieve a single layer.
          *
          *     All endpoints require authentication. Layers are scoped to the parent job
          *     via the ``job_pk`` URL kwarg.
@@ -294,7 +262,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/": {
+    "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/": {
         parameters: {
             query?: never;
             header?: never;
@@ -302,21 +270,21 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * @description ViewSet for listing frames and handling Worker state transition actions.
+         * @description ViewSet for listing tasks and handling Worker state transition actions.
          *
          *     List/retrieve endpoints are nested under a layer:
-         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/``
-         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/``
+         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/``
+         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/``
          *
-         *     State transition action endpoints are on the top-level ``/api/frames/``
+         *     State transition action endpoints are on the top-level ``/api/tasks/``
          *     router, identified by UUID only (no nesting required for Workers):
-         *         ``POST /api/frames/{id}/start/``
-         *         ``POST /api/frames/{id}/succeed/``
-         *         ``POST /api/frames/{id}/fail/``
-         *         ``POST /api/frames/{id}/skip/``
-         *         ``POST /api/frames/{id}/checkpoint/``
+         *         ``POST /api/tasks/{id}/start/``
+         *         ``POST /api/tasks/{id}/succeed/``
+         *         ``POST /api/tasks/{id}/fail/``
+         *         ``POST /api/tasks/{id}/skip/``
+         *         ``POST /api/tasks/{id}/checkpoint/``
          */
-        get: operations["jobs_layers_frames_list"];
+        get: operations["jobs_layers_tasks_list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -325,7 +293,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/": {
+    "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/": {
         parameters: {
             query?: never;
             header?: never;
@@ -333,21 +301,21 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * @description ViewSet for listing frames and handling Worker state transition actions.
+         * @description ViewSet for listing tasks and handling Worker state transition actions.
          *
          *     List/retrieve endpoints are nested under a layer:
-         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/``
-         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/``
+         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/``
+         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/``
          *
-         *     State transition action endpoints are on the top-level ``/api/frames/``
+         *     State transition action endpoints are on the top-level ``/api/tasks/``
          *     router, identified by UUID only (no nesting required for Workers):
-         *         ``POST /api/frames/{id}/start/``
-         *         ``POST /api/frames/{id}/succeed/``
-         *         ``POST /api/frames/{id}/fail/``
-         *         ``POST /api/frames/{id}/skip/``
-         *         ``POST /api/frames/{id}/checkpoint/``
+         *         ``POST /api/tasks/{id}/start/``
+         *         ``POST /api/tasks/{id}/succeed/``
+         *         ``POST /api/tasks/{id}/fail/``
+         *         ``POST /api/tasks/{id}/skip/``
+         *         ``POST /api/tasks/{id}/checkpoint/``
          */
-        get: operations["jobs_layers_frames_retrieve"];
+        get: operations["jobs_layers_tasks_retrieve"];
         put?: never;
         post?: never;
         delete?: never;
@@ -356,7 +324,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/checkpoint/": {
+    "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/checkpoint/": {
         parameters: {
             query?: never;
             header?: never;
@@ -366,28 +334,28 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * @description Increment the checkpoint counter for a frame in progress.
+         * @description Increment the checkpoint counter for a task in progress.
          *
          *     Called by a Worker when it saves a resume checkpoint (e.g. a V-Ray
-         *     ``.vrimg`` file). The frame transitions to ``CHECKPOINT`` state to
+         *     ``.vrimg`` file). The task transitions to ``CHECKPOINT`` state to
          *     indicate that progress has been persisted.
          *
          *     Args:
          *         request: HTTP request.
-         *         pk: Frame UUID.
+         *         pk: Task UUID.
          *
          *     Returns:
          *         ``200 OK`` with the new checkpoint count.
-         *         ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
+         *         ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
          */
-        post: operations["jobs_layers_frames_checkpoint_create"];
+        post: operations["jobs_layers_tasks_checkpoint_create"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/fail/": {
+    "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/fail/": {
         parameters: {
             query?: never;
             header?: never;
@@ -397,28 +365,28 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * @description Mark a frame as FAILED or retry it based on the retry budget.
+         * @description Mark a task as FAILED or retry it based on the retry budget.
          *
-         *     Increments the retry counter. If ``retries >= max_retries``, the frame
+         *     Increments the retry counter. If ``retries >= max_retries``, the task
          *     transitions to ``FAILED`` permanently. Otherwise it reverts to ``READY``
          *     for re-dispatch.
          *
          *     Args:
          *         request: HTTP request containing ``exit_status``.
-         *         pk: Frame UUID.
+         *         pk: Task UUID.
          *
          *     Returns:
          *         ``200 OK`` with the resulting state (``failed`` or ``retrying``).
-         *         ``409 Conflict`` if the frame is not in RUNNING or CHECKPOINT state.
+         *         ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
          */
-        post: operations["jobs_layers_frames_fail_create"];
+        post: operations["jobs_layers_tasks_fail_create"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/skip/": {
+    "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/skip/": {
         parameters: {
             query?: never;
             header?: never;
@@ -428,28 +396,28 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * @description Dismiss a failed frame, allowing its dependents to proceed.
+         * @description Dismiss a failed task, allowing its dependents to proceed.
          *
-         *     Only available to staff users. Sets the frame state to ``SKIPPED``,
-         *     which (via signals) satisfies any dependencies blocked on this frame.
+         *     Only available to staff users. Sets the task state to ``SKIPPED``,
+         *     which (via signals) satisfies any dependencies blocked on this task.
          *
          *     Args:
          *         request: HTTP request.
-         *         pk: Frame UUID.
+         *         pk: Task UUID.
          *
          *     Returns:
          *         ``200 OK`` on success.
          *         ``403 Forbidden`` if the requesting user is not staff.
-         *         ``409 Conflict`` if the frame is not in FAILED state.
+         *         ``409 Conflict`` if the task is not in FAILED state.
          */
-        post: operations["jobs_layers_frames_skip_create"];
+        post: operations["jobs_layers_tasks_skip_create"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/start/": {
+    "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/start/": {
         parameters: {
             query?: never;
             header?: never;
@@ -459,27 +427,27 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * @description Mark a frame as RUNNING when a Worker begins execution.
+         * @description Mark a task as RUNNING when a Worker begins execution.
          *
          *     Records the Worker hostname and execution start timestamp. Only
-         *     valid when the frame is in ``READY`` state.
+         *     valid when the task is in ``READY`` state.
          *
          *     Args:
          *         request: HTTP request containing ``worker_name``.
-         *         pk: Frame UUID.
+         *         pk: Task UUID.
          *
          *     Returns:
          *         ``200 OK`` on success.
-         *         ``409 Conflict`` if the frame is not in READY state.
+         *         ``409 Conflict`` if the task is not in READY state.
          */
-        post: operations["jobs_layers_frames_start_create"];
+        post: operations["jobs_layers_tasks_start_create"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/succeed/": {
+    "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/succeed/": {
         parameters: {
             query?: never;
             header?: never;
@@ -489,12 +457,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * @description Mark a frame as SUCCEEDED and record telemetry.
+         * @description Mark a task as SUCCEEDED and record telemetry.
          *
          *     Transitions state, logs exit code and stop timestamp.
-         *     Returns 409 if the frame isn't currently running/checkpointing.
+         *     Returns 409 if the task isn't currently running/checkpointing.
          */
-        post: operations["jobs_layers_frames_succeed_create"];
+        post: operations["jobs_layers_tasks_succeed_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -512,8 +480,8 @@ export interface paths {
          * @description Read-only ViewSet for listing and retrieving layers scoped to a job.
          *
          *     Endpoints (nested under /api/jobs/{job_pk}/):
-         *         ``GET  /api/jobs/{job_pk}/layers/``         ù list all layers for a job.
-         *         ``GET  /api/jobs/{job_pk}/layers/{id}/``    ù retrieve a single layer.
+         *         ``GET  /api/jobs/{job_pk}/layers/``         — list all layers for a job.
+         *         ``GET  /api/jobs/{job_pk}/layers/{id}/``    — retrieve a single layer.
          *
          *     All endpoints require authentication. Layers are scoped to the parent job
          *     via the ``job_pk`` URL kwarg.
@@ -538,13 +506,13 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
          */
         get: operations["jobs_retrieve"];
         put?: never;
@@ -553,13 +521,13 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
          */
         delete: operations["jobs_destroy"];
         options?: never;
@@ -568,13 +536,13 @@ export interface paths {
          * @description ViewSet for listing, submitting, updating, and deleting jobs.
          *
          *     Endpoints:
-         *         ``GET    /api/jobs/``         ù list all jobs, supports filtering.
-         *         ``POST   /api/jobs/``         ù submit a new job with nested layers.
-         *         ``GET    /api/jobs/{id}/``    ù retrieve full job detail with layers.
-         *         ``PATCH  /api/jobs/{id}/``    ù update priority or visible_name.
-         *         ``DELETE /api/jobs/{id}/``    ù delete a job and all its layers/frames.
-         *         ``POST   /api/jobs/{id}/pause/``  ù pause the job.
-         *         ``POST   /api/jobs/{id}/resume/`` ù resume a paused job.
+         *         ``GET    /api/jobs/``         — list all jobs, supports filtering.
+         *         ``POST   /api/jobs/``         — submit a new job with nested layers.
+         *         ``GET    /api/jobs/{id}/``    — retrieve full job detail with layers.
+         *         ``PATCH  /api/jobs/{id}/``    — update priority or visible_name.
+         *         ``DELETE /api/jobs/{id}/``    — delete a job and all its layers/tasks.
+         *         ``POST   /api/jobs/{id}/pause/``  — pause the job.
+         *         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
          */
         patch: operations["jobs_partial_update"];
         trace?: never;
@@ -589,10 +557,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * @description Pause a job, preventing new frames from being dispatched.
+         * @description Pause a job, preventing new tasks from being dispatched.
          *
          *     Sets ``is_paused=True`` on the job. Does not terminate currently
-         *     running frames ù they will complete their current render.
+         *     running tasks — they will complete their current render.
          *
          *     Args:
          *         request: The HTTP request.
@@ -618,7 +586,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * @description Resume a paused job, allowing frames to be dispatched again.
+         * @description Resume a paused job, allowing tasks to be dispatched again.
          *
          *     Sets ``is_paused=False`` on the job.
          *
@@ -672,6 +640,286 @@ export interface paths {
         head?: never;
         /** @description ViewSet for listing, creating, and managing worker pools. */
         patch: operations["pools_partial_update"];
+        trace?: never;
+    };
+    "/api/tasks/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description ViewSet for listing tasks and handling Worker state transition actions.
+         *
+         *     List/retrieve endpoints are nested under a layer:
+         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/``
+         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/``
+         *
+         *     State transition action endpoints are on the top-level ``/api/tasks/``
+         *     router, identified by UUID only (no nesting required for Workers):
+         *         ``POST /api/tasks/{id}/start/``
+         *         ``POST /api/tasks/{id}/succeed/``
+         *         ``POST /api/tasks/{id}/fail/``
+         *         ``POST /api/tasks/{id}/skip/``
+         *         ``POST /api/tasks/{id}/checkpoint/``
+         */
+        get: operations["tasks_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description ViewSet for listing tasks and handling Worker state transition actions.
+         *
+         *     List/retrieve endpoints are nested under a layer:
+         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/``
+         *         ``GET  /api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/``
+         *
+         *     State transition action endpoints are on the top-level ``/api/tasks/``
+         *     router, identified by UUID only (no nesting required for Workers):
+         *         ``POST /api/tasks/{id}/start/``
+         *         ``POST /api/tasks/{id}/succeed/``
+         *         ``POST /api/tasks/{id}/fail/``
+         *         ``POST /api/tasks/{id}/skip/``
+         *         ``POST /api/tasks/{id}/checkpoint/``
+         */
+        get: operations["tasks_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{id}/checkpoint/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Increment the checkpoint counter for a task in progress.
+         *
+         *     Called by a Worker when it saves a resume checkpoint (e.g. a V-Ray
+         *     ``.vrimg`` file). The task transitions to ``CHECKPOINT`` state to
+         *     indicate that progress has been persisted.
+         *
+         *     Args:
+         *         request: HTTP request.
+         *         pk: Task UUID.
+         *
+         *     Returns:
+         *         ``200 OK`` with the new checkpoint count.
+         *         ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
+         */
+        post: operations["tasks_checkpoint_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{id}/fail/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Mark a task as FAILED or retry it based on the retry budget.
+         *
+         *     Increments the retry counter. If ``retries >= max_retries``, the task
+         *     transitions to ``FAILED`` permanently. Otherwise it reverts to ``READY``
+         *     for re-dispatch.
+         *
+         *     Args:
+         *         request: HTTP request containing ``exit_status``.
+         *         pk: Task UUID.
+         *
+         *     Returns:
+         *         ``200 OK`` with the resulting state (``failed`` or ``retrying``).
+         *         ``409 Conflict`` if the task is not in RUNNING or CHECKPOINT state.
+         */
+        post: operations["tasks_fail_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{id}/skip/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Dismiss a failed task, allowing its dependents to proceed.
+         *
+         *     Only available to staff users. Sets the task state to ``SKIPPED``,
+         *     which (via signals) satisfies any dependencies blocked on this task.
+         *
+         *     Args:
+         *         request: HTTP request.
+         *         pk: Task UUID.
+         *
+         *     Returns:
+         *         ``200 OK`` on success.
+         *         ``403 Forbidden`` if the requesting user is not staff.
+         *         ``409 Conflict`` if the task is not in FAILED state.
+         */
+        post: operations["tasks_skip_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{id}/start/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Mark a task as RUNNING when a Worker begins execution.
+         *
+         *     Records the Worker hostname and execution start timestamp. Only
+         *     valid when the task is in ``READY`` state.
+         *
+         *     Args:
+         *         request: HTTP request containing ``worker_name``.
+         *         pk: Task UUID.
+         *
+         *     Returns:
+         *         ``200 OK`` on success.
+         *         ``409 Conflict`` if the task is not in READY state.
+         */
+        post: operations["tasks_start_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/{id}/succeed/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Mark a task as SUCCEEDED and record telemetry.
+         *
+         *     Transitions state, logs exit code and stop timestamp.
+         *     Returns 409 if the task isn't currently running/checkpointing.
+         */
+        post: operations["tasks_succeed_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/dispatch/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Atomically find, lock, and dispatch a READY task to a worker. */
+        post: operations["tasks_dispatch_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["users_list"];
+        put?: never;
+        post: operations["users_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["users_retrieve"];
+        put: operations["users_update"];
+        post?: never;
+        delete: operations["users_destroy"];
+        options?: never;
+        head?: never;
+        patch: operations["users_partial_update"];
+        trace?: never;
+    };
+    "/api/users/{id}/password/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * @description Dedicated view for Superusers to reset any user's password.
+         *     Inherits from UpdateAPIView to ensure only PUT/PATCH requests are supported.
+         */
+        put: operations["users_password_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * @description Dedicated view for Superusers to reset any user's password.
+         *     Inherits from UpdateAPIView to ensure only PUT/PATCH requests are supported.
+         */
+        patch: operations["users_password_partial_update"];
         trace?: never;
     };
     "/api/workers/": {
@@ -730,116 +978,148 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * @description Full read-only frame representation for detail and Worker poll views.
+         * @description * `Superuser` - Superuser
+         *     * `Staff` - Staff
+         *     * `Client` - Client
+         * @enum {string}
+         */
+        AccessLevelEnum: "Superuser" | "Staff" | "Client";
+        /**
+         * @description Write-only serializer for creating a new Dependency.
          *
-         *     Extends :class:`FrameListSerializer` with execution telemetry fields.
+         *     Validates that the dependency type matches the provided FKs, that no
+         *     self-dependency is introduced, and that adding the edge would not form
+         *     a cycle in the dependency graph.
          *
          *     Attributes:
-         *         max_memory_used_mb: Peak RSS memory in MB.
-         *         cores_used: CPU cores reserved at dispatch time.
-         *         checkpoint_count: Number of resume checkpoints saved.
-         *         dispatch_order: Dispatch priority within the layer.
+         *         type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+         *         dep_job: The blocked Job.
+         *         dep_layer: The blocked Layer (required for LAYER_ON_LAYER).
+         *         dep_task: The blocked Task (required for TASK_ON_TASK).
+         *         parent_job: The blocking Job.
+         *         parent_layer: The blocking Layer (required for LAYER_ON_LAYER).
+         *         parent_task: The blocking Task (required for TASK_ON_TASK).
          */
-        FrameDetail: {
-            /** Format: uuid */
-            readonly id: string;
-            readonly name: string;
-            readonly number: number;
-            readonly state: components["schemas"]["State23dEnum"];
-            /** Dependency count */
-            readonly depend_count: number;
-            readonly retries: number;
-            /** Worker hostname */
-            readonly worker_name: string | null;
-            /** @description Raw process exit code returned by the worker. -1 means the frame has not completed. */
-            readonly exit_status: number;
-            /** Format: date-time */
-            readonly started_at: string | null;
-            /** Format: date-time */
-            readonly stopped_at: string | null;
-            /** Peak memory used (MB) */
-            readonly max_memory_used_mb: number;
-            readonly cores_used: number | null;
-            /** @description How many times the worker has reported saving intermediate progress (useful for resuming aborted frames). */
-            readonly checkpoint_count: number;
-            /** @description Scheduler priority within the layer. Lower numbers are dispatched first. */
-            readonly dispatch_order: number;
+        DependencyCreate: {
+            type: components["schemas"]["TypeEnum"];
+            /**
+             * Blocked job
+             * Format: uuid
+             * @description The job that is WAITING. It cannot start until the blocking (parent) entity completes.
+             */
+            dep_job: string;
+            /**
+             * Blocked layer
+             * Format: uuid
+             * @description The specific layer that is WAITING (required for LAYER_ON_LAYER dependencies).
+             */
+            dep_layer?: string | null;
+            /**
+             * Blocked task
+             * Format: uuid
+             * @description The specific task that is WAITING (required for TASK_ON_TASK dependencies).
+             */
+            dep_task?: string | null;
+            /**
+             * Blocking job
+             * Format: uuid
+             * @description The job that must complete FIRST before the blocked entity is released.
+             */
+            parent_job: string;
+            /**
+             * Blocking layer
+             * Format: uuid
+             * @description The specific layer that must complete FIRST (required for LAYER_ON_LAYER dependencies).
+             */
+            parent_layer?: string | null;
+            /**
+             * Blocking task
+             * Format: uuid
+             * @description The specific task that must complete FIRST (required for TASK_ON_TASK dependencies).
+             */
+            parent_task?: string | null;
         };
         /**
-         * @description Validates payload when a Worker reports a frame as FAILED.
-         *
-         *     Attributes:
-         *         exit_status: Non-zero process exit code.
-         */
-        FrameFail: {
-            /** @description Non-zero process exit code from the render process. */
-            exit_status: number;
-        };
-        /**
-         * @description Slim read-only frame representation for list views.
+         * @description Full read-only representation of a Dependency.
          *
          *     Attributes:
          *         id: UUID primary key.
-         *         name: Display name (e.g. 'beauty_0042').
-         *         number: Render frame index.
-         *         state: Current execution state.
-         *         depend_count: Number of unresolved dependencies.
-         *         retries: Execution attempt count.
-         *         worker_name: Hostname of the executing Worker.
-         *         exit_status: Process exit code (-1 if not yet run).
-         *         started_at: Execution start timestamp.
-         *         stopped_at: Execution stop timestamp.
+         *         type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+         *         dep_job: The blocked Job UUID.
+         *         dep_layer: The blocked Layer UUID (if applicable).
+         *         dep_task: The blocked Task UUID (if applicable).
+         *         parent_job: The blocking Job UUID.
+         *         parent_layer: The blocking Layer UUID (if applicable).
+         *         parent_task: The blocking Task UUID (if applicable).
+         *         is_satisfied: True once the blocking entity has completed.
+         *         created_at: Creation timestamp.
+         *         satisfied_at: Satisfaction timestamp.
          */
-        FrameList: {
+        DependencyRead: {
             /** Format: uuid */
             readonly id: string;
-            readonly name: string;
-            readonly number: number;
-            readonly state: components["schemas"]["State23dEnum"];
-            /** Dependency count */
-            readonly depend_count: number;
-            readonly retries: number;
-            /** Worker hostname */
-            readonly worker_name: string | null;
-            /** @description Raw process exit code returned by the worker. -1 means the frame has not completed. */
-            readonly exit_status: number;
+            readonly type: components["schemas"]["TypeEnum"];
+            /**
+             * Blocked job
+             * Format: uuid
+             * @description The job that is WAITING. It cannot start until the blocking (parent) entity completes.
+             */
+            readonly dep_job: string;
+            readonly dep_job_name: string;
+            /**
+             * Blocked layer
+             * Format: uuid
+             * @description The specific layer that is WAITING (required for LAYER_ON_LAYER dependencies).
+             */
+            readonly dep_layer: string | null;
+            readonly dep_layer_name: string;
+            /**
+             * Blocked task
+             * Format: uuid
+             * @description The specific task that is WAITING (required for TASK_ON_TASK dependencies).
+             */
+            readonly dep_task: string | null;
+            readonly dep_task_name: string;
+            /**
+             * Blocking job
+             * Format: uuid
+             * @description The job that must complete FIRST before the blocked entity is released.
+             */
+            readonly parent_job: string;
+            readonly parent_job_name: string;
+            /**
+             * Blocking layer
+             * Format: uuid
+             * @description The specific layer that must complete FIRST (required for LAYER_ON_LAYER dependencies).
+             */
+            readonly parent_layer: string | null;
+            readonly parent_layer_name: string;
+            /**
+             * Blocking task
+             * Format: uuid
+             * @description The specific task that must complete FIRST (required for TASK_ON_TASK dependencies).
+             */
+            readonly parent_task: string | null;
+            readonly parent_task_name: string;
+            readonly is_satisfied: boolean;
             /** Format: date-time */
-            readonly started_at: string | null;
+            readonly created_at: string;
             /** Format: date-time */
-            readonly stopped_at: string | null;
+            readonly satisfied_at: string | null;
         };
         /**
-         * @description Validates payload when a Worker marks a frame as RUNNING.
-         *
-         *     Attributes:
-         *         worker_name: Hostname of the Worker claiming this frame.
+         * @description * `TASK_ON_TASK` - TASK_ON_TASK
+         *     * `LAYER_ON_LAYER` - LAYER_ON_LAYER
+         * @enum {string}
          */
-        FrameStart: {
-            /** @description Hostname of the Worker claiming this frame. */
-            worker_name: string;
-        };
+        DependencyTypeEnum: "TASK_ON_TASK" | "LAYER_ON_LAYER";
         /**
-         * @description Validates payload when a Worker reports a frame as SUCCEEDED.
-         *
-         *     Attributes:
-         *         exit_status: Process exit code (should be 0).
-         *         max_memory_used_mb: Peak RSS memory in MB.
-         *         cores_used: Actual CPU cores used.
+         * @description * `IMMEDIATE` - IMMEDIATE
+         *     * `LAST` - LAST
+         *     * `WAIT_LAYER` - WAIT_LAYER
+         * @enum {string}
          */
-        FrameSucceed: {
-            /**
-             * @description Process exit code. Should be 0 on success.
-             * @default 0
-             */
-            exit_status: number;
-            /**
-             * @description Peak RSS memory used by the render process, in MB.
-             * @default 0
-             */
-            max_memory_used_mb: number;
-            /** @description Actual CPU cores reserved by the Worker at dispatch time. */
-            cores_used?: number | null;
-        };
+        ExecutionModeEnum: "IMMEDIATE" | "LAST" | "WAIT_LAYER";
         /**
          * @description Write-only serializer for job submission.
          *
@@ -854,8 +1134,8 @@ export interface components {
          *         department: Department name.
          *         user: Submitter's display name.
          *         priority: Dispatch priority (1-100).
-         *         log_directory: Absolute path for frame logs.
-         *         max_frames_per_worker: Concurrent frames per Worker limit.
+         *         log_directory: Absolute path for task logs.
+         *         max_tasks_per_worker: Concurrent tasks per Worker limit.
          */
         JobCreate: {
             visible_name?: string;
@@ -866,15 +1146,38 @@ export interface components {
             priority?: number;
             log_directory: string;
             /**
-             * Max concurrent frames per worker
-             * @description Limits how many frames from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
+             * Max concurrent tasks per worker
+             * @description Limits how many tasks from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
              */
-            max_frames_per_worker?: number;
+            max_tasks_per_worker?: number;
             /** @description If specified, only workers in these pools can process this job. */
             included_pools?: string[];
             /** @description If specified, workers in these pools are strictly prevented from processing this job. */
             excluded_pools?: string[];
             layers: components["schemas"]["LayerCreate"][];
+            /** @description Optional list of JOB_ON_JOB external dependencies. */
+            dependencies?: components["schemas"]["JobDependencySpec"][];
+        };
+        /**
+         * @description Nested serializer for declaring JOB_ON_JOB deps at job submission.
+         *
+         *     Attributes:
+         *         parent_job: The UUID of the job that must finish first.
+         *         parent_layer: The name of the layer that must finish first (optional).
+         *         dep_layer: The name of the layer that is blocked (optional).
+         */
+        JobDependencySpec: {
+            /** @default JOB_ON_JOB */
+            type: string;
+            /**
+             * Format: uuid
+             * @description UUID of the job that must complete first (the blocker).
+             */
+            parent_job: string;
+            /** @description Optional name of the specific layer in the parent job that must complete. */
+            parent_layer?: string | null;
+            /** @description Optional name of the specific layer in this job that is blocked. */
+            dep_layer?: string | null;
         };
         /**
          * @description Full read-only job representation for detail views.
@@ -884,8 +1187,8 @@ export interface components {
          *
          *     Attributes:
          *         layers: Nested list of all layers belonging to this job.
-         *         log_directory: Absolute path for frame logs.
-         *         max_frames_per_worker: Concurrent frames per Worker limit.
+         *         log_directory: Absolute path for task logs.
+         *         max_tasks_per_worker: Concurrent tasks per Worker limit.
          *         stopped_at: Timestamp when job reached FINISHED or FAILED.
          */
         JobDetail: {
@@ -900,14 +1203,14 @@ export interface components {
             readonly state: components["schemas"]["State1dfEnum"];
             readonly priority: number;
             readonly is_paused: boolean;
-            readonly total_frames: number;
-            readonly waiting_frames: number;
-            readonly ready_frames: number;
-            readonly running_frames: number;
-            readonly succeeded_frames: number;
-            readonly failed_frames: number;
-            readonly skipped_frames: number;
-            readonly depend_frames: number;
+            readonly total_tasks: number;
+            readonly waiting_tasks: number;
+            readonly ready_tasks: number;
+            readonly running_tasks: number;
+            readonly succeeded_tasks: number;
+            readonly failed_tasks: number;
+            readonly skipped_tasks: number;
+            readonly depend_tasks: number;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -919,10 +1222,10 @@ export interface components {
             readonly layers: components["schemas"]["LayerDetail"][];
             readonly log_directory: string;
             /**
-             * Max concurrent frames per worker
-             * @description Limits how many frames from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
+             * Max concurrent tasks per worker
+             * @description Limits how many tasks from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
              */
-            readonly max_frames_per_worker: number;
+            readonly max_tasks_per_worker: number;
             /** Format: date-time */
             readonly stopped_at: string | null;
         };
@@ -939,14 +1242,14 @@ export interface components {
          *         state: Current execution state.
          *         priority: Dispatch priority (1-100).
          *         is_paused: Standalone pause flag.
-         *         total_frames: Counter cache.
-         *         waiting_frames: Counter cache.
-         *         ready_frames: Counter cache.
-         *         running_frames: Counter cache.
-         *         succeeded_frames: Counter cache.
-         *         failed_frames: Counter cache.
-         *         skipped_frames: Counter cache.
-         *         depend_frames: Counter cache.
+         *         total_tasks: Counter cache.
+         *         waiting_tasks: Counter cache.
+         *         ready_tasks: Counter cache.
+         *         running_tasks: Counter cache.
+         *         succeeded_tasks: Counter cache.
+         *         failed_tasks: Counter cache.
+         *         skipped_tasks: Counter cache.
+         *         depend_tasks: Counter cache.
          *         created_at: Submission timestamp.
          *         updated_at: Last update timestamp.
          */
@@ -962,14 +1265,14 @@ export interface components {
             readonly state: components["schemas"]["State1dfEnum"];
             readonly priority: number;
             readonly is_paused: boolean;
-            readonly total_frames: number;
-            readonly waiting_frames: number;
-            readonly ready_frames: number;
-            readonly running_frames: number;
-            readonly succeeded_frames: number;
-            readonly failed_frames: number;
-            readonly skipped_frames: number;
-            readonly depend_frames: number;
+            readonly total_tasks: number;
+            readonly waiting_tasks: number;
+            readonly ready_tasks: number;
+            readonly running_tasks: number;
+            readonly succeeded_tasks: number;
+            readonly failed_tasks: number;
+            readonly skipped_tasks: number;
+            readonly depend_tasks: number;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -988,16 +1291,16 @@ export interface components {
          *     Attributes:
          *         visible_name: Human-readable label.
          *         priority: Dispatch priority (1-100).
-         *         max_frames_per_worker: Concurrent frames per Worker limit.
+         *         max_tasks_per_worker: Concurrent tasks per Worker limit.
          */
         JobPatch: {
             visible_name?: string;
             priority?: number;
             /**
-             * Max concurrent frames per worker
-             * @description Limits how many frames from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
+             * Max concurrent tasks per worker
+             * @description Limits how many tasks from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
              */
-            max_frames_per_worker?: number;
+            max_tasks_per_worker?: number;
             /** @description If specified, only workers in these pools can process this job. */
             included_pools?: string[];
             /** @description If specified, workers in these pools are strictly prevented from processing this job. */
@@ -1022,10 +1325,17 @@ export interface components {
          *         scene_path: DCC scene file path.
          *         scene_info: DCC scene metadata JSON.
          *         env: Environment variable overrides.
-         *         max_retries: Per-frame retry ceiling.
-         *         timeout_seconds: Frame execution timeout.
+         *         max_retries: Per-task retry ceiling.
+         *         timeout_seconds: Task execution timeout.
+         *         execution_mode: Dependency logic mode.
+         *         depends_on_layer: The layer name to wait for (if WAIT_LAYER).
+         *         dependency_type: The dependency mapping type (if WAIT_LAYER).
          */
         LayerCreate: {
+            /** @default IMMEDIATE */
+            execution_mode: components["schemas"]["ExecutionModeEnum"];
+            depends_on_layer?: string | null;
+            dependency_type?: (components["schemas"]["DependencyTypeEnum"] | components["schemas"]["NullEnum"]) | null;
             name: string;
             /** Render pass type */
             layer_type?: components["schemas"]["LayerTypeEnum"];
@@ -1065,8 +1375,8 @@ export interface components {
          *         scene_path: DCC scene file path.
          *         scene_info: DCC scene metadata JSON.
          *         env: Environment variable overrides.
-         *         max_retries: Per-frame retry ceiling.
-         *         timeout_seconds: Frame execution timeout.
+         *         max_retries: Per-task retry ceiling.
+         *         timeout_seconds: Task execution timeout.
          */
         LayerDetail: {
             /** Format: uuid */
@@ -1076,14 +1386,14 @@ export interface components {
             readonly layer_type: components["schemas"]["LayerTypeEnum"];
             readonly state: components["schemas"]["State1dfEnum"];
             readonly frame_range: string;
-            readonly total_frames: number;
-            readonly waiting_frames: number;
-            readonly ready_frames: number;
-            readonly running_frames: number;
-            readonly succeeded_frames: number;
-            readonly failed_frames: number;
-            readonly skipped_frames: number;
-            readonly depend_frames: number;
+            readonly total_tasks: number;
+            readonly waiting_tasks: number;
+            readonly ready_tasks: number;
+            readonly running_tasks: number;
+            readonly succeeded_tasks: number;
+            readonly failed_tasks: number;
+            readonly skipped_tasks: number;
+            readonly depend_tasks: number;
             readonly command: string;
             /**
              * Frames per chunk
@@ -1113,14 +1423,14 @@ export interface components {
          *         layer_type: Render pass type.
          *         state: Current execution state.
          *         frame_range: VFX frame range descriptor.
-         *         total_frames: Counter cache.
-         *         waiting_frames: Counter cache.
-         *         ready_frames: Counter cache.
-         *         running_frames: Counter cache.
-         *         succeeded_frames: Counter cache.
-         *         failed_frames: Counter cache.
-         *         skipped_frames: Counter cache.
-         *         depend_frames: Counter cache.
+         *         total_tasks: Counter cache.
+         *         waiting_tasks: Counter cache.
+         *         ready_tasks: Counter cache.
+         *         running_tasks: Counter cache.
+         *         succeeded_tasks: Counter cache.
+         *         failed_tasks: Counter cache.
+         *         skipped_tasks: Counter cache.
+         *         depend_tasks: Counter cache.
          */
         LayerList: {
             /** Format: uuid */
@@ -1130,14 +1440,14 @@ export interface components {
             readonly layer_type: components["schemas"]["LayerTypeEnum"];
             readonly state: components["schemas"]["State1dfEnum"];
             readonly frame_range: string;
-            readonly total_frames: number;
-            readonly waiting_frames: number;
-            readonly ready_frames: number;
-            readonly running_frames: number;
-            readonly succeeded_frames: number;
-            readonly failed_frames: number;
-            readonly skipped_frames: number;
-            readonly depend_frames: number;
+            readonly total_tasks: number;
+            readonly waiting_tasks: number;
+            readonly ready_tasks: number;
+            readonly running_tasks: number;
+            readonly succeeded_tasks: number;
+            readonly failed_tasks: number;
+            readonly skipped_tasks: number;
+            readonly depend_tasks: number;
         };
         /**
          * @description * `RENDER` - Render
@@ -1146,7 +1456,9 @@ export interface components {
          * @enum {string}
          */
         LayerTypeEnum: "RENDER" | "UTIL" | "POST";
-        PaginatedFrameListList: {
+        /** @enum {unknown} */
+        NullEnum: null;
+        PaginatedDependencyReadList: {
             /** @example 123 */
             count: number;
             /**
@@ -1159,7 +1471,7 @@ export interface components {
              * @example http://api.example.org/accounts/?page=2
              */
             previous?: string | null;
-            results: components["schemas"]["FrameList"][];
+            results: components["schemas"]["DependencyRead"][];
         };
         PaginatedJobListList: {
             /** @example 123 */
@@ -1190,6 +1502,21 @@ export interface components {
              */
             previous?: string | null;
             results: components["schemas"]["LayerList"][];
+        };
+        PaginatedTaskListList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=4
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=2
+             */
+            previous?: string | null;
+            results: components["schemas"]["TaskList"][];
         };
         PaginatedWorkerNodeList: {
             /** @example 123 */
@@ -1230,26 +1557,39 @@ export interface components {
          *     Attributes:
          *         visible_name: Human-readable label.
          *         priority: Dispatch priority (1-100).
-         *         max_frames_per_worker: Concurrent frames per Worker limit.
+         *         max_tasks_per_worker: Concurrent tasks per Worker limit.
          */
         PatchedJobPatch: {
             visible_name?: string;
             priority?: number;
             /**
-             * Max concurrent frames per worker
-             * @description Limits how many frames from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
+             * Max concurrent tasks per worker
+             * @description Limits how many tasks from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
              */
-            max_frames_per_worker?: number;
+            max_tasks_per_worker?: number;
             /** @description If specified, only workers in these pools can process this job. */
             included_pools?: string[];
             /** @description If specified, workers in these pools are strictly prevented from processing this job. */
             excluded_pools?: string[];
+        };
+        PatchedUserPasswordReset: {
+            password?: string;
+        };
+        PatchedUserUpdate: {
+            first_name?: string;
+            last_name?: string;
+            /** Format: email */
+            email?: string;
+            title_role?: components["schemas"]["TitleRoleEnum"];
+            access_level?: components["schemas"]["AccessLevelEnum"];
         };
         PatchedWorkerPool: {
             /** Format: uuid */
             readonly id?: string;
             name?: string;
             description?: string;
+            readonly worker_count?: number;
+            readonly workers?: string[];
             /** Format: date-time */
             readonly created_at?: string;
             /** Format: date-time */
@@ -1282,6 +1622,193 @@ export interface components {
          * @enum {string}
          */
         StatusEnum: "ONLINE" | "OFFLINE" | "RENDERING";
+        /**
+         * @description Full read-only task representation for detail and Worker poll views.
+         *
+         *     Extends :class:`TaskListSerializer` with execution telemetry fields.
+         *
+         *     Attributes:
+         *         max_memory_used_mb: Peak RSS memory in MB.
+         *         cores_used: CPU cores reserved at dispatch time.
+         *         checkpoint_count: Number of resume checkpoints saved.
+         *         dispatch_order: Dispatch priority within the layer.
+         */
+        TaskDetail: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            readonly frame_start: number;
+            readonly frame_end: number;
+            readonly state: components["schemas"]["State23dEnum"];
+            /** Dependency count */
+            readonly depend_count: number;
+            readonly retries: number;
+            /** Worker hostname */
+            readonly worker_name: string | null;
+            /** @description Raw process exit code returned by the worker. -1 means the task has not completed. */
+            readonly exit_status: number;
+            /** Format: date-time */
+            readonly started_at: string | null;
+            /** Format: date-time */
+            readonly stopped_at: string | null;
+            /** Peak memory used (MB) */
+            readonly max_memory_used_mb: number;
+            readonly cores_used: number | null;
+            /** @description How many times the worker has reported saving intermediate progress (useful for resuming aborted tasks). */
+            readonly checkpoint_count: number;
+            /** @description Scheduler priority within the layer. Lower numbers are dispatched first. */
+            readonly dispatch_order: number;
+        };
+        /**
+         * @description Validates payload when a Worker reports a task as FAILED.
+         *
+         *     Attributes:
+         *         exit_status: Non-zero process exit code.
+         */
+        TaskFail: {
+            /** @description Non-zero process exit code from the render process. */
+            exit_status: number;
+        };
+        /**
+         * @description Slim read-only task representation for list views.
+         *
+         *     Attributes:
+         *         id: UUID primary key.
+         *         name: Display name (e.g. 'beauty_0042').
+         *         frame_start: First render frame index.
+         *         frame_end: Last render frame index.
+         *         state: Current execution state.
+         *         depend_count: Number of unresolved dependencies.
+         *         retries: Execution attempt count.
+         *         worker_name: Hostname of the executing Worker.
+         *         exit_status: Process exit code (-1 if not yet run).
+         *         started_at: Execution start timestamp.
+         *         stopped_at: Execution stop timestamp.
+         */
+        TaskList: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            readonly frame_start: number;
+            readonly frame_end: number;
+            readonly state: components["schemas"]["State23dEnum"];
+            /** Dependency count */
+            readonly depend_count: number;
+            readonly retries: number;
+            /** Worker hostname */
+            readonly worker_name: string | null;
+            /** @description Raw process exit code returned by the worker. -1 means the task has not completed. */
+            readonly exit_status: number;
+            /** Format: date-time */
+            readonly started_at: string | null;
+            /** Format: date-time */
+            readonly stopped_at: string | null;
+        };
+        /**
+         * @description Validates payload when a Worker marks a task as RUNNING.
+         *
+         *     Attributes:
+         *         worker_name: Hostname of the Worker claiming this task.
+         */
+        TaskStart: {
+            /** @description Hostname of the Worker claiming this task. */
+            worker_name: string;
+        };
+        /**
+         * @description Validates payload when a Worker reports a task as SUCCEEDED.
+         *
+         *     Attributes:
+         *         exit_status: Process exit code (should be 0).
+         *         max_memory_used_mb: Peak RSS memory in MB.
+         *         cores_used: Actual CPU cores used.
+         */
+        TaskSucceed: {
+            /**
+             * @description Process exit code. Should be 0 on success.
+             * @default 0
+             */
+            exit_status: number;
+            /**
+             * @description Peak RSS memory used by the render process, in MB.
+             * @default 0
+             */
+            max_memory_used_mb: number;
+            /** @description Actual CPU cores reserved by the Worker at dispatch time. */
+            cores_used?: number | null;
+        };
+        /**
+         * @description * `Technical Director` - Technical Director
+         *     * `Animator` - Animator
+         *     * `Pipeline Engineer` - Pipeline Engineer
+         *     * `FX Artist` - FX Artist
+         *     * `Lighting Lead` - Lighting Lead
+         *     * `Render User` - Render User
+         * @enum {string}
+         */
+        TitleRoleEnum: "Technical Director" | "Animator" | "Pipeline Engineer" | "FX Artist" | "Lighting Lead" | "Render User";
+        /**
+         * @description * `JOB_ON_JOB` - Job on Job
+         *     * `LAYER_ON_LAYER` - Layer on Layer
+         *     * `TASK_ON_TASK` - Task on Task
+         * @enum {string}
+         */
+        TypeEnum: "JOB_ON_JOB" | "LAYER_ON_LAYER" | "TASK_ON_TASK";
+        User: {
+            readonly id: number;
+            readonly first_name: string;
+            readonly last_name: string;
+            readonly full_name: string;
+            /** @description Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only. */
+            readonly username: string;
+            /**
+             * Email address
+             * Format: email
+             */
+            readonly email: string;
+            readonly title_role: string;
+            readonly access_level: string;
+            /**
+             * Active
+             * @description Designates whether this user should be treated as active. Unselect this instead of deleting accounts.
+             */
+            readonly is_active: boolean;
+            /**
+             * Staff status
+             * @description Designates whether the user can log into this admin site.
+             */
+            readonly is_staff: boolean;
+            /**
+             * Superuser status
+             * @description Designates that this user has all permissions without explicitly assigning them.
+             */
+            readonly is_superuser: boolean;
+            /** Format: date-time */
+            readonly date_joined: string;
+            /** Format: date-time */
+            readonly last_login: string | null;
+        };
+        UserCreate: {
+            first_name?: string;
+            last_name?: string;
+            /** @description Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only. */
+            username: string;
+            /** Format: email */
+            email: string;
+            title_role: components["schemas"]["TitleRoleEnum"];
+            access_level: components["schemas"]["AccessLevelEnum"];
+            password: string;
+        };
+        UserPasswordReset: {
+            password: string;
+        };
+        UserUpdate: {
+            first_name?: string;
+            last_name?: string;
+            /** Format: email */
+            email: string;
+            title_role: components["schemas"]["TitleRoleEnum"];
+            access_level: components["schemas"]["AccessLevelEnum"];
+        };
         WorkerNode: {
             readonly id: number;
             hostname: string;
@@ -1304,6 +1831,8 @@ export interface components {
             readonly id: string;
             name: string;
             description?: string;
+            readonly worker_count: number;
+            readonly workers: string[];
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
@@ -1318,25 +1847,28 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    frames_list: {
+    dependencies_list: {
         parameters: {
             query?: {
+                dep_job?: string;
+                dep_layer?: string;
+                dep_task?: string;
+                is_satisfied?: boolean;
                 /** @description Which field to use when ordering the results. */
                 ordering?: string;
                 /** @description A page number within the paginated result set. */
                 page?: number;
+                parent_job?: string;
+                parent_layer?: string;
+                parent_task?: string;
                 /** @description A search term. */
                 search?: string;
                 /**
-                 * @description * `WAITING` - Waiting
-                 *     * `READY` - Ready
-                 *     * `RUNNING` - Running
-                 *     * `CHECKPOINT` - Checkpointing
-                 *     * `SUCCEEDED` - Succeeded
-                 *     * `FAILED` - Failed
-                 *     * `SKIPPED` - Skipped
+                 * @description * `JOB_ON_JOB` - Job on Job
+                 *     * `LAYER_ON_LAYER` - Layer on Layer
+                 *     * `TASK_ON_TASK` - Task on Task
                  */
-                state?: "CHECKPOINT" | "FAILED" | "READY" | "RUNNING" | "SKIPPED" | "SUCCEEDED" | "WAITING";
+                type?: "JOB_ON_JOB" | "LAYER_ON_LAYER" | "TASK_ON_TASK";
             };
             header?: never;
             path?: never;
@@ -1349,17 +1881,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedFrameListList"];
+                    "application/json": components["schemas"]["PaginatedDependencyReadList"];
                 };
             };
         };
     };
-    frames_retrieve: {
+    dependencies_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DependencyCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["DependencyCreate"];
+                "multipart/form-data": components["schemas"]["DependencyCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyCreate"];
+                };
+            };
+        };
+    };
+    dependencies_retrieve: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this frame. */
+                /** @description A UUID string identifying this dependency. */
                 id: string;
             };
             cookie?: never;
@@ -1371,173 +1928,29 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FrameDetail"];
+                    "application/json": components["schemas"]["DependencyRead"];
                 };
             };
         };
     };
-    frames_checkpoint_create: {
+    dependencies_destroy: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this frame. */
+                /** @description A UUID string identifying this dependency. */
                 id: string;
             };
             cookie?: never;
         };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["FrameDetail"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameDetail"];
-                "multipart/form-data": components["schemas"]["FrameDetail"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            200: {
+            /** @description No response body */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["FrameDetail"];
-                };
-            };
-        };
-    };
-    frames_fail_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A UUID string identifying this frame. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FrameFail"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameFail"];
-                "multipart/form-data": components["schemas"]["FrameFail"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FrameFail"];
-                };
-            };
-        };
-    };
-    frames_skip_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A UUID string identifying this frame. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["FrameDetail"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameDetail"];
-                "multipart/form-data": components["schemas"]["FrameDetail"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FrameDetail"];
-                };
-            };
-        };
-    };
-    frames_start_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A UUID string identifying this frame. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FrameStart"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameStart"];
-                "multipart/form-data": components["schemas"]["FrameStart"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FrameStart"];
-                };
-            };
-        };
-    };
-    frames_succeed_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A UUID string identifying this frame. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["FrameSucceed"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameSucceed"];
-                "multipart/form-data": components["schemas"]["FrameSucceed"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FrameSucceed"];
-                };
-            };
-        };
-    };
-    frames_dispatch_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FrameStart"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameStart"];
-                "multipart/form-data": components["schemas"]["FrameStart"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FrameStart"];
-                };
+                content?: never;
             };
         };
     };
@@ -1603,6 +2016,119 @@ export interface operations {
             };
         };
     };
+    jobs_dependencies_list: {
+        parameters: {
+            query?: {
+                dep_job?: string;
+                dep_layer?: string;
+                dep_task?: string;
+                is_satisfied?: boolean;
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                parent_job?: string;
+                parent_layer?: string;
+                parent_task?: string;
+                /** @description A search term. */
+                search?: string;
+                /**
+                 * @description * `JOB_ON_JOB` - Job on Job
+                 *     * `LAYER_ON_LAYER` - Layer on Layer
+                 *     * `TASK_ON_TASK` - Task on Task
+                 */
+                type?: "JOB_ON_JOB" | "LAYER_ON_LAYER" | "TASK_ON_TASK";
+            };
+            header?: never;
+            path: {
+                job_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedDependencyReadList"];
+                };
+            };
+        };
+    };
+    jobs_dependencies_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DependencyCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["DependencyCreate"];
+                "multipart/form-data": components["schemas"]["DependencyCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyCreate"];
+                };
+            };
+        };
+    };
+    jobs_dependencies_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this dependency. */
+                id: string;
+                job_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyRead"];
+                };
+            };
+        };
+    };
+    jobs_dependencies_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this dependency. */
+                id: string;
+                job_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     jobs_layers_list: {
         parameters: {
             query?: {
@@ -1631,7 +2157,7 @@ export interface operations {
             };
         };
     };
-    jobs_layers_frames_list: {
+    jobs_layers_tasks_list: {
         parameters: {
             query?: {
                 /** @description Which field to use when ordering the results. */
@@ -1665,17 +2191,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedFrameListList"];
+                    "application/json": components["schemas"]["PaginatedTaskListList"];
                 };
             };
         };
     };
-    jobs_layers_frames_retrieve: {
+    jobs_layers_tasks_retrieve: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this frame. */
+                /** @description A UUID string identifying this task. */
                 id: string;
                 job_pk: string;
                 layer_pk: string;
@@ -1689,17 +2215,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FrameDetail"];
+                    "application/json": components["schemas"]["TaskDetail"];
                 };
             };
         };
     };
-    jobs_layers_frames_checkpoint_create: {
+    jobs_layers_tasks_checkpoint_create: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this frame. */
+                /** @description A UUID string identifying this task. */
                 id: string;
                 job_pk: string;
                 layer_pk: string;
@@ -1708,9 +2234,9 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["FrameDetail"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameDetail"];
-                "multipart/form-data": components["schemas"]["FrameDetail"];
+                "application/json": components["schemas"]["TaskDetail"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskDetail"];
+                "multipart/form-data": components["schemas"]["TaskDetail"];
             };
         };
         responses: {
@@ -1719,17 +2245,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FrameDetail"];
+                    "application/json": components["schemas"]["TaskDetail"];
                 };
             };
         };
     };
-    jobs_layers_frames_fail_create: {
+    jobs_layers_tasks_fail_create: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this frame. */
+                /** @description A UUID string identifying this task. */
                 id: string;
                 job_pk: string;
                 layer_pk: string;
@@ -1738,9 +2264,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["FrameFail"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameFail"];
-                "multipart/form-data": components["schemas"]["FrameFail"];
+                "application/json": components["schemas"]["TaskFail"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskFail"];
+                "multipart/form-data": components["schemas"]["TaskFail"];
             };
         };
         responses: {
@@ -1749,17 +2275,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FrameFail"];
+                    "application/json": components["schemas"]["TaskFail"];
                 };
             };
         };
     };
-    jobs_layers_frames_skip_create: {
+    jobs_layers_tasks_skip_create: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this frame. */
+                /** @description A UUID string identifying this task. */
                 id: string;
                 job_pk: string;
                 layer_pk: string;
@@ -1768,9 +2294,9 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["FrameDetail"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameDetail"];
-                "multipart/form-data": components["schemas"]["FrameDetail"];
+                "application/json": components["schemas"]["TaskDetail"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskDetail"];
+                "multipart/form-data": components["schemas"]["TaskDetail"];
             };
         };
         responses: {
@@ -1779,17 +2305,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FrameDetail"];
+                    "application/json": components["schemas"]["TaskDetail"];
                 };
             };
         };
     };
-    jobs_layers_frames_start_create: {
+    jobs_layers_tasks_start_create: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this frame. */
+                /** @description A UUID string identifying this task. */
                 id: string;
                 job_pk: string;
                 layer_pk: string;
@@ -1798,9 +2324,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["FrameStart"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameStart"];
-                "multipart/form-data": components["schemas"]["FrameStart"];
+                "application/json": components["schemas"]["TaskStart"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskStart"];
+                "multipart/form-data": components["schemas"]["TaskStart"];
             };
         };
         responses: {
@@ -1809,17 +2335,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FrameStart"];
+                    "application/json": components["schemas"]["TaskStart"];
                 };
             };
         };
     };
-    jobs_layers_frames_succeed_create: {
+    jobs_layers_tasks_succeed_create: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A UUID string identifying this frame. */
+                /** @description A UUID string identifying this task. */
                 id: string;
                 job_pk: string;
                 layer_pk: string;
@@ -1828,9 +2354,9 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["FrameSucceed"];
-                "application/x-www-form-urlencoded": components["schemas"]["FrameSucceed"];
-                "multipart/form-data": components["schemas"]["FrameSucceed"];
+                "application/json": components["schemas"]["TaskSucceed"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskSucceed"];
+                "multipart/form-data": components["schemas"]["TaskSucceed"];
             };
         };
         responses: {
@@ -1839,7 +2365,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FrameSucceed"];
+                    "application/json": components["schemas"]["TaskSucceed"];
                 };
             };
         };
@@ -2139,6 +2665,427 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkerPool"];
+                };
+            };
+        };
+    };
+    tasks_list: {
+        parameters: {
+            query?: {
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                /** @description A search term. */
+                search?: string;
+                /**
+                 * @description * `WAITING` - Waiting
+                 *     * `READY` - Ready
+                 *     * `RUNNING` - Running
+                 *     * `CHECKPOINT` - Checkpointing
+                 *     * `SUCCEEDED` - Succeeded
+                 *     * `FAILED` - Failed
+                 *     * `SKIPPED` - Skipped
+                 */
+                state?: "CHECKPOINT" | "FAILED" | "READY" | "RUNNING" | "SKIPPED" | "SUCCEEDED" | "WAITING";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedTaskListList"];
+                };
+            };
+        };
+    };
+    tasks_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this task. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetail"];
+                };
+            };
+        };
+    };
+    tasks_checkpoint_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this task. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TaskDetail"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskDetail"];
+                "multipart/form-data": components["schemas"]["TaskDetail"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetail"];
+                };
+            };
+        };
+    };
+    tasks_fail_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this task. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskFail"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskFail"];
+                "multipart/form-data": components["schemas"]["TaskFail"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskFail"];
+                };
+            };
+        };
+    };
+    tasks_skip_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this task. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TaskDetail"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskDetail"];
+                "multipart/form-data": components["schemas"]["TaskDetail"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskDetail"];
+                };
+            };
+        };
+    };
+    tasks_start_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this task. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskStart"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskStart"];
+                "multipart/form-data": components["schemas"]["TaskStart"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskStart"];
+                };
+            };
+        };
+    };
+    tasks_succeed_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this task. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TaskSucceed"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskSucceed"];
+                "multipart/form-data": components["schemas"]["TaskSucceed"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskSucceed"];
+                };
+            };
+        };
+    };
+    tasks_dispatch_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskStart"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskStart"];
+                "multipart/form-data": components["schemas"]["TaskStart"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskStart"];
+                };
+            };
+        };
+    };
+    users_list: {
+        parameters: {
+            query?: {
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A search term. */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"][];
+                };
+            };
+        };
+    };
+    users_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["UserCreate"];
+                "multipart/form-data": components["schemas"]["UserCreate"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserCreate"];
+                };
+            };
+        };
+    };
+    users_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+        };
+    };
+    users_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["UserUpdate"];
+                "multipart/form-data": components["schemas"]["UserUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserUpdate"];
+                };
+            };
+        };
+    };
+    users_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    users_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedUserUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedUserUpdate"];
+                "multipart/form-data": components["schemas"]["PatchedUserUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserUpdate"];
+                };
+            };
+        };
+    };
+    users_password_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserPasswordReset"];
+                "application/x-www-form-urlencoded": components["schemas"]["UserPasswordReset"];
+                "multipart/form-data": components["schemas"]["UserPasswordReset"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPasswordReset"];
+                };
+            };
+        };
+    };
+    users_password_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedUserPasswordReset"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedUserPasswordReset"];
+                "multipart/form-data": components["schemas"]["PatchedUserPasswordReset"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPasswordReset"];
                 };
             };
         };

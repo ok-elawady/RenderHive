@@ -11,7 +11,6 @@ import tempfile
 import maya.cmds as cmds
 import maya.mel as mel
 
-from api.version import PLUGIN_VERSION
 
 
 SHELF_NAME = "RenderHive"
@@ -123,7 +122,7 @@ def get_shelf_top_level():
 
 
 def _python_open_command(install_dir):
-    return """
+    return r"""
 import importlib
 import os
 import sys
@@ -132,6 +131,21 @@ renderhive_path = r"{install_dir}"
 if renderhive_path in sys.path:
     sys.path.remove(renderhive_path)
 sys.path.insert(0, renderhive_path)
+
+modules_to_remove = []
+_normalized_path = renderhive_path.replace("\\\\", "/").replace("\\", "/").lower()
+for mod_name, mod in list(sys.modules.items()):
+    _mod_file = getattr(mod, "__file__", "") or ""
+    _mod_file = _mod_file.replace("\\\\", "/").replace("\\", "/").lower()
+    if _normalized_path in _mod_file:
+        modules_to_remove.append(mod_name)
+    elif mod_name.startswith("renderhive_"):
+        modules_to_remove.append(mod_name)
+for mod_name in modules_to_remove:
+    try:
+        del sys.modules[mod_name]
+    except KeyError:
+        pass
 
 import renderhive_maya_submitter
 renderhive_maya_submitter.show_submitter()
@@ -141,7 +155,7 @@ renderhive_maya_submitter.show_submitter()
 
 
 def _python_validate_command(install_dir):
-    return """
+    return r"""
 import importlib
 import os
 import sys
@@ -150,6 +164,21 @@ renderhive_path = r"{install_dir}"
 if renderhive_path in sys.path:
     sys.path.remove(renderhive_path)
 sys.path.insert(0, renderhive_path)
+
+modules_to_remove = []
+_normalized_path = renderhive_path.replace("\\\\", "/").replace("\\", "/").lower()
+for mod_name, mod in list(sys.modules.items()):
+    _mod_file = getattr(mod, "__file__", "") or ""
+    _mod_file = _mod_file.replace("\\\\", "/").replace("\\", "/").lower()
+    if _normalized_path in _mod_file:
+        modules_to_remove.append(mod_name)
+    elif mod_name.startswith("renderhive_"):
+        modules_to_remove.append(mod_name)
+for mod_name in modules_to_remove:
+    try:
+        del sys.modules[mod_name]
+    except KeyError:
+        pass
 
 import renderhive_maya_submitter
 renderhive_maya_submitter.show_submitter()
@@ -425,6 +454,11 @@ def write_install_info(
     install_dir,
     source_dir,
 ):
+    try:
+        from api.version import PLUGIN_VERSION
+    except ImportError:
+        PLUGIN_VERSION = "Unknown"
+
     info_path = os.path.join(
         install_dir,
         "renderhive_install_info.json"
@@ -455,6 +489,11 @@ def write_install_info(
 def install_from_drag_drop(
     source_dir
 ):
+    try:
+        from api.version import PLUGIN_VERSION
+    except ImportError:
+        PLUGIN_VERSION = "Unknown"
+
     install_dir = copy_package_to_maya_scripts(
         source_dir
     )
@@ -552,8 +591,11 @@ def uninstall_renderhive(
     # Clear the plugin from Maya's python memory cache
     import sys
     modules_to_remove = []
-    for mod_name, mod in sys.modules.items():
-        if getattr(mod, "__file__", None) and install_dir in getattr(mod, "__file__", ""):
+    _normalized_path = install_dir.replace("\\\\", "/").replace("\\", "/").lower()
+    for mod_name, mod in list(sys.modules.items()):
+        _mod_file = getattr(mod, "__file__", "") or ""
+        _mod_file = _mod_file.replace("\\\\", "/").replace("\\", "/").lower()
+        if _normalized_path in _mod_file:
             modules_to_remove.append(mod_name)
         elif mod_name.startswith("renderhive_"):
             modules_to_remove.append(mod_name)
@@ -575,3 +617,18 @@ def uninstall_renderhive(
     )
 
     return True
+
+
+def onMayaDroppedPythonFile(dropFile):
+    """
+    Called by Maya when this python file is dragged and dropped into the viewport.
+    """
+    import sys
+    import os
+    
+    source_dir = os.path.dirname(os.path.abspath(dropFile))
+    if source_dir not in sys.path:
+        sys.path.insert(0, source_dir)
+        
+    # Now that sys.path has the source dir, we can install
+    install_from_drag_drop(source_dir)

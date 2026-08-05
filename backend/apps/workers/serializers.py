@@ -4,10 +4,17 @@ from .models import WorkerNode, WorkerPool
 
 
 class WorkerPoolSerializer(serializers.ModelSerializer):
+    worker_count = serializers.IntegerField(source="workers.count", read_only=True)
+    workers = serializers.SlugRelatedField(
+        many=True,
+        read_only=True,
+        slug_field="hostname"
+    )
+
     class Meta:
         model = WorkerPool
-        fields = ["id", "name", "description", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        fields = ["id", "name", "description", "worker_count", "workers", "created_at", "updated_at"]
+        read_only_fields = ["id", "worker_count", "workers", "created_at", "updated_at"]
 
 
 class WorkerNodeSerializer(serializers.ModelSerializer):

@@ -5,14 +5,18 @@ import { cn } from "@/lib/utils"
 function Card({
   className,
   size = "default",
+  variant = "default",
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+}: React.ComponentProps<"div"> & { size?: "default" | "sm", variant?: "default" | "flush" }) {
   return (
     <div
       data-slot="card"
       data-size={size}
+      data-variant={variant}
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl bg-card py-(--card-spacing) text-sm text-card-foreground border border-border [--card-spacing:--spacing(4)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+        "group/card flex flex-col overflow-hidden rounded-xl bg-card text-sm text-card-foreground border border-border *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+        variant === "default" && "gap-(--card-spacing) py-(--card-spacing) [--card-spacing:--spacing(4)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)]",
+        variant === "flush" && "p-0 gap-0",
         className
       )}
       {...props}
@@ -20,12 +24,20 @@ function Card({
   )
 }
 
-function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+function CardHeader({ 
+  className, 
+  variant = "default",
+  ...props 
+}: React.ComponentProps<"div"> & { variant?: "default" | "flush" | "tabs" }) {
   return (
     <div
       data-slot="card-header"
+      data-variant={variant}
       className={cn(
-        "group/card-header @container/card-header grid auto-rows-min items-start gap-1.5 rounded-t-xl px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)",
+        "group/card-header @container/card-header rounded-t-xl",
+        variant === "default" && "grid auto-rows-min items-start gap-1.5 has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing) px-(--card-spacing)",
+        variant === "flush" && "flex flex-row items-center justify-between px-4 py-3 border-b border-border/50",
+        variant === "tabs" && "flex flex-row items-center justify-between px-4 py-2 border-b border-border/50",
         className
       )}
       {...props}
@@ -58,7 +70,7 @@ function CardAction({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-action"
       className={cn(
-        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
+        "group-data-[variant=default]/card-header:col-start-2 group-data-[variant=default]/card-header:row-span-2 group-data-[variant=default]/card-header:row-start-1 group-data-[variant=default]/card-header:self-start group-data-[variant=default]/card-header:justify-self-end",
         className
       )}
       {...props}
@@ -66,11 +78,20 @@ function CardAction({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+function CardContent({ 
+  className, 
+  variant = "default",
+  ...props 
+}: React.ComponentProps<"div"> & { variant?: "default" | "flush" }) {
   return (
     <div
       data-slot="card-content"
-      className={cn("px-(--card-spacing)", className)}
+      data-variant={variant}
+      className={cn(
+        variant === "default" && "px-(--card-spacing)",
+        variant === "flush" && "p-0",
+        className
+      )}
       {...props}
     />
   )

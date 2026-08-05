@@ -36,7 +36,7 @@ class LayerType(TextChoices):
     POST = "POST", "Post"  # Composite or delivery step (Nuke, FFmpeg, etc.)
 
 
-class FrameState(TextChoices):
+class TaskState(TextChoices):
     WAITING = "WAITING", "Waiting"  # Blocked by unresolved dependencies
     READY = "READY", "Ready"  # Unblocked, awaiting a free Worker
     RUNNING = "RUNNING", "Running"  # Actively executing on a Worker
@@ -44,14 +44,14 @@ class FrameState(TextChoices):
     SUCCEEDED = "SUCCEEDED", "Succeeded"  # Completed with exit code 0
     FAILED = "FAILED", "Failed"  # Terminated with non-zero exit status
     SKIPPED = "SKIPPED", "Skipped"  # Failed but dismissed by a supervisor; unblocks dependents
-    # SKIPPED: supervisor acknowledges the failure and removes the frame from retry.
-    # The job can reach FINISHED even with skipped frames.
+    # SKIPPED: supervisor acknowledges the failure and removes the task from retry.
+    # The job can reach FINISHED even with skipped tasks.
 
 
 class DependencyType(TextChoices):
     JOB_ON_JOB = "JOB_ON_JOB", "Job on Job"
     LAYER_ON_LAYER = "LAYER_ON_LAYER", "Layer on Layer"
-    FRAME_ON_FRAME = "FRAME_ON_FRAME", "Frame on Frame"
+    TASK_ON_TASK = "TASK_ON_TASK", "Task on Task"
 
 
 class Job(models.Model):
@@ -68,16 +68,16 @@ class Job(models.Model):
         state: Current execution state.
         is_paused: Standalone pause flag.
         priority: Dispatch priority (1-100).
-        max_frames_per_worker: Concurrent frames per worker limit.
-        log_directory: Absolute path for frame logs.
-        total_frames: Counter cache.
-        waiting_frames: Counter cache.
-        ready_frames: Counter cache.
-        running_frames: Counter cache.
-        succeeded_frames: Counter cache.
-        failed_frames: Counter cache.
-        skipped_frames: Counter cache.
-        depend_frames: Counter cache.
+        max_tasks_per_worker: Concurrent tasks per worker limit.
+        log_directory: Absolute path for task logs.
+        total_tasks: Counter cache.
+        waiting_tasks: Counter cache.
+        ready_tasks: Counter cache.
+        running_tasks: Counter cache.
+        succeeded_tasks: Counter cache.
+        failed_tasks: Counter cache.
+        skipped_tasks: Counter cache.
+        depend_tasks: Counter cache.
         created_at: Timestamp.
         updated_at: Timestamp.
         stopped_at: Timestamp when state became FINISHED or FAILED.
@@ -113,25 +113,25 @@ class Job(models.Model):
 
     priority = IntegerField(default=50, db_index=True, validators=[MinValueValidator(1), MaxValueValidator(100)])
 
-    max_frames_per_worker = PositiveIntegerField(
+    max_tasks_per_worker = PositiveIntegerField(
         default=1,
-        verbose_name="max concurrent frames per worker",
+        verbose_name="max concurrent tasks per worker",
         help_text=(
-            "Limits how many frames from this job a single machine can run at once. "
+            "Limits how many tasks from this job a single machine can run at once. "
             "Used to prevent a single job from monopolizing nodes with high core counts."
         ),
     )
 
     log_directory = CharField(max_length=2048)
 
-    total_frames = IntegerField(default=0)
-    waiting_frames = IntegerField(default=0)
-    ready_frames = IntegerField(default=0)
-    running_frames = IntegerField(default=0)
-    succeeded_frames = IntegerField(default=0)
-    failed_frames = IntegerField(default=0)
-    skipped_frames = IntegerField(default=0)
-    depend_frames = IntegerField(default=0)
+    total_tasks = IntegerField(default=0)
+    waiting_tasks = IntegerField(default=0)
+    ready_tasks = IntegerField(default=0)
+    running_tasks = IntegerField(default=0)
+    succeeded_tasks = IntegerField(default=0)
+    failed_tasks = IntegerField(default=0)
+    skipped_tasks = IntegerField(default=0)
+    depend_tasks = IntegerField(default=0)
 
     created_at = DateTimeField(auto_now_add=True)
     updated_at = DateTimeField(auto_now=True)
@@ -207,17 +207,17 @@ class Layer(models.Model):
         scene_path: DCC scene file path.
         scene_info: DCC scene metadata JSON.
         env: Environment variable overrides JSON.
-        max_retries: Per-frame retry ceiling.
-        timeout_seconds: Frame execution timeout.
+        max_retries: Per-task retry ceiling.
+        timeout_seconds: Task execution timeout.
         state: Layer-level state.
-        total_frames: Counter cache.
-        waiting_frames: Counter cache.
-        ready_frames: Counter cache.
-        running_frames: Counter cache.
-        succeeded_frames: Counter cache.
-        failed_frames: Counter cache.
-        skipped_frames: Counter cache.
-        depend_frames: Counter cache.
+        total_tasks: Counter cache.
+        waiting_tasks: Counter cache.
+        ready_tasks: Counter cache.
+        running_tasks: Counter cache.
+        succeeded_tasks: Counter cache.
+        failed_tasks: Counter cache.
+        skipped_tasks: Counter cache.
+        depend_tasks: Counter cache.
     """
 
     id = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -253,14 +253,14 @@ class Layer(models.Model):
 
     state = CharField(max_length=16, choices=JobState.choices, default=JobState.PENDING, db_index=True)
 
-    total_frames = IntegerField(default=0)
-    waiting_frames = IntegerField(default=0)
-    ready_frames = IntegerField(default=0)
-    running_frames = IntegerField(default=0)
-    succeeded_frames = IntegerField(default=0)
-    failed_frames = IntegerField(default=0)
-    skipped_frames = IntegerField(default=0)
-    depend_frames = IntegerField(default=0)
+    total_tasks = IntegerField(default=0)
+    waiting_tasks = IntegerField(default=0)
+    ready_tasks = IntegerField(default=0)
+    running_tasks = IntegerField(default=0)
+    succeeded_tasks = IntegerField(default=0)
+    failed_tasks = IntegerField(default=0)
+    skipped_tasks = IntegerField(default=0)
+    depend_tasks = IntegerField(default=0)
 
     class Meta:
         verbose_name = "layer"
@@ -274,15 +274,16 @@ class Layer(models.Model):
         return f"{self.job.name} / {self.name}"
 
 
-class Frame(models.Model):
+class Task(models.Model):
     """The smallest schedulable unit of work within a Layer.
 
     Attributes:
         id: UUID primary key.
-        layer: The parent Layer this frame belongs to.
+        layer: The parent Layer this task belongs to.
         job: Denormalized FK to the parent Job for bulk operations.
         name: Derived display name, e.g. 'beauty_0042'.
-        number: The render frame index (first frame of chunk for chunked layers).
+        frame_start: The first render frame in this task's chunk.
+        frame_end: The last render frame in this task's chunk.
         dispatch_order: Scheduler dispatch priority within the layer.
         state: Current execution state.
         depend_count: Counter of unresolved blocking dependencies.
@@ -299,16 +300,17 @@ class Frame(models.Model):
     """
 
     id = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    layer = ForeignKey(Layer, on_delete=CASCADE, related_name="frames")
-    job = ForeignKey(Job, on_delete=CASCADE, related_name="frames")
+    layer = ForeignKey(Layer, on_delete=CASCADE, related_name="tasks")
+    job = ForeignKey(Job, on_delete=CASCADE, related_name="tasks")
 
     name = CharField(max_length=256)
-    number = IntegerField(db_index=True)
+    frame_start = IntegerField(db_index=True)
+    frame_end = IntegerField(db_index=True)
     dispatch_order = IntegerField(
         default=0, db_index=True, help_text="Scheduler priority within the layer. Lower numbers are dispatched first."
     )
 
-    state = CharField(max_length=16, choices=FrameState.choices, default=FrameState.WAITING, db_index=True)
+    state = CharField(max_length=16, choices=TaskState.choices, default=TaskState.WAITING, db_index=True)
 
     depend_count = IntegerField(default=0, db_index=True, verbose_name="dependency count")
 
@@ -317,12 +319,12 @@ class Frame(models.Model):
     checkpoint_count = PositiveIntegerField(
         default=0,
         help_text=(
-            "How many times the worker has reported saving intermediate progress (useful for resuming aborted frames)."
+            "How many times the worker has reported saving intermediate progress (useful for resuming aborted tasks)."
         ),
     )
 
     exit_status = IntegerField(
-        default=-1, help_text="Raw process exit code returned by the worker. -1 means the frame has not completed."
+        default=-1, help_text="Raw process exit code returned by the worker. -1 means the task has not completed."
     )
 
     max_memory_used_mb = PositiveIntegerField(default=0, verbose_name="peak memory used (MB)")
@@ -334,9 +336,9 @@ class Frame(models.Model):
     updated_at = DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "frame"
-        verbose_name_plural = "frames"
-        unique_together = ("layer", "number")
+        verbose_name = "task"
+        verbose_name_plural = "tasks"
+        unique_together = ("layer", "frame_start", "frame_end")
         indexes = [
             Index(fields=["job", "state"]),
             Index(fields=["layer", "state"]),
@@ -352,13 +354,13 @@ class Dependency(models.Model):
 
     Attributes:
         id: UUID primary key.
-        type: Dependency kind (FRAME_ON_FRAME, LAYER_ON_LAYER, JOB_ON_JOB).
+        type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
         dep_job: The blocked Job.
         dep_layer: The blocked Layer (optional).
-        dep_frame: The blocked Frame (optional).
+        dep_task: The blocked Task (optional).
         parent_job: The blocking Job.
         parent_layer: The blocking Layer (optional).
-        parent_frame: The blocking Frame (optional).
+        parent_task: The blocking Task (optional).
         is_satisfied: Status flag.
         created_at: Creation timestamp.
         satisfied_at: Satisfaction timestamp.
@@ -383,14 +385,14 @@ class Dependency(models.Model):
         verbose_name="blocked layer",
         help_text="The specific layer that is WAITING (required for LAYER_ON_LAYER dependencies).",
     )
-    dep_frame = ForeignKey(
-        Frame,
+    dep_task = ForeignKey(
+        Task,
         on_delete=CASCADE,
         null=True,
         blank=True,
         related_name="blocked_dependencies",
-        verbose_name="blocked frame",
-        help_text="The specific frame that is WAITING (required for FRAME_ON_FRAME dependencies).",
+        verbose_name="blocked task",
+        help_text="The specific task that is WAITING (required for TASK_ON_TASK dependencies).",
     )
 
     parent_job = ForeignKey(
@@ -409,14 +411,14 @@ class Dependency(models.Model):
         verbose_name="blocking layer",
         help_text="The specific layer that must complete FIRST (required for LAYER_ON_LAYER dependencies).",
     )
-    parent_frame = ForeignKey(
-        Frame,
+    parent_task = ForeignKey(
+        Task,
         on_delete=CASCADE,
         null=True,
         blank=True,
         related_name="blocking_dependencies",
-        verbose_name="blocking frame",
-        help_text="The specific frame that must complete FIRST (required for FRAME_ON_FRAME dependencies).",
+        verbose_name="blocking task",
+        help_text="The specific task that must complete FIRST (required for TASK_ON_TASK dependencies).",
     )
 
     is_satisfied = BooleanField(default=False, db_index=True)
@@ -424,17 +426,21 @@ class Dependency(models.Model):
     satisfied_at = DateTimeField(null=True, blank=True)
 
     def clean(self):
-        if self.type == DependencyType.FRAME_ON_FRAME:
-            if not self.dep_frame_id or not self.parent_frame_id:
-                raise ValidationError("FRAME_ON_FRAME dependency requires both dep_frame and parent_frame.")
-            if self.dep_frame_id == self.parent_frame_id:
-                raise ValidationError("A frame cannot depend on itself.")
+        if self.type == DependencyType.TASK_ON_TASK:
+            if not self.dep_task_id or not self.parent_task_id:
+                raise ValidationError("TASK_ON_TASK dependency requires both dep_task and parent_task.")
+            if self.dep_task_id == self.parent_task_id:
+                raise ValidationError("A task cannot depend on itself.")
         elif self.type == DependencyType.LAYER_ON_LAYER:
             if not self.dep_layer_id or not self.parent_layer_id:
                 raise ValidationError("LAYER_ON_LAYER dependency requires both dep_layer and parent_layer.")
+            if self.dep_task_id or self.parent_task_id:
+                raise ValidationError("LAYER_ON_LAYER dependency must not specify task fields.")
         elif self.type == DependencyType.JOB_ON_JOB:
             if not self.dep_job_id or not self.parent_job_id:
                 raise ValidationError("JOB_ON_JOB dependency requires both dep_job and parent_job.")
+            if self.dep_layer_id or self.parent_layer_id or self.dep_task_id or self.parent_task_id:
+                raise ValidationError("JOB_ON_JOB dependency must not specify layer or task fields.")
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -444,9 +450,9 @@ class Dependency(models.Model):
         verbose_name = "dependency"
         verbose_name_plural = "dependencies"
         indexes = [
-            Index(fields=["parent_frame", "is_satisfied"]),
+            Index(fields=["parent_task", "is_satisfied"]),
             Index(fields=["parent_layer", "is_satisfied"]),
             Index(fields=["parent_job", "is_satisfied"]),
-            Index(fields=["dep_frame", "is_satisfied"]),
+            Index(fields=["dep_task", "is_satisfied"]),
             Index(fields=["dep_layer", "is_satisfied"]),
         ]

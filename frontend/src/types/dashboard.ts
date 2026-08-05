@@ -33,7 +33,20 @@ export interface RenderJob {
   status: JobStatus;
   backendState: BackendJobState;
   progress: number;
-  frameCounts: string;
+  taskCounts: string;
+  total_tasks: number;
+  succeeded_tasks: number;
+  failed_tasks: number;
+  running_tasks: number;
+  ready_tasks: number;
+  waiting_tasks: number;
+  skipped_tasks: number;
+  depend_tasks: number;
+  created_at: string;
+  included_pools: string[];
+  excluded_pools: string[];
+  project: string;
+  department: string;
 }
 
 export type LogType = "INFO" | "ROUTE" | "WARN";

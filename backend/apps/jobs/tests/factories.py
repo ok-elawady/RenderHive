@@ -2,7 +2,7 @@ import factory
 from django.contrib.auth import get_user_model
 from factory.django import DjangoModelFactory
 
-from apps.jobs.models import Dependency, DependencyType, Frame, FrameState, Job, JobState, Layer, LayerType
+from apps.jobs.models import Dependency, DependencyType, Task, TaskState, Job, JobState, Layer, LayerType
 
 User = get_user_model()
 
@@ -41,25 +41,26 @@ class LayerFactory(DjangoModelFactory):
     state = JobState.PENDING
 
 
-class FrameFactory(DjangoModelFactory):
+class TaskFactory(DjangoModelFactory):
     class Meta:
-        model = Frame
+        model = Task
 
     layer = factory.SubFactory(LayerFactory)
     job = factory.SelfAttribute("layer.job")
-    name = factory.Sequence(lambda n: f"frame_{n}")
-    number = factory.Sequence(lambda n: n)
-    state = FrameState.WAITING
+    name = factory.Sequence(lambda n: f"task_{n}")
+    frame_start = factory.Sequence(lambda n: n)
+    frame_end = factory.Sequence(lambda n: n)
+    state = TaskState.WAITING
 
 
 class DependencyFactory(DjangoModelFactory):
     class Meta:
         model = Dependency
 
-    type = DependencyType.FRAME_ON_FRAME
-    dep_job = factory.SelfAttribute("dep_frame.job")
-    dep_layer = factory.SelfAttribute("dep_frame.layer")
-    dep_frame = factory.SubFactory(FrameFactory)
-    parent_job = factory.SelfAttribute("parent_frame.job")
-    parent_layer = factory.SelfAttribute("parent_frame.layer")
-    parent_frame = factory.SubFactory(FrameFactory)
+    type = DependencyType.TASK_ON_TASK
+    dep_job = factory.SelfAttribute("dep_task.job")
+    dep_layer = factory.SelfAttribute("dep_task.layer")
+    dep_task = factory.SubFactory(TaskFactory)
+    parent_job = factory.SelfAttribute("parent_task.job")
+    parent_layer = factory.SelfAttribute("parent_task.layer")
+    parent_task = factory.SubFactory(TaskFactory)

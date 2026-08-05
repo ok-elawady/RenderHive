@@ -57,7 +57,7 @@ function CommandInput({ className, ...props }: React.ComponentProps<typeof Comma
       <InputGroup className="h-9 bg-input/50 rounded-md">
         <CommandPrimitive.Input
           data-slot="command-input"
-          className={cn("w-full text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50", className)}
+          className={cn("w-full text-sm outline-hidden bg-transparent text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50", className)}
           {...props}
         />
         <InputGroupAddon>
