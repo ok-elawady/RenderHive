@@ -229,3 +229,21 @@ ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_EMAIL_REQUIRED = False
 ACCOUNT_LOGIN_METHODS = {"username"}
 ACCOUNT_SIGNUP_FIELDS = ["username*", "password1*", "password2*"]
+
+# ---------------------------------------------------------------------------
+# AI Scheduler
+# ---------------------------------------------------------------------------
+# SCHEDULER_AI_ENABLED  — Set to False to bypass the LLM tie-breaker entirely
+#                         and fall back to pure deterministic scoring.
+# SCHEDULER_AI_URL      — Full URL to the ai_scheduler FastAPI service.
+#                         In Docker this resolves to http://ai_scheduler:8001.
+# SCHEDULER_AI_TIMEOUT  — Seconds to wait for an AI response before falling
+#                         back to base scores. LLM inference is slow; 5s is
+#                         a reasonable default for lightweight local models.
+# ---------------------------------------------------------------------------
+SCHEDULER_AI_ENABLED = env.bool("SCHEDULER_AI_ENABLED", default=True)
+SCHEDULER_AI_URL = env(
+    "SCHEDULER_AI_URL",
+    default="http://ai_scheduler:8001/api/v1/rank-tasks",
+)
+SCHEDULER_AI_TIMEOUT = env.float("SCHEDULER_AI_TIMEOUT", default=5.0)
