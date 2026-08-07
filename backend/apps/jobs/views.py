@@ -8,6 +8,8 @@ ViewSets follow the serializer split pattern:
 - State transitions are handled by ``@action`` endpoints, not raw PATCH.
 """
 
+import re
+
 import django_filters
 from django.db import transaction
 from django.db.models import Count, F, Q
@@ -18,22 +20,24 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Dependency, Task, TaskState, Job, JobState, Layer
+from apps.workers.capabilities import extract_layer_requirements, worker_supports_layer
+
+from .models import Dependency, Job, JobState, Layer, Task, TaskState
 from .permissions import IsFarmAgent, IsJobOwnerOrStaff
 from .serializers import (
     DependencyCreateSerializer,
     DependencyReadSerializer,
-    TaskDetailSerializer,
-    TaskFailSerializer,
-    TaskListSerializer,
-    TaskStartSerializer,
-    TaskSucceedSerializer,
     JobCreateSerializer,
     JobDetailSerializer,
     JobListSerializer,
     JobPatchSerializer,
     LayerDetailSerializer,
     LayerListSerializer,
+    TaskDetailSerializer,
+    TaskFailSerializer,
+    TaskListSerializer,
+    TaskStartSerializer,
+    TaskSucceedSerializer,
 )
 
 # ── Filters ───────────────────────────────────────────────────────────────────
@@ -79,7 +83,12 @@ class DependencyFilter(django_filters.FilterSet):
 
     class Meta:
         model = Dependency
-        fields = ["type", "is_satisfied", "dep_job", "parent_job", "dep_layer", "parent_layer", "dep_task", "parent_task"]
+        fields = [
+            "type", "is_satisfied",
+            "dep_job", "parent_job",
+            "dep_layer", "parent_layer",
+            "dep_task", "parent_task",
+        ]
 
 
 
@@ -490,92 +499,204 @@ class TaskDispatchView(generics.GenericAPIView):
 
     @transaction.atomic
     def post(self, request, *args, **kwargs):
-        # Validate worker_name using standard DRF serializer workflow
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         worker_name = serializer.validated_data["worker_name"]
 
-        # Find the worker. If the worker is not yet registered in WorkerNode (e.g. it
-        # hasn't sent a ping yet), worker_pools will be an empty list []. In that case:
-        #   - Q(included_pools__in=[])  → always FALSE  → restricted jobs are skipped
-        #   - Q(included_pools__isnull=True) → unrestricted jobs are still eligible
-        # This means unregistered workers can only pull unrestricted jobs, which is the
-        # correct and intentional behaviour — but it is implicit, hence this comment.
-        from apps.workers.models import WorkerNode
+        from apps.workers.models import WorkerNode, WorkerStatus
 
-        worker = WorkerNode.objects.filter(hostname=worker_name).prefetch_related("pools").first()
+        worker = (
+            WorkerNode.objects.filter(hostname=worker_name)
+            .prefetch_related("pools")
+            .first()
+        )
         worker_pools = worker.pools.all() if worker else []
 
-        # Find jobs where this worker has reached the concurrency limit
         maxed_jobs = (
-            Job.objects.annotate(
+            Job.objects.filter(max_tasks_per_worker__gt=0).annotate(
                 active_worker_tasks=Count(
-                    "tasks", filter=Q(tasks__state=TaskState.RUNNING, tasks__worker_name=worker_name)
+                    "tasks",
+                    filter=Q(
+                        tasks__state=TaskState.RUNNING,
+                        tasks__worker_name=worker_name,
+                    ),
                 )
             )
             .filter(active_worker_tasks__gte=F("max_tasks_per_worker"))
             .values("pk")
         )
 
-        # Determine which jobs are eligible based on state, pause flag, concurrency
-        # limit, and pool routing.
-        # Notes:
-        #   - `state__in` is defense-in-depth: FINISHED/FAILED jobs have no READY
-        #     tasks anyway, but filtering here keeps the subquery semantically clean.
-        #   - `.distinct()` prevents duplicate PKs caused by the M2M JOIN when a job
-        #     belongs to multiple pools that all match the worker's pools.
         allowed_jobs = (
             Job.objects.filter(
                 is_paused=False,
                 state__in=[JobState.PENDING, JobState.RUNNING],
             )
             .exclude(pk__in=maxed_jobs)
-            .filter(Q(included_pools__isnull=True) | Q(included_pools__in=worker_pools))
+            .filter(
+                Q(included_pools__isnull=True)
+                | Q(included_pools__in=worker_pools)
+            )
             .exclude(excluded_pools__in=worker_pools)
             .distinct()
             .values("pk")
         )
 
-        # Find the highest priority READY task and lock it
-        task = (
+        candidates = (
             Task.objects.select_for_update(skip_locked=True)
+            .select_related("layer", "job")
             .filter(state=TaskState.READY, job_id__in=allowed_jobs)
-            .order_by("job__priority", "dispatch_order")
-            .first()
         )
 
-        if not task:
-            return Response({"detail": "No tasks available."}, status=status.HTTP_404_NOT_FOUND)
+        # Resource filtering happens in SQL. DCC/version/execution compatibility
+        # is evaluated from the worker's structured heartbeat data below.
+        if worker is not None:
+            candidates = candidates.filter(
+                layer__min_cores__lte=max(int(worker.cores or 1), 1),
+                layer__min_memory_mb__lte=max(int(worker.memory_mb or 1), 1),
+                layer__min_gpus__lte=len(worker.gpu_models or []),
+            )
 
-        # Transition task to RUNNING
+        candidates = candidates.order_by("job__priority", "dispatch_order")
+
+        task = None
+        for candidate in candidates.iterator(chunk_size=100):
+            compatible, _reason = worker_supports_layer(worker, candidate.layer)
+            if compatible:
+                task = candidate
+                break
+
+        if task is None:
+            return Response(
+                {"detail": "No compatible tasks available."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         task.state = TaskState.RUNNING
         task.worker_name = worker_name
         task.started_at = timezone.now()
-        task.save(update_fields=["state", "worker_name", "started_at", "updated_at"])
+        task.save(
+            update_fields=[
+                "state",
+                "worker_name",
+                "started_at",
+                "updated_at",
+            ]
+        )
 
-        # Update worker status to RENDERING
-        try:
-            from apps.workers.models import WorkerNode, WorkerStatus
-
-            WorkerNode.objects.filter(hostname=worker_name).update(
-                status=WorkerStatus.RENDERING, last_ping=timezone.now()
+        if worker is not None:
+            WorkerNode.objects.filter(pk=worker.pk).update(
+                status=WorkerStatus.RENDERING,
+                last_ping=timezone.now(),
             )
-        except Exception:
-            pass  # If worker app is not setup yet, just pass
 
-        # Return consolidated payload
+        layer = task.layer
+        job = task.job
+        scene_info = layer.scene_info if isinstance(layer.scene_info, dict) else {}
+        execution = scene_info.get("execution")
+        if not isinstance(execution, dict):
+            execution = {}
+        env = layer.env if isinstance(layer.env, dict) else {}
+        requirements = extract_layer_requirements(layer)
+
+        # Extract the frame step from the range string if it is uniform across all
+        # segments. Mixed-step ranges (e.g. "1-50x2,51-100x5") fall back to 1 so
+        # the worker processes every frame in the chunk independently.
+        frame_step = 1
+        step_matches = {
+            int(value)
+            for value in re.findall(r"x(\d+)", str(layer.frame_range or ""))
+            if int(value) > 0
+        }
+        if len(step_matches) == 1:
+            frame_step = next(iter(step_matches))
+
+        dcc = requirements["dcc"]
+        dcc_version = requirements["dcc_version"]
+        renderer = requirements["renderer"]
+        render_node = str(
+            scene_info.get("render_node")
+            or execution.get("render_node")
+            or ""
+        )
+        camera = str(
+            scene_info.get("camera")
+            or execution.get("camera")
+            or ""
+        )
+        execution_mode = str(
+            requirements["execution_mode"]
+            or ("hython" if dcc == "houdini" else "render")
+        ).lower()
+        output_path = str(
+            scene_info.get("output_path")
+            or execution.get("output_path")
+            or ""
+        )
+        project_path = str(
+            scene_info.get("project_path")
+            or env.get("JOB")
+            or ""
+        )
+        usd_output_path = str(
+            execution.get("usd_output_path")
+            or scene_info.get("usd_output_path")
+            or ""
+        )
+
         return Response(
             {
+                # Legacy flat fields
                 "id": str(task.id),
                 "name": task.name,
                 "frame_start": task.frame_start,
                 "frame_end": task.frame_end,
+                "frame_step": frame_step,
                 "job_id": str(task.job_id),
                 "layer_id": str(task.layer_id),
-                "command": task.layer.command,
-                "scene_path": task.layer.scene_path,
-                "env": task.layer.env,
-                "chunk_size": task.layer.chunk_size,
+                "command": layer.command,
+                "scene_path": layer.scene_path,
+                "env": env,
+                "chunk_size": layer.chunk_size,
+                # Multi-DCC fields consumed by Worker 1.1+
+                "dcc": dcc,
+                "dcc_version": dcc_version,
+                "renderer": renderer,
+                "render_node": render_node,
+                "camera": camera,
+                "execution_mode": execution_mode,
+                "output_path": output_path,
+                "project_path": project_path,
+                "usd_output_path": usd_output_path,
+                "scene_info": scene_info,
+                "execution": execution,
+                "frames": {
+                    "start": task.frame_start,
+                    "end": task.frame_end,
+                    "step": frame_step,
+                },
+                "layer": {
+                    "id": str(layer.id),
+                    "name": layer.name,
+                    "command": layer.command,
+                    "scene_path": layer.scene_path,
+                    "scene_info": scene_info,
+                    "env": env,
+                    "chunk_size": layer.chunk_size,
+                    "min_cores": layer.min_cores,
+                    "min_memory_mb": layer.min_memory_mb,
+                    "min_gpus": layer.min_gpus,
+                    "tags": list(layer.tags or []),
+                    "timeout_seconds": layer.timeout_seconds,
+                    "max_retries": layer.max_retries,
+                },
+                "job": {
+                    "id": str(job.id),
+                    "name": job.name,
+                    "visible_name": job.visible_name,
+                    "project": job.project,
+                    "department": job.department,
+                    "priority": job.priority,
+                },
             }
         )
 

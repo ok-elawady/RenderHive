@@ -1,0 +1,16 @@
+{
+  "plugin": {
+    "name": "RenderHive Houdini",
+    "version": "0.5.0"
+  },
+  "backend": {
+    "managed_config": "C:/ProgramData/RenderHive/config/api.json"
+  },
+  "render": {
+    "default_chunk_size": 1,
+    "supported_execution_modes": [
+      "hython",
+      "husk"
+    ]
+  }
+}
