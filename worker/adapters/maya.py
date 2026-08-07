@@ -71,6 +71,47 @@ class MayaAdapter(BaseAdapter):
                 command.extend(["-cam", task.camera])
             command.append(task.scene_path)
 
+        scene_info = task.raw.get("scene_info") or task.raw.get("layer", {}).get("scene_info") or {}
+        is_arnold = task.renderer.lower() == "arnold" if task.renderer else (scene_info.get("renderer", "").lower() == "arnold")
+        force_cpu = task.raw.get("force_cpu", False)
+        
+        if is_arnold and len(command) > 1:
+            import base64
+            image_name = scene_info.get("image_name")
+            image_format = scene_info.get("image_format") or "exr"
+            padding = scene_info.get("frame_padding") or 4
+            
+            py_script = [
+                "import maya.cmds as cmds",
+                "cmds.loadPlugin('mtoa', quiet=True)",
+                "import mtoa.core",
+                "mtoa.core.createOptions()",
+            ]
+            
+            if image_name:
+                py_script.append(f"cmds.setAttr('defaultRenderGlobals.imageFilePrefix', {repr(str(image_name))}, type='string')")
+            if image_format:
+                py_script.append(f"cmds.setAttr('defaultArnoldDriver.aiTranslator', {repr(str(image_format))}, type='string')")
+                
+            py_script.append(f"cmds.setAttr('defaultRenderGlobals.extensionPadding', {int(padding)})")
+            
+            if force_cpu:
+                py_script.append("cmds.setAttr('defaultArnoldRenderOptions.renderDevice', 0)")
+                
+            py_script.append("cmds.setAttr('defaultArnoldRenderOptions.abortOnLicenseFail', 0)")
+            
+            encoded_script = base64.b64encode("; ".join(py_script).encode("utf-8")).decode("ascii")
+            runner = f"import base64;exec(base64.b64decode('{encoded_script}').decode('utf-8'))"
+            
+            escaped_runner = runner.replace("\\", "\\\\").replace('"', '\\"')
+            mel_cmd = f'python("{escaped_runner}");'
+            
+            # Insert right before the scene path (which is the last element)
+            command.insert(-1, "-preRender")
+            command.insert(-1, mel_cmd)
+            command.insert(-1, "-fnc")
+            command.insert(-1, "3")
+
         env = dict(task.env)
         env["RENDERHIVE_DCC"] = "maya"
         env["RENDERHIVE_MAYA_VERSION"] = installation.version

@@ -1,0 +1,15 @@
+# Local development overrides — auto-loaded by Docker Compose on dev machines.
+# DO NOT commit changes specific to your local machine here.
+# This file is intentionally NOT present on cloud/server deployments.
+
+services:
+  api:
+    volumes:
+      - ./backend:/app
+      - /app/.venv # Prevents host .venv from shadowing container .venv
+
+  frontend:
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Prevent host node_modules from overriding container's
+      - /app/.next # Prevent host .next from overriding container's

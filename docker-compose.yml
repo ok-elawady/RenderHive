@@ -30,21 +30,18 @@ services:
       dockerfile: Dockerfile
       args:
         DEV: "true"
-    volumes:
-      - ./backend:/app
-      - /app/.venv # Prevents host .venv from shadowing container .venv
     ports:
       - "8000:8000"
     environment:
       PYTHONUNBUFFERED: "1"
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-123456}
       DEBUG: ${DEBUG:-True}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,api}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,api,renderhive.local,server.renderhive.local}
       DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/renderhive}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
       CORS_ALLOW_ALL_ORIGINS: ${CORS_ALLOW_ALL_ORIGINS:-False}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://renderhive.local}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://renderhive.local}
       # Dev superuser — auto-created on first container start.
       # Override in your .env file. Leave blank to skip creation.
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
@@ -63,26 +60,22 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     command: pnpm run dev:docker
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules # Prevent host node_modules from overriding container's
-      - /app/.next # Prevent host .next from overriding container's
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://server.renderhive.local}
     restart: unless-stopped
 
   nginx:
     profiles: ["frontend"]
-    image: nginx:alpine
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
     ports:
       - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - api
       - frontend
