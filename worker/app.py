@@ -176,6 +176,9 @@ class WorkerThread(QThread):
         self.last_worker_profile_fetch = 0.0
         self.poll_interval = max(2, min(30, int(self.profile.get("poll_interval", 5) or 5)))
         self._last_progress_frame = None
+        # Cached system info, populated by each heartbeat. Re-used in the dispatch
+        # payload to avoid running nvidia-smi on every poll cycle.
+        self._last_system_info: Dict[str, Any] = {}
 
     def get_headers(self) -> Dict[str, str]:
         return {
@@ -294,7 +297,11 @@ class WorkerThread(QThread):
 
     def send_heartbeat(self) -> bool:
         payload = self.heartbeat_payload()
-        self.system_info_signal.emit(payload.get("system_info") or {})
+        system_info = payload.get("system_info") or {}
+        # Cache the latest system info so it can be reused in dispatch payloads
+        # without spawning a redundant nvidia-smi process.
+        self._last_system_info = system_info
+        self.system_info_signal.emit(system_info)
         try:
             response = self.session.post(
                 "{}/workers/ping/".format(self.api_url),
@@ -578,6 +585,9 @@ class WorkerThread(QThread):
                         "worker_name": HOSTNAME,
                         "tags": build_capability_tags(self.discovered),
                         "capabilities": build_capabilities(self.discovered),
+                        # Reuse the cached snapshot from the last heartbeat to avoid
+                        # spawning nvidia-smi on every poll cycle (every 2-5 seconds).
+                        "capabilities_snapshot": self._last_system_info,
                     },
                     headers=self.get_headers(),
                     timeout=15,
