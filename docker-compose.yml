@@ -51,7 +51,7 @@ services:
       # Set SCHEDULER_AI_ENABLED=False to disable the AI path entirely.
       SCHEDULER_AI_ENABLED: ${SCHEDULER_AI_ENABLED:-True}
       SCHEDULER_AI_URL: ${SCHEDULER_AI_URL:-http://ai_scheduler:8001/api/v1/rank-tasks}
-      SCHEDULER_AI_TIMEOUT: ${SCHEDULER_AI_TIMEOUT:-5.0}
+      SCHEDULER_AI_TIMEOUT: ${SCHEDULER_AI_TIMEOUT:-2.5}
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +64,8 @@ services:
     build:
       context: ./services/ai_scheduler
       dockerfile: Dockerfile
+      args:
+        USE_CUDA: 1
     ports:
       - "8001:8001"
     environment:
@@ -72,11 +74,23 @@ services:
       # to the matching container path, e.g. /models/mistral-7b-instruct.gguf
       LLAMA_MODEL_PATH: ${LLAMA_MODEL_PATH:-}
       LLAMA_PROMPT_TEMPLATE: ${LLAMA_PROMPT_TEMPLATE:-mistral}
+      LLAMA_THREADS: ${LLAMA_THREADS:-4}
+      MODELS_DIR: /models
     volumes:
       # Mount a local directory containing your GGUF model files.
       # Set LLAMA_MODEL_PATH in your .env to the container path of the model.
       # Example: ./models:/models (create the models/ dir in the repo root)
       - models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 12G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     command: uvicorn main:app --host 0.0.0.0 --port 8001
     restart: unless-stopped
     healthcheck:

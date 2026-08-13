@@ -41,11 +41,11 @@ By only invoking the LLM when tasks are genuinely competitive, the service stays
 
 ## Configuration
 
-All settings are controlled via environment variables (see [`.env.example`](../../.env.example)).
+All settings can be initially seeded via environment variables (see [`.env.example`](../../.env.example)), but the service now supports **dynamic model management** at runtime. The active configuration is saved to `models/config.json` so your loaded model survives container restarts!
 
 | Variable | Default | Description |
 |---|---|---|
-| `LLAMA_MODEL_PATH` | *(empty)* | Absolute path to a `.gguf` model file. If empty, runs in **mock mode**. |
+| `LLAMA_MODEL_PATH` | *(empty)* | Absolute path to a `.gguf` model file. If empty, runs in **mock mode** until a model is dynamically loaded via the UI. |
 | `LLAMA_PROMPT_TEMPLATE` | `mistral` | Chat template format. See [Prompt Templates](#prompt-templates). |
 
 ### Prompt Templates
@@ -166,6 +166,18 @@ Returns service health and model load status.
   "model_path": "/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 }
 ```
+
+### `GET /api/v1/models`
+Lists all available models (both curated cloud links and locally downloaded `.gguf` files in the `/models` directory), as well as the currently active model path.
+
+### `POST /api/v1/models/download`
+Starts an asynchronous background thread to download a model from a huggingface URL directly into the `/models` volume. Use `/api/v1/models/download/progress` to poll the status.
+
+### `POST /api/v1/models/load`
+Dynamically loads a downloaded `.gguf` model into RAM/VRAM and updates `config.json`. The service instantly switches out of Mock Mode.
+
+### `POST /api/v1/models/unload`
+Unloads the active model from memory, immediately freeing up RAM/VRAM and reverting the service to Mock Mode.
 
 ---
 

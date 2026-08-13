@@ -122,3 +122,11 @@ server/downloads/
 server/staging/
 server/test_pg/
 server/test_tar/
+
+# Local testing scripts
+test_ai.bat
+test_ai_inference.py
+
+# AI Scheduler local data
+services/ai_scheduler/config.json
+services/ai_scheduler/models/
