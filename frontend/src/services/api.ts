@@ -970,6 +970,166 @@ export function deriveTelemetryFromJobs(jobs: RenderJob[]): TelemetryMetrics {
   };
 }
 
+// ── AI Dispatch Log API ────────────────────────────────────────────────────────
+
+export interface ScoreBreakdown {
+  job_priority?: number;
+  resource_fit?: number;
+  failure_penalty?: number;
+  dispatch_order?: number;
+  _floor_clamp?: number;
+  ai_adjustment?: number;
+  ai_reason?: string;
+}
+
+export interface DispatchLogEntry {
+  id: string;
+  name: string;
+  worker_name: string | null;
+  started_at: string | null;
+  state: string;
+  job_id: string;
+  job_name: string;
+  job_priority: number;
+  layer_name: string;
+  last_score_breakdown: ScoreBreakdown;
+  ai_was_invoked: boolean;
+  ai_reason: string;
+  final_score: number;
+}
+
+export async function fetchRecentDispatches(limit = 30): Promise<DispatchLogEntry[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/tasks/recent-dispatches/?limit=${limit}`,
+    { cache: "no-store", headers: getApiHeaders() },
+  );
+
+  if (!response.ok) {
+    throw new Error(`fetchRecentDispatches: ${response.status}`);
+  }
+
+  return response.json() as Promise<DispatchLogEntry[]>;
+}
+
+// ── AI Scheduler Health ────────────────────────────────────────────────────────
+
+export const AI_SCHEDULER_URL = (
+  process.env.NEXT_PUBLIC_AI_SCHEDULER_URL || "http://localhost:8001"
+).replace(/\/+$/, "");
+
+export interface AiHealthStatus {
+  status: "ok" | "unreachable";
+  model_loaded: boolean;
+  prompt_template: string;
+  model_path: string | null;
+  n_ctx: number;
+  max_tasks_per_request: number;
+}
+
+export async function fetchAiHealth(): Promise<AiHealthStatus> {
+  try {
+    const response = await fetch(`${AI_SCHEDULER_URL}/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json() as Promise<AiHealthStatus>;
+  } catch {
+    return {
+      status: "unreachable",
+      model_loaded: false,
+      prompt_template: "unknown",
+      model_path: null,
+      n_ctx: 0,
+      max_tasks_per_request: 0,
+    };
+  }
+}
+
+// ── AI Model Management ────────────────────────────────────────────────────────
+
+export interface CuratedModel {
+  name: string;
+  filename: string;
+  url: string;
+  template: string;
+  size: string;
+}
+
+export interface LocalModel {
+  filename: string;
+  size_bytes: number;
+}
+
+export interface ModelListResponse {
+  curated: CuratedModel[];
+  local: LocalModel[];
+  active_path: string;
+}
+
+export interface DownloadProgress {
+  is_downloading: boolean;
+  filename: string;
+  bytes_downloaded: number;
+  total_bytes: number;
+  speed_bps: number;
+  error: string | null;
+}
+
+async function aiFetch(endpoint: string, options?: RequestInit): Promise<Response> {
+  const res = await fetch(`${AI_SCHEDULER_URL}${endpoint}`, {
+    cache: "no-store",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `AI Service Error: ${res.status}`);
+  }
+
+  return res;
+}
+
+export async function fetchModels(): Promise<ModelListResponse> {
+  const res = await aiFetch("/api/v1/models");
+  return res.json() as Promise<ModelListResponse>;
+}
+
+export async function startModelDownload(url: string, filename: string): Promise<void> {
+  await aiFetch("/api/v1/models/download", {
+    method: "POST",
+    body: JSON.stringify({ url, filename }),
+  });
+}
+
+export async function fetchDownloadProgress(): Promise<DownloadProgress> {
+  const res = await aiFetch("/api/v1/models/download/progress");
+  return res.json() as Promise<DownloadProgress>;
+}
+
+export async function cancelModelDownload(): Promise<void> {
+  await aiFetch("/api/v1/models/download/cancel", { method: "DELETE" });
+}
+
+export async function loadAiModel(filename: string, prompt_template: string): Promise<void> {
+  await aiFetch("/api/v1/models/load", {
+    method: "POST",
+    body: JSON.stringify({ filename, prompt_template }),
+  });
+}
+
+export async function unloadAiModel(): Promise<void> {
+  await aiFetch("/api/v1/models/unload", { method: "POST" });
+}
+
+export async function deleteAiModel(filename: string): Promise<void> {
+  await aiFetch(`/api/v1/models/${encodeURIComponent(filename)}`, { method: "DELETE" });
+}
+
 // ── Worker Pool API functions ──────────────────────────────────────────────────
 
 export type WorkerPool = components["schemas"]["WorkerPool"];
