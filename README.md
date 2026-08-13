@@ -8,17 +8,20 @@ Distributed rendering management platform designed for modern 3D pipeline workfl
 
 This repository is organized as a monorepo containing the following main components:
 
-| Component    | Path                      | Description                                                    | Tech Stack / Technologies                                     |
-| :----------- | :------------------------ | :------------------------------------------------------------- | :------------------------------------------------------------ |
-| **Frontend** | [`frontend/`](./frontend) | Web dashboard for monitoring jobs, workers, and user settings. | Next.js 16 (App Router), React 19, Tailwind CSS v4, Shadcn UI |
-| **Backend**  | [`backend/`](./backend)   | Central orchestration API server and scheduler.                | Django REST Framework, Celery, Redis / RabbitMQ               |
-| **Plugins**  | [`plugins/`](./plugins)   | DCC Integrations. Currently hosts Autodesk Maya integration.   | Python, PySide, MEL, Maya Commands                            |
+| Component         | Path                                          | Description                                                              | Tech Stack / Technologies                                     |
+| :---------------- | :-------------------------------------------- | :----------------------------------------------------------------------- | :------------------------------------------------------------ |
+| **Frontend**      | [`frontend/`](./frontend)                     | Web dashboard for monitoring jobs, workers, and user settings.           | Next.js 16 (App Router), React 19, Tailwind CSS v4, Shadcn UI |
+| **Backend**       | [`backend/`](./backend)                       | Central orchestration API server and task scheduler.                     | Django REST Framework, Celery, Redis                          |
+| **Worker**        | [`worker/`](./worker)                         | Desktop application that runs on each render node.                       | Python, PySide6 (Qt), psutil                                  |
+| **AI Scheduler**  | [`services/ai_scheduler/`](./services/ai_scheduler) | LLM-powered tie-breaker service for intelligent task dispatch.     | FastAPI, llama-cpp-python                                     |
+| **Plugins**       | [`plugins/`](./plugins)                       | DCC Integrations. Currently hosts Autodesk Maya integration.             | Python, PySide, MEL, Maya Commands                            |
 
 ---
 
 ## 🎨 Key Features
 
 - **Distributed Orchestration**: Manage render workers, assign priorities, and balance render loads dynamically.
+- **AI-Augmented Scheduling**: An optional local LLM service ([`services/ai_scheduler/`](./services/ai_scheduler)) acts as a tie-breaker when multiple tasks are equally viable, using live worker capabilities (CPU load, GPU VRAM, memory) to make the best dispatch decision. Falls back to deterministic scoring when the AI service is unavailable.
 - **Next-Gen Web Dashboard**: Clean, modern interface designed with Tailwind CSS v4 and Shadcn UI.
 - **Autodesk Maya Plugin Integration**:
   - Drag-and-drop installation (`drag_to_maya_install.mel`).
@@ -33,41 +36,59 @@ This repository is organized as a monorepo containing the following main compone
 ### Prerequisites
 
 - Docker and Docker Compose
-- Node.js (v20+ recommended)
-- `pnpm` (package manager for the frontend)
+- Node.js (v20+ recommended) — only needed for frontend development outside Docker
+- `pnpm` — only needed for frontend development outside Docker
 - Autodesk Maya (for using the Maya submitter/worker plugins)
 
-### 🐳 Running the Backend Services (API, Postgres, Redis)
+### 🐳 Running with Docker Compose
 
-To launch the orchestration backend:
+RenderHive uses Docker Compose **profiles** to let you start only the components you need.
 
-1. Copy `.env.example` to `.env` in the root directory:
-   ```bash
-   cp .env.example .env
-   ```
-2. Run the Docker Compose stack:
-   ```bash
-   docker compose up --build
-   ```
-3. The backend API will be available at [http://localhost:8000](http://localhost:8000).
+**1. Set up your environment:**
+```bash
+cp .env.example .env
+# Edit .env as needed for your environment
+```
 
-### 💻 Running the Frontend
+**2. Choose a profile combination:**
 
-To launch the web dashboard:
+| Command | What starts |
+|---|---|
+| `docker compose up --build` | API + Postgres + Redis (minimum) |
+| `docker compose --profile frontend up --build` | + Frontend (Next.js) + Nginx |
+| `docker compose --profile ai up --build` | + AI Scheduler (LLM tie-breaker) |
+| `docker compose --profile frontend --profile ai up --build` | Everything |
 
-1. Navigate to the frontend directory:
+```bash
+# Example — full stack with frontend and AI:
+docker compose --profile frontend --profile ai up --build
+```
+
+**Services and ports:**
+
+| Service | Port | Profile |
+|---|---|---|
+| Backend API | [http://localhost:8000](http://localhost:8000) | *(always)* |
+| Frontend | [http://localhost:3000](http://localhost:3000) | `frontend` |
+| Nginx (reverse proxy) | [http://localhost:80](http://localhost:80) | `frontend` |
+| AI Scheduler | [http://localhost:8001](http://localhost:8001) | `ai` |
+
+> **AI Scheduler note:** Requires a GGUF model file. Without one it runs in mock mode (useful for dev). See [`services/ai_scheduler/README.md`](./services/ai_scheduler/README.md) for model setup.
+
+### 💻 Running the Frontend Locally (without Docker)
+
+If you prefer hot-reload outside of Docker:
+
+1. Install dependencies:
    ```bash
    cd frontend
-   ```
-2. Install dependencies:
-   ```bash
    pnpm install
    ```
-3. Start the local development server:
+2. Start the dev server:
    ```bash
    pnpm dev
    ```
-4. Open your browser and navigate to [http://localhost:3000](http://localhost:3000).
+3. Open [http://localhost:3000](http://localhost:3000).
 
 ---
 

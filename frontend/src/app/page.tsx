@@ -7,7 +7,6 @@ import JobQueue from "@/components/dashboard/JobQueue";
 import KpiCards from "@/components/dashboard/KpiCards";
 import { PageSkeleton } from "@/components/ui/SkeletonLoaders";
 import {
-  deriveLogsFromJobs,
   deriveTelemetryFromJobs,
   fetchJobs,
   mapBackendJobToRenderJob,
@@ -15,7 +14,7 @@ import {
 } from "@/services/api";
 import { useNavigation } from "@/components/common/NavigationProvider";
 import { useTheme } from "@/components/common/ThemeProvider";
-import type { LogEntry, RenderJob, TelemetryMetrics } from "@/types/dashboard";
+import type { RenderJob, TelemetryMetrics } from "@/types/dashboard";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 const emptyTelemetry: TelemetryMetrics = {
@@ -35,7 +34,6 @@ function getFarmEfficiency(jobs: RenderJob[]): number {
 
 export default function DashboardPage() {
   const [jobs, setJobs] = useState<RenderJob[]>([]);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [telemetry, setTelemetry] = useState<TelemetryMetrics>(emptyTelemetry);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const initialFetchTimerRef = useRef<number | null>(null);
@@ -51,7 +49,6 @@ export default function DashboardPage() {
     const mappedJobs = backendJobs.map(mapBackendJobToRenderJob);
 
     setJobs(mappedJobs);
-    setLogs(deriveLogsFromJobs(mappedJobs));
     setTelemetry(deriveTelemetryFromJobs(mappedJobs));
     setIsLoading(false);
   }, []);
@@ -64,7 +61,6 @@ export default function DashboardPage() {
     initialFetchTimerRef.current = window.setTimeout(() => {
       void fetchJobsData().catch(() => {
         setJobs([]);
-        setLogs([]);
         setTelemetry(emptyTelemetry);
         setIsLoading(false);
       });
@@ -73,7 +69,6 @@ export default function DashboardPage() {
     pollingTimerRef.current = window.setInterval(() => {
       void fetchJobsData().catch(() => {
         setJobs([]);
-        setLogs([]);
         setTelemetry(emptyTelemetry);
         setIsLoading(false);
       });
@@ -127,7 +122,7 @@ export default function DashboardPage() {
     }
 
     if (activeView === "AI Rules") {
-      return <AgenticLogs logs={logs} searchQuery="" />;
+      return <AgenticLogs searchQuery="" />;
     }
 
     if (activeView === "Settings") {
@@ -161,7 +156,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex-1 min-h-0">
-          <AgenticLogs logs={logs} searchQuery="" />
+          <AgenticLogs searchQuery="" />
         </div>
       </>
     );

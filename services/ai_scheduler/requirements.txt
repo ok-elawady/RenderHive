@@ -1,0 +1,6 @@
+fastapi>=0.115.0
+uvicorn>=0.32.0
+pydantic>=2.10.0
+httpx>=0.27.0
+aiofiles>=24.1.0
+# llama-cpp-python>=0.2.90  # Optional: uncomment and set LLAMA_MODEL_PATH to enable real inference

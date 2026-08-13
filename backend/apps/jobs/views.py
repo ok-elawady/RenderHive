@@ -11,6 +11,7 @@ ViewSets follow the serializer split pattern:
 import re
 
 import django_filters
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F, Q
 from django.shortcuts import get_object_or_404
@@ -492,18 +493,25 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
 
 
 class TaskDispatchView(generics.GenericAPIView):
-    """Atomically find, lock, and dispatch a READY task to a worker."""
+    """Atomically find, lock, and dispatch a READY task to a worker.
+
+    Scoring and AI evaluation happen OUTSIDE the DB transaction to avoid
+    holding DB connections open during slow network I/O (LLM call). Only
+    the final claim step (select_for_update + save) runs inside an atomic
+    block, targeting just the single winning task.
+    """
 
     permission_classes = [IsFarmAgent]
     serializer_class = TaskStartSerializer
 
-    @transaction.atomic
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         worker_name = serializer.validated_data["worker_name"]
 
         from apps.workers.models import WorkerNode, WorkerStatus
+        from apps.jobs.scoring.base import BaseScorer
+        from apps.jobs.scoring.ai_client import AIScoreAdjuster
 
         worker = (
             WorkerNode.objects.filter(hostname=worker_name)
@@ -541,53 +549,104 @@ class TaskDispatchView(generics.GenericAPIView):
             .values("pk")
         )
 
-        candidates = (
-            Task.objects.select_for_update(skip_locked=True)
-            .select_related("layer", "job")
+        # Build an unordered, unlocked queryset — we do NOT lock the full batch.
+        # select_related ensures BaseScorer can access task.job and task.layer
+        # without additional queries.
+        candidates_qs = (
+            Task.objects.select_related("layer", "job")
             .filter(state=TaskState.READY, job_id__in=allowed_jobs)
         )
 
-        # Resource filtering happens in SQL. DCC/version/execution compatibility
-        # is evaluated from the worker's structured heartbeat data below.
+        # Resource filtering in SQL — hard constraints only.
+        # DCC / version / execution compatibility is checked in Python below.
         if worker is not None:
-            candidates = candidates.filter(
+            candidates_qs = candidates_qs.filter(
                 layer__min_cores__lte=max(int(worker.cores or 1), 1),
                 layer__min_memory_mb__lte=max(int(worker.memory_mb or 1), 1),
                 layer__min_gpus__lte=len(worker.gpu_models or []),
             )
 
-        candidates = candidates.order_by("job__priority", "dispatch_order")
+        # Fetch the top 200 candidates for scoring, ordered deterministically.
+        candidates_list = list(
+            candidates_qs.order_by("-job__priority", "dispatch_order")[:200]
+        )
 
-        task = None
-        for candidate in candidates.iterator(chunk_size=100):
-            compatible, _reason = worker_supports_layer(worker, candidate.layer)
-            if compatible:
-                task = candidate
-                break
-
-        if task is None:
+        if not candidates_list:
             return Response(
                 {"detail": "No compatible tasks available."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        task.state = TaskState.RUNNING
-        task.worker_name = worker_name
-        task.started_at = timezone.now()
-        task.save(
-            update_fields=[
-                "state",
-                "worker_name",
-                "started_at",
-                "updated_at",
-            ]
-        )
+        # ── Phase 1: Deterministic Base Scoring (no DB lock held) ────────────
+        scored_tasks = BaseScorer().score(worker, candidates_list)
 
-        if worker is not None:
-            WorkerNode.objects.filter(pk=worker.pk).update(
-                status=WorkerStatus.RENDERING,
-                last_ping=timezone.now(),
+        # DCC / version / execution capability check in Python.
+        supported_tasks = [
+            ts for ts in scored_tasks
+            if worker_supports_layer(worker, ts.task.layer)[0]
+        ]
+
+        if not supported_tasks:
+            return Response(
+                {"detail": "No compatible tasks available after capability filtering."},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
+        # ── Phase 2: AI Tie-Breaker (outside transaction — may make HTTP call) ─
+        top_score = supported_tasks[0].base_score
+        # Use a RELATIVE threshold (10% of the top score) rather than an absolute
+        # value. An absolute threshold of 0.05 would incorrectly invoke the AI for
+        # every dispatch on farms where all jobs share the same priority, because all
+        # base scores cluster tightly around the same value regardless of absolute
+        # magnitude. The relative threshold correctly captures genuine ties.
+        tie_threshold = max(top_score * 0.10, 0.005)  # floor of 0.005 handles near-zero scores
+        competitive_tasks = [
+            ts for ts in supported_tasks if (top_score - ts.base_score) <= tie_threshold
+        ]
+
+        if len(competitive_tasks) > 1 and getattr(settings, "SCHEDULER_AI_ENABLED", True):
+            capabilities_snapshot = request.data.get("capabilities_snapshot")
+            adjusted = AIScoreAdjuster(worker).adjust(competitive_tasks, capabilities_snapshot)
+            best = adjusted[0]
+        else:
+            best = competitive_tasks[0]
+
+        winner_id = best.task.id
+        final_score_breakdown = best.score_breakdown
+
+        # ── Phase 3: Atomic claim — lock ONLY the winning task row ──────────
+        with transaction.atomic():
+            task = (
+                Task.objects.select_for_update(skip_locked=True)
+                .filter(pk=winner_id, state=TaskState.READY)
+                .first()
+            )
+            if task is None:
+                # Another worker claimed this task between scoring and claiming.
+                return Response(
+                    {"detail": "Task was claimed concurrently. Retry dispatch."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            task.state = TaskState.RUNNING
+            task.worker_name = worker_name
+            task.started_at = timezone.now()
+            task.last_score_breakdown = final_score_breakdown
+            task.save(
+                update_fields=[
+                    "state",
+                    "worker_name",
+                    "started_at",
+                    "updated_at",
+                    "last_score_breakdown",
+                ]
+            )
+
+            if worker is not None:
+                WorkerNode.objects.filter(pk=worker.pk).update(
+                    status=WorkerStatus.RENDERING,
+                    last_ping=timezone.now(),
+                )
 
         layer = task.layer
         job = task.job
@@ -801,3 +860,82 @@ class DependencyViewSet(
         if not (self.request.user.is_staff or self.request.user.is_superuser):
             raise PermissionDenied("Only staff or superusers can delete dependencies.")
         instance.delete()  # pre_delete signal repairs counters
+
+
+# ── Recent Dispatches View ────────────────────────────────────────────────────
+
+
+class RecentDispatchesView(generics.GenericAPIView):
+    """Return the most recently dispatched tasks with their AI score breakdowns.
+
+    This powers the "Agentic Routing Logs" panel in the frontend dashboard,
+    replacing the fabricated log entries derived from job states.
+
+    Endpoint:
+        ``GET /api/tasks/recent-dispatches/``
+
+    Query Parameters:
+        limit: Number of tasks to return (default 30, max 100).
+
+    Response fields per task:
+        - id: Task UUID.
+        - name: Task display name.
+        - worker_name: Hostname of the worker that claimed the task.
+        - started_at: When the task started.
+        - job_name: Human-readable job name.
+        - job_priority: Job priority at dispatch time.
+        - last_score_breakdown: Full scoring breakdown including AI adjustment.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        """Return recently dispatched tasks with their score breakdowns.
+
+        Args:
+            request: The HTTP request.
+
+        Returns:
+            A list of recently dispatched task summaries.
+        """
+        try:
+            limit = min(int(request.query_params.get("limit", 30)), 100)
+        except (ValueError, TypeError):
+            limit = 30
+
+        tasks = (
+            Task.objects.select_related("job", "layer")
+            .exclude(last_score_breakdown__isnull=True)
+            .exclude(worker_name__isnull=True)
+            .order_by("-started_at")[:limit]
+        )
+
+        results = []
+        for task in tasks:
+            breakdown = task.last_score_breakdown or {}
+            results.append({
+                "id": str(task.id),
+                "name": task.name,
+                "worker_name": task.worker_name,
+                "started_at": task.started_at.isoformat() if task.started_at else None,
+                "state": task.state,
+                "job_id": str(task.job_id),
+                "job_name": task.job.visible_name or task.job.name,
+                "job_priority": task.job.priority,
+                "layer_name": task.layer.name,
+                "last_score_breakdown": breakdown,
+                # Convenience top-level fields derived from the breakdown
+                "ai_was_invoked": "ai_adjustment" in breakdown,
+                "ai_reason": breakdown.get("ai_reason", ""),
+                "final_score": (
+                    breakdown.get("job_priority", 0)
+                    + breakdown.get("resource_fit", 0)
+                    + breakdown.get("failure_penalty", 0)
+                    + breakdown.get("dispatch_order", 0)
+                    + breakdown.get("_floor_clamp", 0)
+                    + breakdown.get("ai_adjustment", 0)
+                ),
+            })
+
+        return Response(results)
+

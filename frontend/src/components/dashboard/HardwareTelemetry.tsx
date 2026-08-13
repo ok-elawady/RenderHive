@@ -56,8 +56,14 @@ export default function HardwareTelemetry({ telemetry }: HardwareTelemetryProps)
     <>
       <Card className="border-border">
         <CardHeader>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-base font-bold text-foreground">Hardware Utilization</CardTitle>
+            <span
+              title="Metrics are estimated from active job counts. Real telemetry requires dedicated worker endpoints."
+              className="text-[10px] font-mono text-muted-foreground/60 border border-border/40 rounded px-1.5 py-0.5 cursor-help select-none"
+            >
+              est.
+            </span>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -109,7 +115,7 @@ export default function HardwareTelemetry({ telemetry }: HardwareTelemetryProps)
       </Card>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-5xl p-0 gap-0 overflow-hidden border-border bg-surface shadow-2xl shadow-black/20 dark:shadow-black/90">
+        <DialogContent className="max-w-5xl sm:max-w-5xl p-0 gap-0 overflow-hidden border-border bg-surface shadow-2xl shadow-black/20 dark:shadow-black/90">
           <DialogHeader className="border-b border-border px-6 py-4 bg-background/80">
             <div className="text-left">
               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">

@@ -47,12 +47,58 @@ services:
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-admin@renderhive.local}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-admin}
+      # AI Scheduler — points Django at the ai_scheduler service.
+      # Set SCHEDULER_AI_ENABLED=False to disable the AI path entirely.
+      SCHEDULER_AI_ENABLED: ${SCHEDULER_AI_ENABLED:-True}
+      SCHEDULER_AI_URL: ${SCHEDULER_AI_URL:-http://ai_scheduler:8001/api/v1/rank-tasks}
+      SCHEDULER_AI_TIMEOUT: ${SCHEDULER_AI_TIMEOUT:-2.5}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
     restart: unless-stopped
+
+  ai_scheduler:
+    profiles: ["ai"]
+    build:
+      context: ./services/ai_scheduler
+      dockerfile: Dockerfile
+      args:
+        USE_CUDA: 1
+    ports:
+      - "8001:8001"
+    environment:
+      # Path to the GGUF model file inside the container.
+      # Mount your model directory via the 'models' volume below and set this
+      # to the matching container path, e.g. /models/mistral-7b-instruct.gguf
+      LLAMA_MODEL_PATH: ${LLAMA_MODEL_PATH:-}
+      LLAMA_PROMPT_TEMPLATE: ${LLAMA_PROMPT_TEMPLATE:-mistral}
+      LLAMA_THREADS: ${LLAMA_THREADS:-4}
+      MODELS_DIR: /models
+    volumes:
+      # Mount a local directory containing your GGUF model files.
+      # Set LLAMA_MODEL_PATH in your .env to the container path of the model.
+      # Example: ./models:/models (create the models/ dir in the repo root)
+      - models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 12G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: uvicorn main:app --host 0.0.0.0 --port 8001
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   frontend:
     profiles: ["frontend"]
@@ -88,3 +134,7 @@ services:
 
 volumes:
   postgres_data:
+  # Named volume for GGUF model files used by the ai_scheduler service.
+  # To pre-populate it, copy your .gguf files into this volume or bind-mount
+  # a local directory instead (see the ai_scheduler service volumes comment).
+  models:

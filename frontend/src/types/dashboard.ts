@@ -6,6 +6,7 @@ export type DashboardView =
   | "Job Queue"
   | "User Management"
   | "Node Pool"
+  | "Infrastructure"
   | "AI Rules"
   | "Settings";
 
