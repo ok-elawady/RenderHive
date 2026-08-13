@@ -91,8 +91,10 @@ class BaseScorer:
         raw_score = sum(breakdown.values())
         base_score = max(raw_score, 0.0)
 
-        # If the score was clamped, record it so the breakdown values still sum
-        # to the returned base_score and operators can see the effective floor.
+        # If the score was clamped to zero, add a synthetic _floor_clamp entry
+        # equal to the deficit so that sum(breakdown.values()) == base_score (0.0).
+        # Without this the breakdown fields sum to a negative number, which makes
+        # the Django Admin audit trail misleading.
         if raw_score < 0.0:
             breakdown["_floor_clamp"] = -raw_score
 

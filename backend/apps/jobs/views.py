@@ -594,8 +594,14 @@ class TaskDispatchView(generics.GenericAPIView):
 
         # ── Phase 2: AI Tie-Breaker (outside transaction — may make HTTP call) ─
         top_score = supported_tasks[0].base_score
+        # Use a RELATIVE threshold (10% of the top score) rather than an absolute
+        # value. An absolute threshold of 0.05 would incorrectly invoke the AI for
+        # every dispatch on farms where all jobs share the same priority, because all
+        # base scores cluster tightly around the same value regardless of absolute
+        # magnitude. The relative threshold correctly captures genuine ties.
+        tie_threshold = max(top_score * 0.10, 0.005)  # floor of 0.005 handles near-zero scores
         competitive_tasks = [
-            ts for ts in supported_tasks if (top_score - ts.base_score) <= 0.05
+            ts for ts in supported_tasks if (top_score - ts.base_score) <= tie_threshold
         ]
 
         if len(competitive_tasks) > 1 and getattr(settings, "SCHEDULER_AI_ENABLED", True):
@@ -854,3 +860,82 @@ class DependencyViewSet(
         if not (self.request.user.is_staff or self.request.user.is_superuser):
             raise PermissionDenied("Only staff or superusers can delete dependencies.")
         instance.delete()  # pre_delete signal repairs counters
+
+
+# ── Recent Dispatches View ────────────────────────────────────────────────────
+
+
+class RecentDispatchesView(generics.GenericAPIView):
+    """Return the most recently dispatched tasks with their AI score breakdowns.
+
+    This powers the "Agentic Routing Logs" panel in the frontend dashboard,
+    replacing the fabricated log entries derived from job states.
+
+    Endpoint:
+        ``GET /api/tasks/recent-dispatches/``
+
+    Query Parameters:
+        limit: Number of tasks to return (default 30, max 100).
+
+    Response fields per task:
+        - id: Task UUID.
+        - name: Task display name.
+        - worker_name: Hostname of the worker that claimed the task.
+        - started_at: When the task started.
+        - job_name: Human-readable job name.
+        - job_priority: Job priority at dispatch time.
+        - last_score_breakdown: Full scoring breakdown including AI adjustment.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        """Return recently dispatched tasks with their score breakdowns.
+
+        Args:
+            request: The HTTP request.
+
+        Returns:
+            A list of recently dispatched task summaries.
+        """
+        try:
+            limit = min(int(request.query_params.get("limit", 30)), 100)
+        except (ValueError, TypeError):
+            limit = 30
+
+        tasks = (
+            Task.objects.select_related("job", "layer")
+            .exclude(last_score_breakdown__isnull=True)
+            .exclude(worker_name__isnull=True)
+            .order_by("-started_at")[:limit]
+        )
+
+        results = []
+        for task in tasks:
+            breakdown = task.last_score_breakdown or {}
+            results.append({
+                "id": str(task.id),
+                "name": task.name,
+                "worker_name": task.worker_name,
+                "started_at": task.started_at.isoformat() if task.started_at else None,
+                "state": task.state,
+                "job_id": str(task.job_id),
+                "job_name": task.job.visible_name or task.job.name,
+                "job_priority": task.job.priority,
+                "layer_name": task.layer.name,
+                "last_score_breakdown": breakdown,
+                # Convenience top-level fields derived from the breakdown
+                "ai_was_invoked": "ai_adjustment" in breakdown,
+                "ai_reason": breakdown.get("ai_reason", ""),
+                "final_score": (
+                    breakdown.get("job_priority", 0)
+                    + breakdown.get("resource_fit", 0)
+                    + breakdown.get("failure_penalty", 0)
+                    + breakdown.get("dispatch_order", 0)
+                    + breakdown.get("_floor_clamp", 0)
+                    + breakdown.get("ai_adjustment", 0)
+                ),
+            })
+
+        return Response(results)
+

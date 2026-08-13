@@ -218,6 +218,8 @@ class TaskDetailSerializer(TaskListSerializer):
         cores_used: CPU cores reserved at dispatch time.
         checkpoint_count: Number of resume checkpoints saved.
         dispatch_order: Dispatch priority within the layer.
+        last_score_breakdown: JSON breakdown of the dispatch scoring factors,
+            including the AI adjustment delta and reason if the AI was invoked.
     """
 
     class Meta(TaskListSerializer.Meta):
@@ -226,6 +228,7 @@ class TaskDetailSerializer(TaskListSerializer):
             "cores_used",
             "checkpoint_count",
             "dispatch_order",
+            "last_score_breakdown",
         ]
         read_only_fields = fields
 
