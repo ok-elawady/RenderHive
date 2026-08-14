@@ -9,16 +9,13 @@ import {
   Plus,
   Trash2,
   XCircle,
-  ChevronDown,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
   LayoutList,
-  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import { JobSelector, LayerSelector, TaskSelector } from "@/components/common/Selectors";
@@ -33,7 +30,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -329,6 +325,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
   }, [jobId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDeps();
   }, [loadDeps]);
 
@@ -395,7 +392,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
               </div>
             ) : (
               <Table containerRef={inboundRef} containerClassName="max-h-[400px] overflow-y-auto">
-                <TableHeader className="sticky top-0 z-10 shadow-sm bg-muted/30">
+                <TableHeader className="sticky top-0 z-10 border-b border-border/50 bg-muted/30">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="pl-6 font-semibold text-xs w-[35%]">Depends On</TableHead>
                     <TableHead className="font-semibold text-center text-xs">Type</TableHead>
@@ -437,6 +434,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                                 id={`delete-dep-${dep.id}`}
                                 size="icon"
                                 variant="ghost"
+                                aria-label="Delete dependency"
                                 className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                 onClick={() => setPendingDelete(dep)}
                               >
@@ -462,6 +460,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                   className="h-7 w-7 p-0"
                   disabled={inboundPage === 1}
                   onClick={() => setInboundPage((p) => Math.max(1, p - 1))}
+                  aria-label="Previous inbound page"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -471,6 +470,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                   className="h-7 w-7 p-0"
                   disabled={inboundPage * PAGE_SIZE >= inbound.length}
                   onClick={() => setInboundPage((p) => p + 1)}
+                  aria-label="Next inbound page"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -481,7 +481,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
           {/* Outbound: what is waiting on this job */}
           <TabsContent value="outbound" className="m-0 border-none p-0 outline-none flex flex-col">
             <Table containerRef={outboundRef} containerClassName="max-h-[250px] overflow-y-auto">
-              <TableHeader className="sticky top-0 z-10 shadow-sm bg-card">
+              <TableHeader className="sticky top-0 z-10 border-b border-border/50 bg-card">
                 <TableRow className="hover:bg-transparent bg-muted/30">
                   <TableHead className="pl-6 font-semibold text-xs w-[35%]">Blocks</TableHead>
                   <TableHead className="font-semibold text-center text-xs">Type</TableHead>
@@ -531,6 +531,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                   className="h-7 w-7 p-0"
                   disabled={outboundPage === 1}
                   onClick={() => setOutboundPage((p) => Math.max(1, p - 1))}
+                  aria-label="Previous outbound page"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -540,6 +541,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                   className="h-7 w-7 p-0"
                   disabled={outboundPage * PAGE_SIZE >= outbound.length}
                   onClick={() => setOutboundPage((p) => p + 1)}
+                  aria-label="Next outbound page"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
