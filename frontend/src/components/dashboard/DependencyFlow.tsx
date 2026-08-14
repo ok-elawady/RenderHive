@@ -60,7 +60,7 @@ export function DependencyFlow({ dep, currentJobId, isInbound }: DependencyFlowP
   return (
     <div className="flex items-center gap-2 text-xs">
       {isInternal && (
-        <Badge variant="secondary" className="h-4 px-1.5 py-0 text-[9px] uppercase">
+        <Badge variant="secondary" className="h-5 px-2 py-0.5 text-xs uppercase font-medium">
           Internal
         </Badge>
       )}

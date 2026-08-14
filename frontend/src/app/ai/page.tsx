@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   AlertTriangle,
   BrainCircuit,
@@ -64,22 +64,15 @@ function loadSavedRules(): string {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AiSchedulerPage() {
-  const { data: health, error, isLoading: isHealthLoading, mutate } = useSWR<AiHealthStatus>(
+  const { data: health, isLoading: isHealthLoading, mutate } = useSWR<AiHealthStatus>(
     "/api/v1/health",
     fetchAiHealth,
     { refreshInterval: 8000, revalidateOnFocus: true }
   );
 
-  const [rules, setRules] = useState<string>("");
-  const [savedRules, setSavedRules] = useState<string>("");
+  const [rules, setRules] = useState<string>(loadSavedRules);
+  const [savedRules, setSavedRules] = useState<string>(loadSavedRules);
   const [isRulesExpanded, setIsRulesExpanded] = useState(false);
-
-  // ── Load saved rules on mount ──────────────────────────────────────────────
-  useEffect(() => {
-    const loaded = loadSavedRules();
-    setRules(loaded);
-    setSavedRules(loaded);
-  }, []);
 
   // ── Rules persistence ──────────────────────────────────────────────────────
   const handleSaveRules = () => {
@@ -124,7 +117,7 @@ export default function AiSchedulerPage() {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-5">
         {/* ── Service Status Card ─────────────────────────────────────────── */}
-        <Card className="border-border bg-card/95">
+        <Card className="border-border bg-card/95 shadow-none">
           <CardHeader className="border-b border-border/50">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2.5 text-base font-black">
@@ -165,11 +158,11 @@ export default function AiSchedulerPage() {
                 <div className="text-xs text-muted-foreground leading-relaxed">
                   <span className="font-semibold text-destructive">AI service is not reachable.</span> The farm will
                   continue to operate using deterministic scoring only. Start the service with{" "}
-                  <code className="font-mono text-[10px] bg-muted/60 px-1 py-0.5 rounded">
+                  <code className="font-mono text-xs bg-muted/60 px-1.5 py-0.5 rounded">
                     uvicorn main:app --port 8001
                   </code>{" "}
                   or via{" "}
-                  <code className="font-mono text-[10px] bg-muted/60 px-1 py-0.5 rounded">
+                  <code className="font-mono text-xs bg-muted/60 px-1.5 py-0.5 rounded">
                     docker compose --profile ai up
                   </code>
                   .
@@ -209,7 +202,7 @@ export default function AiSchedulerPage() {
             </div>
 
             {/* Stats panel */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border/60 rounded-xl border border-border/60 bg-muted/10 overflow-hidden shadow-sm mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border/60 rounded-xl border border-border/60 bg-muted/10 overflow-hidden mt-2">
               <StatChip
                 icon={Zap}
                 label="Template"
@@ -238,7 +231,7 @@ export default function AiSchedulerPage() {
         </div>
 
         {/* ── System Prompt / Rules Editor ───────────────────────────────── */}
-        <Card className="border-border bg-card/95">
+        <Card className="border-border bg-card/95 shadow-none">
           <CardHeader className="border-b border-border/50">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
@@ -249,7 +242,7 @@ export default function AiSchedulerPage() {
                 {rulesChanged && (
                   <Badge
                     variant="outline"
-                    className="text-[10px] h-5 px-1.5 border-amber-500/40 text-amber-500 bg-amber-500/5"
+                    className="text-xs h-5 px-2 border-amber-500/40 text-amber-500 bg-amber-500/5 font-medium"
                   >
                     Unsaved
                   </Badge>
@@ -277,7 +270,7 @@ export default function AiSchedulerPage() {
             <p className="text-xs text-muted-foreground leading-relaxed">
               These rules form the system prompt sent to the LLM when breaking dispatch ties. Edits are saved locally in
               your browser. To permanently apply changes, copy the updated prompt into{" "}
-              <code className="font-mono text-[10px] bg-muted/60 px-1 py-0.5 rounded">
+              <code className="font-mono text-xs bg-muted/60 px-1.5 py-0.5 rounded">
                 services/ai_scheduler/prompts.py
               </code>{" "}
               and restart the service.

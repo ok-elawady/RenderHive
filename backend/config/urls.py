@@ -28,6 +28,7 @@ def api_root(request):
 
 urlpatterns = [
     path("", api_root, name="api-root"),
+    path("api/health/", api_root, name="api-health"),
     path("admin/", admin.site.urls),
     # Jobs API
     path("api/", include("apps.jobs.urls")),

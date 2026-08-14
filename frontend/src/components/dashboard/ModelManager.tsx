@@ -1,10 +1,12 @@
 "use client";
 
 import { useRef, useEffect } from "react";
-import { CloudDownload, Database, Play, Trash2, RefreshCw, HardDrive, PowerOff } from "lucide-react";
+import useSWR from "swr";
+import { CloudDownload, Database, Play, Trash2, RefreshCw, HardDrive, PowerOff, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -27,8 +29,6 @@ function formatBytes(bytes: number, decimals = 2) {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
-
-import useSWR from "swr";
 
 export function ModelManager({ onModelChanged }: { onModelChanged: () => void }) {
   const {
@@ -187,10 +187,11 @@ export function ModelManager({ onModelChanged }: { onModelChanged: () => void })
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                className="size-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                 onClick={handleCancelDownload}
+                aria-label="Cancel model download"
               >
-                &times;
+                <X size={15} />
               </Button>
             </div>
             <Progress
@@ -265,16 +266,28 @@ export function ModelManager({ onModelChanged }: { onModelChanged: () => void })
                             <PowerOff size={14} /> Unload
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDelete(l.filename)}
-                          disabled={isActive}
-                          title={isActive ? "Unload model before deleting" : "Delete model"}
-                        >
-                          <Trash2 size={14} /> Delete
-                        </Button>
+                        <ConfirmDialog
+                          variant="destructive"
+                          title="Delete AI Model"
+                          description={
+                            <>
+                              Are you sure you want to delete <strong className="text-foreground">{l.filename}</strong>? This will remove the local model file from disk.
+                            </>
+                          }
+                          confirmText="Delete Model"
+                          onConfirm={() => handleDelete(l.filename)}
+                          trigger={
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              disabled={isActive}
+                              title={isActive ? "Unload model before deleting" : "Delete model"}
+                            >
+                              <Trash2 size={14} /> Delete
+                            </Button>
+                          }
+                        />
                       </div>
                     </div>
                   );
@@ -363,10 +376,13 @@ export function ModelManager({ onModelChanged }: { onModelChanged: () => void })
         <Database size={14} />
         Model Manager
       </DialogTrigger>
-      <DialogContent className="max-w-4xl sm:max-w-4xl p-0 gap-0 overflow-hidden border-border bg-surface shadow-2xl shadow-black/20 dark:shadow-black/90">
+      <DialogContent className="max-w-4xl sm:max-w-4xl p-0 gap-0 overflow-hidden border-border bg-surface">
         <DialogHeader className="border-b border-border px-6 py-4 bg-background/80">
           <div className="text-left">
             <DialogTitle className="mt-1 text-lg font-bold text-foreground">Model Manager</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+              Manage, download, and switch AI models for the intelligent scheduler.
+            </DialogDescription>
           </div>
         </DialogHeader>
 

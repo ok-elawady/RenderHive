@@ -1,19 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
-  ArrowLeft,
   Plus,
   Trash2,
   AlertCircle,
   FileText,
   Settings2,
   ChevronDown,
-  ChevronRight,
   CheckCircle2,
   Link2,
   Cpu,
@@ -30,7 +27,6 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -45,7 +41,6 @@ type CreateJobPayload = components["schemas"]["JobCreate"] & {
     dep_layer?: string | null;
   }[];
 };
-type LayerCreatePayload = components["schemas"]["LayerCreate"];
 type LayerType = components["schemas"]["LayerTypeEnum"];
 
 const StyledSelect = React.forwardRef<HTMLSelectElement, React.ComponentProps<"select">>(
@@ -180,8 +175,7 @@ export default function SubmitJobPage() {
   const [selectedLayerIndex, setSelectedLayerIndex] = useState<number>(0);
 
   const form = useForm<JobFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: zodResolver(jobFormSchema as any),
+    resolver: zodResolver(jobFormSchema as never) as unknown as import("react-hook-form").Resolver<JobFormValues>,
     mode: "onChange",
     defaultValues: {
       visibleName: "",
@@ -489,7 +483,6 @@ export default function SubmitJobPage() {
                       ) : (
                         <div className="space-y-4">
                           {depFields.map((field, index) => {
-                            const typeValue = form.watch(`dependencies.${index}.type`);
                             return (
                               <div
                                 key={field.id}
@@ -499,6 +492,7 @@ export default function SubmitJobPage() {
                                   type="button"
                                   variant="ghost"
                                   size="icon"
+                                  aria-label="Remove dependency"
                                   className="absolute top-2 right-2 size-7 text-muted-foreground hover:text-destructive"
                                   onClick={() => removeDep(index)}
                                 >

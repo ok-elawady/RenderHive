@@ -4,10 +4,12 @@ import type { components } from "./schema";
 export type DashboardView =
   | "Dashboard"
   | "Job Queue"
+  | "Worker Nodes"
+  | "Worker Pools"
   | "User Management"
   | "Node Pool"
   | "Infrastructure"
-  | "AI Rules"
+  | "AI Scheduler"
   | "Settings";
 
 export interface SidebarItem {
