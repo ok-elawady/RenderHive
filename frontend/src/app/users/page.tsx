@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   CalendarDays,
-  Handshake,
   ChevronRight,
   Loader2,
   Mail,
@@ -17,15 +16,7 @@ import {
   Plus,
   RefreshCw,
   ShieldAlert,
-  ShieldCheck,
   Trash2,
-  UserRound,
-  UsersRound,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  KeyRound,
-  BadgeCheck,
   Lock,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -33,21 +24,11 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/components/auth/AuthProvider";
 import { PageHeader } from "@/components/layout/PageHeader";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Sheet,
   SheetContent,
@@ -63,6 +44,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PageControlBar } from "@/components/common/PageControlBar";
+import { TableSortHeader } from "@/components/common/TableSortHeader";
 import {
   createUser,
   deleteUser,
@@ -118,6 +101,8 @@ export default function ActiveUsersPage() {
   const [isUpdating, setIsUpdating] = useState<boolean>(false);
   const [isResettingPassword, setIsResettingPassword] = useState<boolean>(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [accessFilter, setAccessFilter] = useState<string>("ALL");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
 
   const selectedUser = useMemo(() => {
@@ -178,16 +163,25 @@ export default function ActiveUsersPage() {
     });
   };
 
-  const renderSortIcon = (key: string) => {
-    if (sortConfig?.key !== key) return <ArrowUpDown className="ml-2 size-4 opacity-50 group-hover:opacity-100 transition-opacity" />;
-    if (sortConfig.direction === "asc") return <ArrowUp className="ml-2 size-4 text-primary" />;
-    return <ArrowDown className="ml-2 size-4 text-primary" />;
-  };
-
   const sortedUsers = useMemo(() => {
-    if (!sortConfig) return users;
+    let filtered = users;
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (u) =>
+          u.full_name.toLowerCase().includes(q) ||
+          u.username.toLowerCase().includes(q) ||
+          (u.email && u.email.toLowerCase().includes(q)) ||
+          (u.title_role && u.title_role.toLowerCase().includes(q)),
+      );
+    }
+    if (accessFilter && accessFilter !== "ALL") {
+      filtered = filtered.filter((u) => u.access_level === accessFilter);
+    }
 
-    return [...users].sort((a, b) => {
+    if (!sortConfig) return filtered;
+
+    return [...filtered].sort((a, b) => {
       const aValue = String(a[sortConfig.key as keyof User] || "").toLowerCase();
       const bValue = String(b[sortConfig.key as keyof User] || "").toLowerCase();
 
@@ -195,7 +189,7 @@ export default function ActiveUsersPage() {
       if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
       return 0;
     });
-  }, [users, sortConfig]);
+  }, [users, sortConfig, search, accessFilter]);
 
   const counts = useMemo(
     () => ({
@@ -206,6 +200,13 @@ export default function ActiveUsersPage() {
     }),
     [users],
   );
+
+  const accessChips = [
+    { id: "ALL", label: "All Users", count: counts.total },
+    { id: "Superuser", label: "Superusers", count: counts.superusers },
+    { id: "Staff", label: "Staff", count: counts.staff },
+    { id: "Client", label: "Clients", count: counts.clients },
+  ];
 
   const handleRowKeyDown = (
     event: KeyboardEvent<HTMLTableRowElement>,
@@ -351,110 +352,77 @@ export default function ActiveUsersPage() {
         </Button>
       </PageHeader>
 
-      <div className="flex-1 overflow-y-auto p-6 font-mono">
-        <div className="space-y-6">
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Total Users
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-3xl font-black tracking-tight text-foreground">{counts.total}</p>
-                <p className="text-xs font-mono text-primary flex items-center gap-1.5">
-                  <UsersRound size={14} /> Registered accounts
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Superusers
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-3xl font-black tracking-tight text-foreground">{counts.superusers}</p>
-                <p className="text-xs font-mono text-destructive flex items-center gap-1.5">
-                  <ShieldCheck size={14} /> Full Access
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Staff Accounts
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-3xl font-black tracking-tight text-foreground">{counts.staff}</p>
-                <p className="text-xs font-mono text-info flex items-center gap-1.5">
-                  <UserRound size={14} /> Elevated Rights
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Client Accounts
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-3xl font-black tracking-tight text-foreground">{counts.clients}</p>
-                <p className="text-xs font-mono text-muted-foreground flex items-center gap-1.5">
-                  <Handshake size={14} /> Standard Access
-                </p>
-              </CardContent>
-            </Card>
-          </section>
+      <div className="flex-1 overflow-y-auto p-6 font-mono space-y-4">
+        {/* Page-level Control Bar: Matching Jobs, Nodes, and Pools pages */}
+        <PageControlBar
+          chips={accessChips}
+          selectedChip={accessFilter}
+          onSelectChip={setAccessFilter}
+          search={search}
+          onSearchChange={setSearch}
+          searchPlaceholder="Search users, username, email..."
+        />
 
-          <Card className="border-border overflow-hidden bg-card/80 backdrop-blur-sm p-0 mt-6">
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader className="bg-muted/30">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[25%] pl-4">
-                      <Button variant="ghost" size="sm" onClick={() => handleSort('first_name')} className="font-semibold flex items-center group -ml-3">
-                        Full Name
-                        {renderSortIcon('first_name')}
-                      </Button>
-                    </TableHead>
-                    <TableHead className="w-[15%]">
-                      <div className="flex justify-center w-full">
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('username')} className="font-semibold flex items-center group">
-                          Username
-                          {renderSortIcon('username')}
-                        </Button>
-                      </div>
-                    </TableHead>
-                    <TableHead className="w-[20%]">
-                      <div className="flex justify-center w-full">
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('email')} className="font-semibold flex items-center group">
-                          Email
-                          {renderSortIcon('email')}
-                        </Button>
-                      </div>
-                    </TableHead>
-                    <TableHead className="w-[15%]">
-                      <div className="flex justify-center w-full">
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('title_role')} className="font-semibold flex items-center group">
-                          Title / Role
-                          {renderSortIcon('title_role')}
-                        </Button>
-                      </div>
-                    </TableHead>
-                    <TableHead className="w-[15%]">
-                      <div className="flex justify-center w-full">
-                        <Button variant="ghost" size="sm" onClick={() => handleSort('access_level')} className="font-semibold flex items-center group">
-                          Access Level
-                          {renderSortIcon('access_level')}
-                        </Button>
-                      </div>
-                    </TableHead>
-                    <TableHead className="font-semibold pr-6 text-right w-[10%] align-middle">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+        {/* Dedicated Table Card */}
+        <Card className="flex flex-col border-border p-0 gap-0 overflow-hidden bg-card">
+          <CardContent className="p-0 overflow-hidden">
+            <Table className="table-fixed">
+              <TableHeader className="bg-card sticky top-0 z-10 border-b border-border/50">
+                <TableRow className="hover:bg-transparent bg-muted/30">
+                  <TableHead className="w-[25%] pl-6">
+                    <TableSortHeader
+                      label="Full Name"
+                      sortKey="first_name"
+                      currentSortKey={sortConfig?.key}
+                      currentDirection={sortConfig?.direction}
+                      onSort={handleSort}
+                      align="left"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[15%]">
+                    <TableSortHeader
+                      label="Username"
+                      sortKey="username"
+                      currentSortKey={sortConfig?.key}
+                      currentDirection={sortConfig?.direction}
+                      onSort={handleSort}
+                      align="center"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[20%]">
+                    <TableSortHeader
+                      label="Email"
+                      sortKey="email"
+                      currentSortKey={sortConfig?.key}
+                      currentDirection={sortConfig?.direction}
+                      onSort={handleSort}
+                      align="center"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[15%]">
+                    <TableSortHeader
+                      label="Title / Role"
+                      sortKey="title_role"
+                      currentSortKey={sortConfig?.key}
+                      currentDirection={sortConfig?.direction}
+                      onSort={handleSort}
+                      align="center"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[15%]">
+                    <TableSortHeader
+                      label="Access Level"
+                      sortKey="access_level"
+                      currentSortKey={sortConfig?.key}
+                      currentDirection={sortConfig?.direction}
+                      onSort={handleSort}
+                      align="center"
+                    />
+                  </TableHead>
+                  <TableHead className="font-semibold pr-6 text-right w-[10%] text-xs text-muted-foreground align-middle">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+                <TableBody className="text-xs">
                   {isLoading ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
@@ -500,7 +468,6 @@ export default function ActiveUsersPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
 
       {/* Edit Profile / Details Sheet */}
       <Sheet open={selectedUser !== null} onOpenChange={(open) => !open && handleUserSelect(null)}>
@@ -508,8 +475,8 @@ export default function ActiveUsersPage() {
           {selectedUser && (
             <>
               <SheetHeader className="border-b border-border p-6 shrink-0">
-                <Avatar className="mb-4 size-14 shrink-0 rounded-lg shadow-sm">
-                  <AvatarFallback className="rounded-lg bg-gradient-to-br from-[#d01fc7] to-primary text-xl font-bold text-white">
+                <Avatar className="mb-4 size-14 shrink-0 rounded-full shadow-sm">
+                  <AvatarFallback className="rounded-full bg-gradient-to-br from-[#d01fc7] to-primary text-xl font-bold text-white">
                     {getInitials(selectedUser)}
                   </AvatarFallback>
                 </Avatar>
@@ -596,53 +563,40 @@ export default function ActiveUsersPage() {
                     </div>
 
                     <div className="pt-6 mt-auto">
-                      <AlertDialog>
-                        <AlertDialogTrigger
-                          render={
-                            <Button
-                              variant="ghost"
-                              className="w-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                              disabled={
-                                deletingUserId === selectedUser.id ||
-                                String(user?.id) === String(selectedUser.id)
-                              }
-                              title={
-                                String(user?.id) === String(selectedUser.id)
-                                  ? "You cannot delete your own account"
-                                  : undefined
-                              }
-                            />
-                          }
-                        >
-                          {deletingUserId === selectedUser.id ? (
-                            <Loader2 className="animate-spin mr-2" size={15} />
-                          ) : (
+                      <ConfirmDialog
+                        variant="destructive"
+                        title="Delete User"
+                        description={
+                          <>
+                            Are you sure you want to delete{" "}
+                            <span className="font-semibold text-foreground">
+                              {selectedUser.username}
+                            </span>
+                            ? This action cannot be undone.
+                          </>
+                        }
+                        confirmText="Delete User"
+                        isLoading={deletingUserId === selectedUser.id}
+                        onConfirm={() => handleDelete(selectedUser)}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            className="w-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            disabled={
+                              deletingUserId === selectedUser.id ||
+                              String(user?.id) === String(selectedUser.id)
+                            }
+                            title={
+                              String(user?.id) === String(selectedUser.id)
+                                ? "You cannot delete your own account"
+                                : undefined
+                            }
+                          >
                             <Trash2 size={15} className="mr-2" />
-                          )}
-                          Delete User
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete User</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete{" "}
-                              <span className="font-semibold text-foreground">
-                                {selectedUser.username}
-                              </span>
-                              ? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              variant="destructive"
-                              onClick={() => handleDelete(selectedUser)}
-                            >
-                              Delete User
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                            Delete User
+                          </Button>
+                        }
+                      />
                     </div>
                   </div>
                 )}

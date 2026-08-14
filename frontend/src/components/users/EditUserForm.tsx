@@ -2,7 +2,7 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, BadgeCheck, UserRound, ChevronDown, RefreshCw } from "lucide-react";
+import { Loader2, BadgeCheck, UserRound, ChevronDown } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -29,27 +29,25 @@ interface EditUserFormProps {
 
 export function EditUserForm({ user, onSubmit, onCancel, isSubmitting }: EditUserFormProps) {
   const form = useForm<UpdateUserFormValues>({
-    resolver: zodResolver(updateUserSchema as any),
+    resolver: zodResolver(updateUserSchema as never) as unknown as import("react-hook-form").Resolver<UpdateUserFormValues>,
     mode: "onChange",
     defaultValues: {
       fullName: [user.first_name, user.last_name].filter(Boolean).join(" ") || "",
       email: user.email || "",
-      titleRole: USER_TITLE_ROLES.includes(user.title_role as any) 
-        ? (user.title_role as any) 
+      titleRole: USER_TITLE_ROLES.includes(user.title_role as (typeof USER_TITLE_ROLES)[number]) 
+        ? (user.title_role as (typeof USER_TITLE_ROLES)[number]) 
         : "Render User",
       accessLevel: user.access_level || "Client",
     },
   });
-
-  const { errors } = form.formState;
 
   // Reset form when the selected user changes
   useEffect(() => {
     form.reset({
       fullName: [user.first_name, user.last_name].filter(Boolean).join(" ") || "",
       email: user.email || "",
-      titleRole: USER_TITLE_ROLES.includes(user.title_role as any) 
-        ? (user.title_role as any) 
+      titleRole: USER_TITLE_ROLES.includes(user.title_role as (typeof USER_TITLE_ROLES)[number]) 
+        ? (user.title_role as (typeof USER_TITLE_ROLES)[number]) 
         : "Render User",
       accessLevel: user.access_level || "Client",
     });

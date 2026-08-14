@@ -5,6 +5,7 @@ import { Eye, EyeOff, Loader2, Lock, LockKeyhole, ShieldCheck, UserCog } from "l
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/auth/AuthProvider";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -148,9 +149,11 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-6 p-6">
               <div className="flex items-center gap-5">
-                <div className="flex aspect-square size-16 items-center justify-center rounded-xl bg-gradient-to-br from-[#d01fc7] to-primary text-xl font-bold text-white shrink-0 shadow-inner">
-                  {initials}
-                </div>
+                <Avatar className="size-16 shrink-0 shadow-inner rounded-full">
+                  <AvatarFallback className="rounded-full bg-gradient-to-br from-[#d01fc7] to-primary text-xl font-bold text-white">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
                 <div>
                   <h2 className="text-xl font-black tracking-tight text-foreground">
                     {isLoadingProfile ? "Loading profile..." : fullName}
@@ -300,9 +303,10 @@ function ReadOnlyField({ label, value }: { label: string; value: string | null |
         </span>
       </div>
       <Input
-        value={value || "-"}
+        value={displayValue}
         readOnly
         tabIndex={-1}
+        aria-label={`${label} (Read-only)`}
         className="bg-muted/40 text-muted-foreground border-border/50 cursor-not-allowed select-none focus-visible:ring-0"
       />
     </div>
