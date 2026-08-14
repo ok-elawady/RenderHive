@@ -935,39 +935,116 @@ export function deriveLogsFromJobs(jobs: RenderJob[]): LogEntry[] {
   }));
 }
 
-export function deriveTelemetryFromJobs(jobs: RenderJob[]): TelemetryMetrics {
-  const totalJobs = jobs.length;
-  const activeJobs = jobs.filter((job) => job.status === "Rendering").length;
-  const averageProgress =
-    totalJobs > 0
-      ? Math.round(jobs.reduce((sum, job) => sum + job.progress, 0) / totalJobs)
-      : 0;
+export function computeFarmEfficiency(jobs: RenderJob[]): {
+  efficiency: number;
+  completedJobs: number;
+  failedJobs: number;
+} {
+  const completedJobs = jobs.filter((job) => job.status === "Completed").length;
+  const failedJobs = jobs.filter((job) => job.status === "Failed").length;
+  const totalEvaluated = completedJobs + failedJobs;
 
-  const vramUsage = Math.min(
-    100,
-    28 + activeJobs * 14 + Math.round(averageProgress * 0.25),
-  );
-  const cpuLoad = Math.min(
-    100,
-    18 + activeJobs * 18 + Math.round(averageProgress * 0.2),
-  );
-
-  const points: TelemetryPoint[] = Array.from({ length: 14 }, (_, index) => {
-    const x = Math.round((index / 13) * 100);
-    const taper = Math.abs(index - 10) * 2;
-
+  if (totalEvaluated === 0) {
     return {
-      x,
-      vram: Math.max(0, Math.min(100, vramUsage - taper + (index % 3) * 4)),
-      cpu: Math.max(0, Math.min(100, cpuLoad - taper + (index % 2) * 5)),
+      efficiency: 100,
+      completedJobs,
+      failedJobs,
     };
-  });
+  }
+
+  return {
+    efficiency: Math.round((completedJobs / totalEvaluated) * 100),
+    completedJobs,
+    failedJobs,
+  };
+}
+
+export function computeClusterTelemetry(
+  jobs: RenderJob[],
+  workers: WorkerNode[],
+  previousPoints: TelemetryPoint[] = []
+): TelemetryMetrics {
+  const onlineWorkers = workers.filter(
+    (w) => w.status === "ONLINE" || w.status === "RENDERING"
+  );
+  const totalOnlineCores = onlineWorkers.reduce((sum, w) => sum + (w.cores || 1), 0);
+  const totalOnlineMemoryMb = onlineWorkers.reduce((sum, w) => sum + (w.memory_mb || 4096), 0);
+
+  // Total active running tasks across the entire farm
+  const activeTasks = jobs.reduce(
+    (sum, j) => sum + (j.running_tasks ?? (j.status === "Rendering" ? 1 : 0)),
+    0
+  );
+
+  // 1. Calculate Real CPU Cluster Load
+  let cpuLoad = 0;
+  const workersWithCpu = onlineWorkers.filter(
+    (w) => typeof (w.system_info as Record<string, unknown> | undefined)?.cpu_percent === "number"
+  );
+  if (workersWithCpu.length > 0) {
+    cpuLoad = Math.round(
+      workersWithCpu.reduce(
+        (sum, w) => sum + ((w.system_info as Record<string, unknown>).cpu_percent as number),
+        0
+      ) / workersWithCpu.length
+    );
+  } else if (totalOnlineCores > 0) {
+    cpuLoad = Math.min(100, Math.round((activeTasks / totalOnlineCores) * 100));
+  }
+
+  // 2. Calculate Real VRAM / Memory Utilization
+  let vramUsage = 0;
+  const workersWithVram = onlineWorkers.filter(
+    (w) =>
+      typeof (w.system_info as Record<string, unknown> | undefined)?.vram_percent === "number" ||
+      typeof (w.system_info as Record<string, unknown> | undefined)?.memory_percent === "number"
+  );
+  if (workersWithVram.length > 0) {
+    vramUsage = Math.round(
+      workersWithVram.reduce((sum, w) => {
+        const sys = w.system_info as Record<string, unknown>;
+        const val =
+          typeof sys.vram_percent === "number"
+            ? (sys.vram_percent as number)
+            : (sys.memory_percent as number);
+        return sum + val;
+      }, 0) / workersWithVram.length
+    );
+  } else if (totalOnlineMemoryMb > 0) {
+    vramUsage = Math.min(100, Math.round(((activeTasks * 3584) / totalOnlineMemoryMb) * 100));
+  }
+
+  // 3. Rolling timeseries points
+  const maxPoints = 15;
+  let nextPoints: TelemetryPoint[];
+
+  if (previousPoints.length === 0) {
+    nextPoints = Array.from({ length: maxPoints }, (_, i) => ({
+      x: Math.round((i / (maxPoints - 1)) * 100),
+      vram: vramUsage,
+      cpu: cpuLoad,
+    }));
+  } else {
+    const updated = [
+      ...previousPoints.slice(-(maxPoints - 1)),
+      { x: 100, vram: vramUsage, cpu: cpuLoad },
+    ];
+    nextPoints = updated.map((pt, index) => ({
+      x: Math.round((index / (updated.length - 1)) * 100),
+      vram: pt.vram,
+      cpu: pt.cpu,
+    }));
+  }
 
   return {
     vramUsage,
     cpuLoad,
-    points,
+    points: nextPoints,
   };
+}
+
+export function deriveTelemetryFromJobs(jobs: RenderJob[]): TelemetryMetrics {
+  return computeClusterTelemetry(jobs, []);
 }
 
 // ── AI Dispatch Log API ────────────────────────────────────────────────────────
@@ -1132,8 +1209,14 @@ export async function deleteAiModel(filename: string): Promise<void> {
 
 // ── Worker Pool API functions ──────────────────────────────────────────────────
 
-export type WorkerPool = components["schemas"]["WorkerPool"];
-export type CreateWorkerPoolPayload = Omit<WorkerPool, "id" | "created_at" | "updated_at">;
+export type WorkerPool = components["schemas"]["WorkerPool"] & {
+  online_worker_count?: number;
+  rendering_worker_count?: number;
+};
+export interface CreateWorkerPoolPayload {
+  name: string;
+  description?: string;
+}
 export type UpdateWorkerPoolPayload = Partial<CreateWorkerPoolPayload>;
 
 export async function getPools(): Promise<WorkerPool[]> {
@@ -1144,7 +1227,7 @@ export async function getPools(): Promise<WorkerPool[]> {
 
 export async function createPool(payload: CreateWorkerPoolPayload): Promise<WorkerPool> {
   const { data, error } = await client.POST("/api/pools/", {
-    body: payload as any,
+    body: payload as unknown as components["schemas"]["WorkerPool"],
   });
   if (error) throw new Error(JSON.stringify(error));
   return data as unknown as WorkerPool;
@@ -1153,7 +1236,7 @@ export async function createPool(payload: CreateWorkerPoolPayload): Promise<Work
 export async function updatePool(poolId: string, payload: UpdateWorkerPoolPayload): Promise<WorkerPool> {
   const { data, error } = await client.PATCH("/api/pools/{id}/", {
     params: { path: { id: poolId } },
-    body: payload as any,
+    body: payload as unknown as components["schemas"]["PatchedWorkerPool"],
   });
   if (error) throw new Error(JSON.stringify(error));
   return data as unknown as WorkerPool;
@@ -1184,4 +1267,18 @@ export async function getNodes(): Promise<WorkerNode[]> {
   if (error) throw new Error(JSON.stringify(error));
   return data?.results || [];
 }
+
+/**
+ * Pings the lightweight API health endpoint to measure pure network/HTTP roundtrip latency.
+ */
+export async function pingBackendLatency(): Promise<number> {
+  const start = performance.now();
+  const res = await fetch(`${API_BASE_URL}/api/health/`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("API unreachable");
+  return Math.max(1, Math.round(performance.now() - start));
+}
+
 
