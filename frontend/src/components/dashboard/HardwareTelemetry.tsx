@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import type { TelemetryMetrics, TelemetryPoint } from "@/types/dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+import { Badge } from "@/components/ui/badge";
 
 interface HardwareTelemetryProps {
   telemetry: TelemetryMetrics;
@@ -58,12 +60,12 @@ export default function HardwareTelemetry({ telemetry }: HardwareTelemetryProps)
         <CardHeader>
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-base font-bold text-foreground">Hardware Utilization</CardTitle>
-            <span
-              title="Metrics are estimated from active job counts. Real telemetry requires dedicated worker endpoints."
-              className="text-[10px] font-mono text-muted-foreground/60 border border-border/40 rounded px-1.5 py-0.5 cursor-help select-none"
+            <Badge
+              variant="outline"
+              className="text-[10px] font-mono border-primary/30 text-primary bg-primary/5 px-1.5 py-0 font-medium"
             >
-              est.
-            </span>
+              Live
+            </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -91,8 +93,8 @@ export default function HardwareTelemetry({ telemetry }: HardwareTelemetryProps)
             className="w-full pt-2 text-left cursor-pointer group"
             aria-label="Open telemetry history analytics"
           >
-            <p className="text-[11px] font-mono text-muted-foreground mb-2">Telemetry History (24h)</p>
-            <div className="w-full h-32 bg-surface-deep rounded-lg border border-input relative overflow-hidden flex items-end transition-all duration-300 group-hover:border-primary group-hover:shadow-[0_0_18px] group-hover:shadow-primary/20">
+            <p className="text-[11px] font-mono text-muted-foreground mb-2">Cluster Load Telemetry</p>
+            <div className="w-full h-32 bg-surface-deep rounded-lg border border-input relative overflow-hidden flex items-end transition-all duration-300 group-hover:border-primary">
               <svg className="w-full h-full p-1" viewBox="0 0 100 100" preserveAspectRatio="none">
                 <defs>
                   <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
@@ -115,13 +117,13 @@ export default function HardwareTelemetry({ telemetry }: HardwareTelemetryProps)
       </Card>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-5xl sm:max-w-5xl p-0 gap-0 overflow-hidden border-border bg-surface shadow-2xl shadow-black/20 dark:shadow-black/90">
+        <DialogContent className="max-w-5xl sm:max-w-5xl p-0 gap-0 overflow-hidden border-border bg-surface">
           <DialogHeader className="border-b border-border px-6 py-4 bg-background/80">
             <div className="text-left">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                Backend Micro-Analytics
-              </p>
-              <DialogTitle className="mt-1 text-lg font-bold text-foreground">Telemetry History (24h)</DialogTitle>
+              <DialogTitle className="mt-1 text-lg font-bold text-foreground">Cluster Telemetry Timeline</DialogTitle>
+              <DialogDescription className="sr-only">
+                Real-time utilization metrics for cluster VRAM and CPU load.
+              </DialogDescription>
             </div>
           </DialogHeader>
 

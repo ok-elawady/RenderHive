@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useEffect } from "react";
-import { Brain, RefreshCw, Search, Cpu, Zap } from "lucide-react";
+import useSWR from "swr";
+import { Brain, RefreshCw, Search, Cpu } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,14 +40,12 @@ function ScoreBar({ value, max = 0.65, color }: { value: number; max?: number; c
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
       </div>
-      <span className="text-[10px] font-mono shrink-0" style={{ color }}>
+      <span className="text-xs font-mono shrink-0" style={{ color }}>
         {value.toFixed(3)}
       </span>
     </div>
   );
 }
-
-import useSWR from "swr";
 
 export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -92,9 +91,9 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
             {aiInvokedCount > 0 && (
               <Badge
                 variant="outline"
-                className="gap-1 text-[10px] h-5 px-1.5 border-primary/40 text-primary bg-primary/5"
+                className="gap-1 text-xs h-5 px-2 border-primary/40 text-primary bg-primary/5 font-medium"
               >
-                <Brain size={9} />
+                <Brain size={11} />
                 {aiInvokedCount} AI
               </Badge>
             )}
@@ -105,6 +104,7 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
             className="h-7 w-7 text-muted-foreground hover:text-foreground"
             onClick={() => void mutate()}
             disabled={isValidating}
+            aria-label="Refresh dispatch logs"
             title="Refresh dispatch logs"
           >
             <RefreshCw size={13} className={isValidating ? "animate-spin" : ""} />
@@ -115,7 +115,10 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
       <CardContent className="flex-1 flex flex-col min-h-0">
         <div
           ref={terminalRef}
-          className="bg-surface-deep border border-input rounded-lg font-mono text-[11px] leading-relaxed flex-1 h-full overflow-y-auto box-border scroll-smooth"
+          role="region"
+          aria-label="AI Dispatch Logs"
+          aria-live="polite"
+          className="bg-surface-deep border border-input rounded-lg font-mono text-xs leading-relaxed flex-1 h-full overflow-y-auto box-border scroll-smooth"
         >
           {isLoading ? (
             <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 text-muted-foreground">
@@ -126,7 +129,7 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
             <div className="flex h-full min-h-32 flex-col items-center justify-center text-center p-4 gap-2">
               <Search size={28} className="mb-1 text-primary opacity-25" />
               <p className="text-xs font-bold text-foreground">No dispatch data available</p>
-              <p className="text-[10px] text-muted-foreground">{fetchError}</p>
+              <p className="text-xs text-muted-foreground">{fetchError}</p>
             </div>
           ) : filteredEntries.length === 0 ? (
             <div className="flex h-full min-h-32 flex-col items-center justify-center text-center p-4">
@@ -134,7 +137,7 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
               <p className="text-xs font-bold text-foreground">
                 {entries.length === 0 ? "No tasks dispatched yet" : "No matching dispatch events"}
               </p>
-              <p className="mt-1 text-[10px] text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {entries.length === 0
                   ? "Dispatch logs appear here once workers start claiming tasks."
                   : "Try a different search term."}
@@ -167,9 +170,9 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
                           <TooltipTrigger>
                             <Badge
                               variant="outline"
-                              className="gap-1 text-[10px] h-4 px-1.5 border-primary/40 text-primary bg-primary/5 cursor-help"
+                              className="gap-1 text-xs h-5 px-2 border-primary/40 text-primary bg-primary/5 cursor-help font-medium"
                             >
-                              <Brain size={8} /> AI
+                              <Brain size={11} /> AI
                             </Badge>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-xs text-xs">
@@ -179,9 +182,9 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
                       ) : (
                         <Badge
                           variant="outline"
-                          className="gap-1 text-[10px] h-4 px-1.5 border-border/50 text-muted-foreground"
+                          className="gap-1 text-xs h-5 px-2 border-border/50 text-muted-foreground font-medium"
                         >
-                          <Cpu size={8} /> DET
+                          <Cpu size={11} /> DET
                         </Badge>
                       )}
 
@@ -192,9 +195,9 @@ export default function AgenticLogs({ searchQuery }: AgenticLogsProps) {
 
                     {/* Row 2: worker + score bars */}
                     <div className="flex items-center gap-3 flex-wrap pl-1">
-                      <span className="text-[10px] text-muted-foreground shrink-0">
+                      <span className="text-xs text-muted-foreground shrink-0">
                         <span className="opacity-60">→ </span>
-                        <span className="text-foreground/70">{entry.worker_name ?? "unknown"}</span>
+                        <span className="text-foreground/80">{entry.worker_name ?? "unknown"}</span>
                       </span>
 
                       <div className="flex-1 grid grid-cols-2 gap-x-3 gap-y-0.5 min-w-[200px]">
