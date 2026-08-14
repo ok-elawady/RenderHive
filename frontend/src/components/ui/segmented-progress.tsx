@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertCircle, PlayCircle } from "lucide-react";
 
 interface SegmentedProgressProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -42,8 +42,7 @@ export function SegmentedProgressBar({
   const activeSegments = segments.filter((s) => s.value > 0);
 
   return (
-    <TooltipProvider delayDuration={150}>
-      <Tooltip>
+    <Tooltip>
         <TooltipTrigger render={<div className="flex flex-col w-full gap-1" />}>
           <div className={cn("flex h-2 w-full overflow-hidden rounded-full bg-secondary", className)} {...props}>
             {activeSegments.map((segment) => {
@@ -52,7 +51,7 @@ export function SegmentedProgressBar({
                 <div
                   key={segment.key}
                   className={cn(
-                    "h-full transition-all duration-300 ease-in-out hover:brightness-110 cursor-pointer",
+                    "h-full transition-all duration-300 ease-in-out",
                     segment.color,
                   )}
                   style={{ width: `${percentage}%` }}
@@ -65,18 +64,18 @@ export function SegmentedProgressBar({
               <div className="min-w-[2.5rem]">{(((succeeded + skipped) / safeTotal) * 100).toFixed(0)}%</div>
 
               {failed > 0 && (
-                <div className="flex items-center gap-1 text-destructive bg-destructive/15 px-1.5 py-0.5 rounded text-[10px]">
+                <div className="flex items-center gap-1 text-destructive bg-destructive/15 px-2 py-0.5 rounded text-xs font-medium">
                   <AlertCircle size={12} /> {failed} Err
                 </div>
               )}
 
               {running > 0 && (
-                <div className="flex items-center gap-1 text-info bg-info/15 px-1.5 py-0.5 rounded text-[10px]">
+                <div className="flex items-center gap-1 text-info bg-info/15 px-2 py-0.5 rounded text-xs font-medium">
                   <PlayCircle size={12} /> {running} Run
                 </div>
               )}
 
-              <div className="flex items-center gap-1 text-muted-foreground ml-auto font-normal text-[10px]">
+              <div className="flex items-center gap-1 text-muted-foreground ml-auto font-mono text-xs">
                 {succeeded + skipped} / {total}
               </div>
             </div>
@@ -87,7 +86,7 @@ export function SegmentedProgressBar({
           arrowClassName="bg-background fill-background"
         >
           <div className="flex flex-col justify-center pr-4 border-r border-border/50 mr-4">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1 whitespace-nowrap">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 whitespace-nowrap">
               Total Tasks
             </span>
             <span className="font-mono text-lg text-foreground font-medium leading-none">{total}</span>
@@ -102,15 +101,14 @@ export function SegmentedProgressBar({
                 >
                   <div className="flex items-center gap-1.5">
                     <div className={cn("size-1.5 rounded-full", segment.color)} />
-                    <span className="text-[10px] text-muted-foreground leading-none">{segment.label}</span>
+                    <span className="text-xs text-muted-foreground leading-none">{segment.label}</span>
                   </div>
-                  <span className="font-mono text-[10px] font-medium leading-none ml-4">{segment.value}</span>
+                  <span className="font-mono text-xs font-medium leading-none ml-4">{segment.value}</span>
                 </div>
               );
             })}
           </div>
         </TooltipContent>
       </Tooltip>
-    </TooltipProvider>
   );
 }

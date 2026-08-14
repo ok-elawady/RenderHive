@@ -106,7 +106,7 @@
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: color-mix(in srgb, var(--primary) 10%, transparent);
   --sidebar-accent-foreground: var(--primary);
-  --sidebar-border: transparent;
+  --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
 }
 
@@ -155,7 +155,7 @@
   --sidebar-primary-foreground: var(--primary-foreground);
   --sidebar-accent: color-mix(in srgb, var(--primary) 15%, transparent);
   --sidebar-accent-foreground: var(--primary);
-  --sidebar-border: transparent;
+  --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
 }
 

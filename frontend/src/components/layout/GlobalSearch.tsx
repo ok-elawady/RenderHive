@@ -53,7 +53,9 @@ export function GlobalSearch() {
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
+        aria-label="Search the render farm (Ctrl+K)"
         className="flex h-9 w-full cursor-pointer items-center gap-2 rounded-md border border-transparent bg-input/40 px-3 text-sm text-muted-foreground transition-all hover:bg-input/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group"
       >
         <Search className="h-4 w-4 shrink-0 opacity-50 transition-colors group-hover:text-primary group-hover:opacity-100" />
@@ -123,7 +125,7 @@ export function GlobalSearch() {
                   key={worker.hostname}
                   value={`worker-${worker.hostname}-${worker.ip_address}`}
                   onSelect={() =>
-                    runCommand(() => router.push(`/nodes/${worker.hostname}`))
+                    runCommand(() => router.push(`/nodes?search=${encodeURIComponent(worker.hostname)}`))
                   }
                 >
                   <Server className="mr-2 h-4 w-4 shrink-0 text-primary" />
@@ -149,7 +151,7 @@ export function GlobalSearch() {
                   key={pool.name}
                   value={`pool-${pool.name}-${pool.description}`}
                   onSelect={() =>
-                    runCommand(() => router.push(`/nodes/pools/${pool.name}`))
+                    runCommand(() => router.push(`/pools?search=${encodeURIComponent(pool.name)}`))
                   }
                 >
                   <LayoutTemplate className="mr-2 h-4 w-4 shrink-0 text-primary" />

@@ -3,25 +3,8 @@
 import * as React from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { buttonVariants, Button } from "@/components/ui/button";
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { getJobs, getJobLayers, getLayerTasks, type BackendJob, type LayerList, type TaskList } from "@/services/api";
-
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () => void, enabled: boolean) {
-  React.useEffect(() => {
-    if (!enabled) return;
-    const listener = (event: MouseEvent | TouchEvent) => {
-      if (!ref.current || ref.current.contains(event.target as Node)) return;
-      handler();
-    };
-    document.addEventListener("mousedown", listener);
-    document.addEventListener("touchstart", listener);
-    return () => {
-      document.removeEventListener("mousedown", listener);
-      document.removeEventListener("touchstart", listener);
-    };
-  }, [ref, handler, enabled]);
-}
 
 const SelectorTrigger = React.forwardRef<HTMLButtonElement, React.ComponentProps<"button">>(({ className, children, ...props }, ref) => {
   return (
@@ -58,6 +41,7 @@ export function JobSelector({
 
   React.useEffect(() => {
     let mounted = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     getJobs()
       .then((res) => {
@@ -88,8 +72,8 @@ export function JobSelector({
             : placeholder}
       </SelectorTrigger>
       <CommandDialog open={open} onOpenChange={setOpen} title="Select Job" description="Search and select a job from the queue">
-        <Command className="text-slate-100">
-          <CommandInput placeholder="Search jobs by name..." className="text-slate-100" />
+        <Command>
+          <CommandInput placeholder="Search jobs by name..." />
           <CommandList>
             <CommandEmpty>No job found.</CommandEmpty>
             <CommandGroup>
@@ -105,7 +89,7 @@ export function JobSelector({
                   <Check className={cn("mr-2 h-4 w-4 shrink-0", value === job.id ? "opacity-100" : "opacity-0")} />
                   <div className="flex flex-col overflow-hidden">
                     <span className="truncate font-bold">{job.visible_name}</span>
-                    <span className="text-[10px] text-muted-foreground truncate">{job.id}</span>
+                    <span className="text-xs font-mono text-muted-foreground truncate">{job.id}</span>
                   </div>
                 </CommandItem>
               ))}
@@ -136,6 +120,7 @@ export function LayerSelector({
 
   React.useEffect(() => {
     if (!jobId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLayers([]);
       return;
     }
@@ -172,8 +157,8 @@ export function LayerSelector({
               : placeholder}
       </SelectorTrigger>
       <CommandDialog open={open} onOpenChange={setOpen} title="Select Layer" description="Search and select a layer from the job">
-        <Command className="text-slate-100">
-          <CommandInput placeholder="Search layers by name..." className="text-slate-100" />
+        <Command>
+          <CommandInput placeholder="Search layers by name..." />
           <CommandList>
             <CommandEmpty>No layer found.</CommandEmpty>
             <CommandGroup>
@@ -189,7 +174,7 @@ export function LayerSelector({
                   <Check className={cn("mr-2 h-4 w-4 shrink-0", value === layer.id ? "opacity-100" : "opacity-0")} />
                   <div className="flex flex-col overflow-hidden">
                     <span className="truncate font-bold">{layer.name}</span>
-                    <span className="text-[10px] text-muted-foreground truncate">{layer.id}</span>
+                    <span className="text-xs font-mono text-muted-foreground truncate">{layer.id}</span>
                   </div>
                 </CommandItem>
               ))}
@@ -222,6 +207,7 @@ export function TaskSelector({
 
   React.useEffect(() => {
     if (!jobId || !layerId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTasks([]);
       return;
     }
@@ -258,8 +244,8 @@ export function TaskSelector({
               : placeholder}
       </SelectorTrigger>
       <CommandDialog open={open} onOpenChange={setOpen} title="Select Task" description="Search and select a task from the layer">
-        <Command className="text-slate-100">
-          <CommandInput placeholder="Search tasks by name..." className="text-slate-100" />
+        <Command>
+          <CommandInput placeholder="Search tasks by name..." />
           <CommandList>
             <CommandEmpty>No task found.</CommandEmpty>
             <CommandGroup>
@@ -275,7 +261,7 @@ export function TaskSelector({
                   <Check className={cn("mr-2 h-4 w-4 shrink-0", value === task.id ? "opacity-100" : "opacity-0")} />
                   <div className="flex flex-col overflow-hidden">
                     <span className="truncate font-bold">{task.name}</span>
-                    <span className="text-[10px] text-muted-foreground truncate">{task.id}</span>
+                    <span className="text-xs font-mono text-muted-foreground truncate">{task.id}</span>
                   </div>
                 </CommandItem>
               ))}
