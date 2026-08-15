@@ -132,7 +132,6 @@ export function ModelManager({ onModelChanged }: { onModelChanged: () => void })
   };
 
   const handleDelete = async (filename: string) => {
-    if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
     try {
       await deleteAiModel(filename);
       toast.success(`Deleted ${filename}`);

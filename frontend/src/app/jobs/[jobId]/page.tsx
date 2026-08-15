@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DependencyPanel } from "@/components/dashboard/DependencyPanel";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   abortJob,
@@ -93,6 +94,8 @@ export default function JobDetailPage() {
   const [layers, setLayers] = useState<LayerList[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isEditOpen, setIsEditOpen] = useState<boolean>(false);
+  const [isAbortConfirmOpen, setIsAbortConfirmOpen] = useState<boolean>(false);
+  const [isAborting, setIsAborting] = useState<boolean>(false);
   const [draft, setDraft] = useState({ visible_name: "", priority: 50, max_tasks_per_worker: 0 });
 
   const session = useMemo(() => readAuthSession(), []);
@@ -148,14 +151,15 @@ export default function JobDetailPage() {
   };
 
   const handleAbort = async (): Promise<void> => {
-    if (!window.confirm("Abort this job and remove all nested layers and tasks?")) return;
-
+    setIsAborting(true);
     try {
       await abortJob(jobId);
       toast.success("Job aborted");
       router.push("/jobs");
     } catch (error) {
       toast.error("Abort failed", { description: formatApiError(error) });
+    } finally {
+      setIsAborting(false);
     }
   };
 
@@ -176,7 +180,7 @@ export default function JobDetailPage() {
         </Button>
         <Button
           variant="outline"
-          onClick={() => void handleAbort()}
+          onClick={() => setIsAbortConfirmOpen(true)}
           disabled={!job}
           className="gap-2 border-destructive/30 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
         >
@@ -245,7 +249,7 @@ export default function JobDetailPage() {
                 <CardContent className="p-4 flex flex-col gap-5">
                   <div className="flex flex-col gap-1.5 px-2">
                     <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-                      Command
+                      System Name
                     </div>
                     <div className="font-semibold font-mono text-xs break-all text-foreground/90" title={job.name}>
                       {job.name || "—"}
@@ -431,6 +435,24 @@ export default function JobDetailPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Abort Confirmation Dialog */}
+        <ConfirmDialog
+          open={isAbortConfirmOpen}
+          onOpenChange={setIsAbortConfirmOpen}
+          variant="destructive"
+          title="Abort Render Job"
+          description={
+            <>
+              Are you sure you want to abort{" "}
+              <strong className="text-foreground">{job?.visible_name || job?.name}</strong>?<br />
+              This will cancel all running tasks and remove the job and all associated layers. This action cannot be undone.
+            </>
+          }
+          confirmText="Abort Job"
+          isLoading={isAborting}
+          onConfirm={handleAbort}
+        />
       </div>
     </div>
   );

@@ -82,28 +82,29 @@ export function SegmentedProgressBar({
           )}
         </TooltipTrigger>
         <TooltipContent
-          className="p-3 pr-7 shadow-xl border border-border/50 bg-background text-foreground flex items-center"
-          arrowClassName="bg-background fill-background"
+          side="top"
+          className="px-3.5 py-2.5 max-w-none w-auto shadow-xl border border-border bg-popover text-popover-foreground flex items-center rounded-lg z-50"
+          arrowClassName="bg-popover fill-popover"
         >
-          <div className="flex flex-col justify-center pr-4 border-r border-border/50 mr-4">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1 whitespace-nowrap">
+          <div className="flex flex-col justify-center pr-3.5 border-r border-border/60 mr-3.5 shrink-0">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5 whitespace-nowrap">
               Total Tasks
             </span>
-            <span className="font-mono text-lg text-foreground font-medium leading-none">{total}</span>
+            <span className="font-mono text-lg text-foreground font-bold leading-none">{total}</span>
           </div>
-          <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-2">
+          <div className="flex-1 grid grid-cols-2 gap-x-5 gap-y-1.5">
             {segments.map((segment) => {
               const isZero = segment.value === 0;
               return (
                 <div
                   key={segment.key}
-                  className={cn("flex justify-between items-center min-w-[5.5rem]", isZero ? "opacity-40" : "")}
+                  className={cn("flex justify-between items-center min-w-[5.8rem] gap-2", isZero ? "opacity-35" : "")}
                 >
-                  <div className="flex items-center gap-1.5">
-                    <div className={cn("size-1.5 rounded-full", segment.color)} />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <div className={cn("size-1.5 rounded-full shrink-0", segment.color)} />
                     <span className="text-xs text-muted-foreground leading-none">{segment.label}</span>
                   </div>
-                  <span className="font-mono text-xs font-medium leading-none ml-4">{segment.value}</span>
+                  <span className="font-mono text-xs font-semibold text-foreground leading-none">{segment.value}</span>
                 </div>
               );
             })}

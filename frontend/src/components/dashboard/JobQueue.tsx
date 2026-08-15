@@ -25,14 +25,7 @@ import { cn } from "@/lib/utils";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { SegmentedProgressBar } from "@/components/ui/segmented-progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -598,76 +591,49 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
       </Card>
 
       {/* Delete Confirmation Modal */}
-      <Dialog open={!!jobToDelete} onOpenChange={(open) => !open && setJobToDelete(null)}>
-        <DialogContent>
-          <DialogHeader className="sm:text-center">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-destructive/10 mb-4">
-              <AlertTriangle className="size-6 text-destructive" />
-            </div>
-            <DialogTitle className="text-center text-lg">Delete Render Job</DialogTitle>
-            <DialogDescription className="text-center pt-2">
-              Are you sure you want to delete <strong className="text-foreground">{jobToDelete?.displayId}</strong>?
-              <br />
-              This will abort any active tasks and remove the job from the queue.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setJobToDelete(null)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={() => jobToDelete && void handleDelete(jobToDelete.id)}>
-              Delete Job
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={!!jobToDelete}
+        onOpenChange={(open) => !open && setJobToDelete(null)}
+        variant="destructive"
+        title="Delete Render Job"
+        description={
+          <>
+            Are you sure you want to delete <strong className="text-foreground">{jobToDelete?.displayId}</strong>?<br />
+            This will abort any active tasks and remove the job from the queue. This action cannot be undone.
+          </>
+        }
+        confirmText="Delete Job"
+        isLoading={actionJobId === jobToDelete?.id}
+        onConfirm={async () => {
+          if (jobToDelete) {
+            await handleDelete(jobToDelete.id);
+          }
+        }}
+      />
 
       {/* Master Emergency Pause/Resume Confirmation Modal */}
-      <Dialog open={!!masterAction} onOpenChange={(open) => !open && setMasterAction(null)}>
-        <DialogContent>
-          <DialogHeader className="sm:text-center">
-            <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-warning/10 mb-4">
-              <AlertCircle className="size-6 text-warning" />
-            </div>
-            <DialogTitle className="text-center text-lg">
-              {masterAction === "pause" ? "Pause All Active Jobs?" : "Resume All Paused Jobs?"}
-            </DialogTitle>
-            <DialogDescription className="text-center pt-2">
-              {masterAction === "pause" ? (
-                <>
-                  This will suspend dispatching for all <strong className="text-foreground">{runningCount}</strong>{" "}
-                  active rendering jobs on the farm.
-                </>
-              ) : (
-                <>
-                  This will resume dispatching for all <strong className="text-foreground">{pausedCount}</strong> paused
-                  jobs in the queue.
-                </>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMasterAction(null)} disabled={isExecutingMaster}>
-              Cancel
-            </Button>
-            <Button
-              variant={masterAction === "pause" ? "default" : "default"}
-              className={masterAction === "pause" ? "bg-warning text-warning-foreground hover:bg-warning/90" : ""}
-              onClick={() => void handleMasterBatchAction()}
-              disabled={isExecutingMaster}
-            >
-              {isExecutingMaster ? (
-                <Loader2 className="size-4 animate-spin mr-1.5" />
-              ) : masterAction === "pause" ? (
-                <Pause className="size-4 mr-1.5" />
-              ) : (
-                <Play className="size-4 mr-1.5" />
-              )}
-              {masterAction === "pause" ? "Pause All Active" : "Resume All Paused"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={!!masterAction}
+        onOpenChange={(open) => !open && setMasterAction(null)}
+        variant={masterAction === "pause" ? "warning" : "default"}
+        title={masterAction === "pause" ? "Pause All Active Jobs?" : "Resume All Paused Jobs?"}
+        description={
+          masterAction === "pause" ? (
+            <>
+              This will suspend dispatching for all <strong className="text-foreground">{runningCount}</strong>{" "}
+              active rendering jobs on the farm.
+            </>
+          ) : (
+            <>
+              This will resume dispatching for all <strong className="text-foreground">{pausedCount}</strong> paused
+              jobs in the queue.
+            </>
+          )
+        }
+        confirmText={masterAction === "pause" ? "Pause All Active" : "Resume All Paused"}
+        isLoading={isExecutingMaster}
+        onConfirm={handleMasterBatchAction}
+      />
     </>
   );
 }

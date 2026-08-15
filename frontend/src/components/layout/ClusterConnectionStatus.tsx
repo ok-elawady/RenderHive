@@ -1,14 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, RefreshCw, Server, Wifi, WifiOff } from "lucide-react";
+import { Check, Copy, RefreshCw, Server, ShieldAlert, ShieldCheck, Wifi, WifiOff } from "lucide-react";
 import { API_BASE_URL } from "@/services/api";
 import { useClusterHealth } from "@/hooks/useClusterHealth";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 
 export function ClusterConnectionStatus() {
@@ -58,9 +54,7 @@ export function ClusterConnectionStatus() {
               <span className="relative inline-flex size-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" />
             </span>
             <span className="text-foreground font-medium hidden sm:inline">Cluster Online</span>
-            <span className="text-muted-foreground group-hover:text-foreground transition-colors">
-              {latencyMs}ms
-            </span>
+            <span className="text-muted-foreground group-hover:text-foreground transition-colors">{latencyMs}ms</span>
           </>
         )}
       </PopoverTrigger>
@@ -110,12 +104,12 @@ export function ClusterConnectionStatus() {
             <span className="flex items-center gap-1.5 font-semibold">
               {isOffline ? (
                 <>
-                  <WifiOff className="size-3 text-destructive" />
+                  <ShieldAlert className="size-3 text-destructive" />
                   <span className="text-destructive">Unreachable</span>
                 </>
               ) : (
                 <>
-                  <Wifi className="size-3 text-emerald-500" />
+                  <ShieldCheck className="size-3 text-emerald-500" />
                   <span className="text-emerald-500">Operational</span>
                 </>
               )}
@@ -125,9 +119,7 @@ export function ClusterConnectionStatus() {
           {/* Latency */}
           <div className="flex items-center justify-between py-1 border-b border-border/30">
             <span className="text-muted-foreground">Roundtrip Latency:</span>
-            <span className="font-bold text-foreground">
-              {isOffline ? "N/A" : `${latencyMs} ms`}
-            </span>
+            <span className="font-bold text-foreground">{isOffline ? "N/A" : `${latencyMs} ms`}</span>
           </div>
 
           {/* Refresh Mode */}

@@ -75,7 +75,7 @@ export function ConfirmDialog({
           <AlertDialogTitle className="text-center text-lg font-bold text-foreground">
             {title}
           </AlertDialogTitle>
-          <AlertDialogDescription className="text-center text-xs text-muted-foreground leading-relaxed pt-1 max-w-sm mx-auto">
+          <AlertDialogDescription className="text-center text-sm text-muted-foreground/90 leading-relaxed pt-1 max-w-sm mx-auto">
             {description}
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -87,11 +87,20 @@ export function ConfirmDialog({
           <Button
             variant={isDestructive ? "destructive" : "default"}
             disabled={isLoading}
+            className={
+              isWarning
+                ? "bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 border border-amber-500/30 focus-visible:border-amber-500/50 focus-visible:ring-amber-500/20"
+                : undefined
+            }
             onClick={async (e) => {
               e.preventDefault();
-              await onConfirm();
-              if (onOpenChange) {
-                onOpenChange(false);
+              try {
+                await onConfirm();
+                if (onOpenChange) {
+                  onOpenChange(false);
+                }
+              } catch {
+                // Keep dialog open if an error occurs so user can retry or see error toast
               }
             }}
           >
