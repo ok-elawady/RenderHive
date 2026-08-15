@@ -34,6 +34,8 @@ urlpatterns = [
     path("api/", include("apps.jobs.urls")),
     # Workers API
     path("api/", include("apps.workers.urls")),
+    # Telemetry & Logs API
+    path("api/telemetry/", include("apps.telemetry.urls")),
     # Superuser-only account administration
     path("api/", include("apps.users.urls")),
     # OpenAPI schema and Swagger UI

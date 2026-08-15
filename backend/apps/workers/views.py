@@ -137,6 +137,33 @@ class WorkerNodeViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         if not isinstance(capabilities, dict):
             capabilities = {}
 
+        # Telemetry: Record historical hardware metric snapshot
+        from apps.telemetry.services import record_worker_metrics
+
+        cpu_val = float(system_info.get("cpu_percent", 0.0))
+        mem_used = int(system_info.get("used_memory_mb", system_info.get("memory_used_mb", 0)))
+        mem_total = int(data.get("memory_mb", system_info.get("total_memory_mb", 4096)))
+
+        if "vram_percent" in system_info:
+            vram_val = float(system_info["vram_percent"])
+        elif float(system_info.get("gpu_vram_mb", 0)) > 0:
+            vram_used = float(system_info.get("gpu_vram_used_mb", 0))
+            vram_total = float(system_info.get("gpu_vram_mb", 1))
+            vram_val = round((vram_used / vram_total) * 100.0, 1)
+        else:
+            vram_val = float(system_info.get("memory_percent", 0.0))
+
+        active_count = 1 if worker.status == WorkerStatus.RENDERING else 0
+
+        record_worker_metrics(
+            worker_hostname=hostname,
+            cpu_percent=cpu_val,
+            memory_used_mb=mem_used,
+            memory_total_mb=mem_total,
+            vram_percent=vram_val,
+            active_tasks=active_count,
+        )
+
         return Response(
             {
                 "status": "ok",
@@ -145,3 +172,4 @@ class WorkerNodeViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
                 "capabilities": capabilities,
             }
         )
+

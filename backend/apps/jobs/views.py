@@ -16,6 +16,7 @@ from django.db import transaction
 from django.db.models import Count, F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -34,6 +35,7 @@ from .serializers import (
     JobPatchSerializer,
     LayerDetailSerializer,
     LayerListSerializer,
+    RecentDispatchLogSerializer,
     TaskDetailSerializer,
     TaskFailSerializer,
     TaskListSerializer,
@@ -186,6 +188,21 @@ class JobViewSet(viewsets.ModelViewSet):
         job.is_paused = True
         job.state = JobState.PAUSED
         job.save(update_fields=["is_paused", "state", "updated_at"])
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event
+
+        actor = request.user.username if request.user and request.user.is_authenticated else "system"
+        job_display = job.visible_name or job.name
+        record_event(
+            event_type="JOB_PAUSED",
+            message=f"Job '{job_display}' was paused.",
+            actor_username=actor,
+            target_type="job",
+            target_id=str(job.id),
+            target_name=job_display,
+            severity=EventSeverity.INFO,
+        )
         return Response({"status": "paused", "is_paused": True})
 
     @action(detail=True, methods=["post"])
@@ -215,6 +232,21 @@ class JobViewSet(viewsets.ModelViewSet):
             job.state = JobState.PENDING
 
         job.save(update_fields=["is_paused", "state", "updated_at"])
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event
+
+        actor = request.user.username if request.user and request.user.is_authenticated else "system"
+        job_display = job.visible_name or job.name
+        record_event(
+            event_type="JOB_RESUMED",
+            message=f"Job '{job_display}' was resumed.",
+            actor_username=actor,
+            target_type="job",
+            target_id=str(job.id),
+            target_name=job_display,
+            severity=EventSeverity.INFO,
+        )
         return Response({"status": "resumed", "is_paused": False})
 
 
@@ -381,6 +413,26 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             task.cores_used = data["cores_used"]
         # stopped_at is set by the task_pre_save signal on SUCCEEDED/SKIPPED transitions.
         task.save()
+
+        # Telemetry: Record execution log for this completed attempt
+        from apps.telemetry.services import record_task_log
+
+        duration = (
+            (task.stopped_at - task.started_at).total_seconds()
+            if task.stopped_at and task.started_at
+            else data.get("duration_seconds", 0.0)
+        )
+        record_task_log(
+            task=task,
+            worker_hostname=task.worker_name or "unknown",
+            exit_status=0,
+            log_output=data.get("log_output", ""),
+            error_tail=data.get("error_tail", ""),
+            duration_seconds=duration,
+            peak_memory_mb=task.max_memory_used_mb,
+            output_image_path=data.get("output_image_path", ""),
+            attempt_number=task.retries + 1,
+        )
         return Response({"status": "succeeded"})
 
     @action(detail=True, methods=["post"], serializer_class=TaskFailSerializer)
@@ -410,14 +462,49 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
-        task.exit_status = serializer.validated_data["exit_status"]
+        task.exit_status = data["exit_status"]
         task.retries += 1
+
+        duration = (
+            (timezone.now() - task.started_at).total_seconds()
+            if task.started_at
+            else data.get("duration_seconds", 0.0)
+        )
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event, record_task_log
+
+        # Record telemetry log for this attempt
+        record_task_log(
+            task=task,
+            worker_hostname=task.worker_name or "unknown",
+            exit_status=task.exit_status,
+            log_output=data.get("log_output", ""),
+            error_tail=data.get("error_tail", ""),
+            duration_seconds=duration,
+            peak_memory_mb=task.max_memory_used_mb,
+            output_image_path=data.get("output_image_path", ""),
+            attempt_number=task.retries,
+        )
 
         if task.retries >= task.max_retries:
             task.state = TaskState.FAILED
             task.stopped_at = timezone.now()
             task.save()
+            record_event(
+                event_type="TASK_FAILED",
+                message=(
+                    f"Task '{task.name}' failed permanently after {task.retries} attempts "
+                    f"(exit code {task.exit_status})."
+                ),
+                actor_username=task.worker_name or "system",
+                target_type="task",
+                target_id=str(task.id),
+                target_name=task.name,
+                severity=EventSeverity.WARNING,
+            )
             return Response({"status": "failed"})
         else:
             # Task will be re-dispatched; stopped_at is intentionally not set
@@ -458,6 +545,20 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             )
         task.state = TaskState.SKIPPED
         task.save()
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event
+
+        actor = request.user.username if request.user and request.user.is_authenticated else "system"
+        record_event(
+            event_type="TASK_SKIPPED",
+            message=f"Task '{task.name}' was skipped by supervisor {actor}.",
+            actor_username=actor,
+            target_type="task",
+            target_id=str(task.id),
+            target_name=task.name,
+            severity=EventSeverity.INFO,
+        )
         return Response({"status": "skipped"})
 
     @action(detail=True, methods=["post"])
@@ -509,9 +610,9 @@ class TaskDispatchView(generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
         worker_name = serializer.validated_data["worker_name"]
 
-        from apps.workers.models import WorkerNode, WorkerStatus
-        from apps.jobs.scoring.base import BaseScorer
         from apps.jobs.scoring.ai_client import AIScoreAdjuster
+        from apps.jobs.scoring.base import BaseScorer
+        from apps.workers.models import WorkerNode, WorkerStatus
 
         worker = (
             WorkerNode.objects.filter(hostname=worker_name)
@@ -650,6 +751,20 @@ class TaskDispatchView(generics.GenericAPIView):
 
         layer = task.layer
         job = task.job
+
+        # Telemetry: Record historical dispatch trace for observability
+        from apps.telemetry.services import record_dispatch_trace
+
+        record_dispatch_trace(
+            task=task,
+            job=job,
+            worker_hostname=worker_name,
+            candidate_count=len(supported_tasks),
+            ai_invoked="ai_adjustment" in (final_score_breakdown or {}),
+            ai_latency_ms=getattr(best, "ai_latency_ms", None),
+            ai_reason=str(final_score_breakdown.get("ai_reason", "")),
+            score_breakdown=final_score_breakdown,
+        )
         scene_info = layer.scene_info if isinstance(layer.scene_info, dict) else {}
         execution = scene_info.get("execution")
         if not isinstance(execution, dict):
@@ -865,29 +980,25 @@ class DependencyViewSet(
 # ── Recent Dispatches View ────────────────────────────────────────────────────
 
 
+@extend_schema(
+    summary="Get recent task dispatches",
+    description="Return the most recently dispatched tasks with their AI score breakdowns.",
+    parameters=[
+        OpenApiParameter(
+            name="limit",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="Number of tasks to return (default 30, max 100).",
+            default=30,
+        )
+    ],
+    responses={200: RecentDispatchLogSerializer(many=True)},
+)
 class RecentDispatchesView(generics.GenericAPIView):
-    """Return the most recently dispatched tasks with their AI score breakdowns.
-
-    This powers the "Agentic Routing Logs" panel in the frontend dashboard,
-    replacing the fabricated log entries derived from job states.
-
-    Endpoint:
-        ``GET /api/tasks/recent-dispatches/``
-
-    Query Parameters:
-        limit: Number of tasks to return (default 30, max 100).
-
-    Response fields per task:
-        - id: Task UUID.
-        - name: Task display name.
-        - worker_name: Hostname of the worker that claimed the task.
-        - started_at: When the task started.
-        - job_name: Human-readable job name.
-        - job_priority: Job priority at dispatch time.
-        - last_score_breakdown: Full scoring breakdown including AI adjustment.
-    """
+    """Return the most recently dispatched tasks with their AI score breakdowns."""
 
     permission_classes = [IsAuthenticated]
+    serializer_class = RecentDispatchLogSerializer
 
     def get(self, request, *args, **kwargs):
         """Return recently dispatched tasks with their score breakdowns.

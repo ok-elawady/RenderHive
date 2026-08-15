@@ -272,6 +272,10 @@ class WorkerThread(QThread):
                     info["gpu_vram_mb"] = rows[0]["vram_mb"]
                     info["gpu_vram_used_mb"] = rows[0]["vram_used_mb"]
                     info["gpu_percent"] = rows[0]["utilization_percent"]
+                    if rows[0]["vram_mb"] > 0:
+                        info["vram_percent"] = round((rows[0]["vram_used_mb"] / rows[0]["vram_mb"]) * 100.0, 1)
+                    else:
+                        info["vram_percent"] = 0.0
         except Exception:
             pass
 
@@ -525,12 +529,35 @@ class WorkerThread(QThread):
                 message += "\n  Output: {}".format(result.error_tail)
             message += "\n  Log: {}".format(display_log)
             self.log_signal.emit(message)
-        return result.exit_code
+        return result.exit_code, display_log, result.error_tail, duration, result.output_image_path
 
-    def report_status(self, task_id: str, exit_status: int) -> None:
+    def report_status(
+        self,
+        task_id: str,
+        exit_status: int,
+        log_path: str = "",
+        error_tail: str = "",
+        duration_seconds: float = 0.0,
+        output_image_path: str = "",
+    ) -> None:
         try:
             endpoint = "succeed" if exit_status == 0 else "fail"
-            payload: Dict[str, Any] = {"exit_status": int(exit_status)}
+            log_text = ""
+            if log_path and os.path.isfile(log_path):
+                try:
+                    with open(log_path, "r", encoding="utf-8", errors="replace") as handle:
+                        log_text = handle.read()
+                except Exception:
+                    pass
+
+            payload: Dict[str, Any] = {
+                "exit_status": int(exit_status),
+                "worker_hostname": HOSTNAME,
+                "log_output": log_text,
+                "error_tail": error_tail or "",
+                "duration_seconds": duration_seconds,
+                "output_image_path": output_image_path or "",
+            }
             if endpoint == "succeed":
                 payload.update({"max_memory_used_mb": 0})
             response = self.session.post(
@@ -599,8 +626,15 @@ class WorkerThread(QThread):
                     self.status_signal.emit("RENDERING")
                     self.scheduler_signal.emit("RUNNING TASK")
                     self.log_signal.emit("Received task {}.".format(task_id))
-                    exit_status = self.run_task(task)
-                    self.report_status(str(task_id), exit_status)
+                    exit_status, log_path, error_tail, duration, out_img = self.run_task(task)
+                    self.report_status(
+                        str(task_id),
+                        exit_status,
+                        log_path=log_path,
+                        error_tail=error_tail,
+                        duration_seconds=duration,
+                        output_image_path=out_img,
+                    )
                     if self.pause_after_current:
                         self.dispatch_paused = True
                         self.scheduler_signal.emit("PAUSED")

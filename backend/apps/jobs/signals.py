@@ -4,8 +4,7 @@ from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
-from .models import Dependency, DependencyType, Task, TaskState, Job, JobState, Layer
-
+from .models import Dependency, DependencyType, Job, JobState, Layer, Task, TaskState
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -68,7 +67,7 @@ def _decrement_tasks_in_layer(layer_id):
     tasks should all have their depend_count decremented.  If any task's count
     reaches 0 it transitions to READY.
     """
-    from .models import Task, TaskState, Layer, Job
+    from .models import Job, Layer, Task, TaskState
 
     with transaction.atomic():
         tasks = list(Task.objects.select_for_update().filter(
@@ -102,7 +101,7 @@ def _decrement_tasks_in_job(job_id):
 
     Used when a JOB_ON_JOB dependency is satisfied.
     """
-    from .models import Task, TaskState, Layer, Job
+    from .models import Job, Layer, Task, TaskState
 
     with transaction.atomic():
         tasks = list(Task.objects.select_for_update().filter(

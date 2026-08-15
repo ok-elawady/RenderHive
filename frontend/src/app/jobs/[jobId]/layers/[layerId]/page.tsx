@@ -35,6 +35,9 @@ import {
   type LayerDetail,
 } from "@/services/api";
 import { DependencyFlow } from "@/components/dashboard/DependencyFlow";
+import TaskLogViewerDialog from "@/components/jobs/TaskLogViewerDialog";
+import { Terminal } from "lucide-react";
+
 
 const taskStates: Array<TaskStateFilter | "ALL"> = [
   "ALL",
@@ -72,6 +75,7 @@ export default function LayerInspectorPage() {
   const [stateFilter, setStateFilter] = useState<TaskStateFilter | "ALL">("ALL");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [skippingTaskId, setSkippingTaskId] = useState<string | null>(null);
+  const [selectedTaskForLog, setSelectedTaskForLog] = useState<{ id: string; name: string } | null>(null);
 
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [isDeletingDependency, setIsDeletingDependency] = useState<string | null>(null);
@@ -370,10 +374,17 @@ export default function LayerInspectorPage() {
                       {visibleTasks.map((task) => (
                         <div
                           key={task.id}
-                          title={`${task.name} / ${task.state}`}
+                          title={`${task.name} / ${task.state} (Click to inspect log)`}
                           aria-label={`Task ${task.name}: ${task.state}, frames ${task.frame_start} to ${task.frame_end}`}
                           tabIndex={0}
-                          className={`group relative aspect-square overflow-hidden rounded-md border text-xs font-semibold transition-all hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${getTaskClasses(task.state)}`}
+                          onClick={() => setSelectedTaskForLog({ id: task.id, name: task.name })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedTaskForLog({ id: task.id, name: task.name });
+                            }
+                          }}
+                          className={`group relative aspect-square overflow-hidden rounded-md border text-xs font-semibold cursor-pointer transition-all hover:scale-[1.05] hover:ring-2 hover:ring-primary/60 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${getTaskClasses(task.state)}`}
                         >
                           <span className="absolute inset-0 flex items-center justify-center">
                             {task.frame_start + (task.frame_start !== task.frame_end ? "-" + task.frame_end : "")}
@@ -382,7 +393,7 @@ export default function LayerInspectorPage() {
                             <button
                               type="button"
                               aria-label={`Skip failed task ${task.name}`}
-                              className="absolute inset-x-1 bottom-1 hidden rounded bg-destructive/95 px-1 py-0.5 text-[10px] font-bold text-destructive-foreground shadow-sm transition-all hover:bg-destructive group-hover:block uppercase tracking-wider"
+                              className="absolute inset-x-1 bottom-1 hidden rounded bg-destructive/95 px-1 py-0.5 text-[10px] font-bold text-destructive-foreground shadow-sm transition-all hover:bg-destructive group-hover:block uppercase tracking-wider z-10"
                               disabled={skippingTaskId === task.id}
                               onClick={(event) => {
                                 event.preventDefault();
@@ -416,11 +427,15 @@ export default function LayerInspectorPage() {
                     </span>
                   </div>
 
-                  <div className="mt-4 rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                    <SkipForward size={12} className="mr-1.5 inline text-primary/70" />
-                    Hover over a failed task and click{" "}
-                    <span className="font-semibold text-foreground/70 uppercase">Skip</span> to bypass it and allow the
-                    job to continue.
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    <div>
+                      <Terminal size={12} className="mr-1.5 inline text-primary/70" />
+                      Click any task to view execution stdout/stderr logs and diagnostics.
+                    </div>
+                    <div>
+                      <SkipForward size={12} className="mr-1.5 inline text-destructive/70" />
+                      Hover failed tasks to <span className="font-semibold text-foreground/70 uppercase">Skip</span>.
+                    </div>
                   </div>
                 </TabsContent>
               </CardContent>
@@ -428,6 +443,16 @@ export default function LayerInspectorPage() {
           </Card>
         </div>
       </div>
+
+      <TaskLogViewerDialog
+        taskId={selectedTaskForLog?.id || null}
+        taskName={selectedTaskForLog?.name}
+        isOpen={Boolean(selectedTaskForLog)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedTaskForLog(null);
+        }}
+      />
     </div>
   );
 }
+

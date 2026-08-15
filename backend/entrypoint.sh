@@ -44,6 +44,12 @@ if db_url.startswith("postgres"):
 END
 fi
 
+# If a custom command is provided (e.g. Celery worker / beat), execute it directly
+if [ "$#" -gt 0 ]; then
+    echo "Executing custom command: $@"
+    exec "$@"
+fi
+
 echo "Running migrations..."
 python manage.py migrate --noinput
 

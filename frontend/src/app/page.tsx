@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AgenticLogs from "@/components/dashboard/AgenticLogs";
+import FarmActivityFeed from "@/components/dashboard/FarmActivityFeed";
 import HardwareTelemetry from "@/components/dashboard/HardwareTelemetry";
 import JobQueue from "@/components/dashboard/JobQueue";
 import KpiCards from "@/components/dashboard/KpiCards";
@@ -14,25 +15,26 @@ import {
   getNodes,
   getPools,
   mapBackendJobToRenderJob,
-  pingBackendLatency,
   type WorkerNode,
   type WorkerPool,
 } from "@/services/api";
+import { useClusterHealth } from "@/hooks/useClusterHealth";
 import type { RenderJob, TelemetryMetrics } from "@/types/dashboard";
 
 const emptyTelemetry: TelemetryMetrics = {
-  vramUsage: 0,
   cpuLoad: 0,
+  memoryUsage: 0,
+  vramUsage: 0,
   points: [],
 };
 
 export default function DashboardPage() {
+  const { latencyMs, isOffline: isClusterOffline } = useClusterHealth();
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [nodes, setNodes] = useState<WorkerNode[]>([]);
   const [pools, setPools] = useState<WorkerPool[]>([]);
   const [telemetry, setTelemetry] = useState<TelemetryMetrics>(emptyTelemetry);
-  const [latencyMs, setLatencyMs] = useState<number | null>(null);
-  const [isOffline, setIsOffline] = useState<boolean>(false);
+  const [isFetchOffline, setIsFetchOffline] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const initialFetchTimerRef = useRef<number | null>(null);
@@ -68,28 +70,23 @@ export default function DashboardPage() {
 
   const fetchDashboardData = useCallback(async (): Promise<void> => {
     try {
-      const [backendJobs, backendNodes, backendPools, latency] = await Promise.all([
+      const [backendJobs, backendNodes, backendPools] = await Promise.all([
         fetchJobs(),
         getNodes().catch(() => []),
         getPools().catch(() => []),
-        pingBackendLatency().catch(() => null),
       ]);
       const mappedJobs = backendJobs.map(mapBackendJobToRenderJob);
 
       setJobs(mappedJobs);
       setNodes(backendNodes);
       setPools(backendPools);
-      if (latency !== null) {
-        setLatencyMs(latency);
-      }
-      setIsOffline(false);
+      setIsFetchOffline(false);
 
       setTelemetry((prev) =>
         computeClusterTelemetry(mappedJobs, backendNodes, prev.points)
       );
     } catch {
-      setIsOffline(true);
-      setLatencyMs(null);
+      setIsFetchOffline(true);
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +121,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col p-6 space-y-6 font-mono h-[calc(100vh-theme(spacing.16))]">
+    <div className="flex-1 flex flex-col p-6 space-y-6 font-mono min-h-screen">
       <KpiCards
         totalNodes={totalNodes}
         onlineNodes={onlineNodes}
@@ -135,7 +132,7 @@ export default function DashboardPage() {
         completedJobs={completedJobs}
         failedJobs={failedJobs}
         latencyMs={latencyMs}
-        isOffline={isOffline}
+        isOffline={isClusterOffline || isFetchOffline}
       />
 
       <PoolSaturationStrip pools={pools} />
@@ -151,7 +148,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[380px]">
+        <FarmActivityFeed />
         <AgenticLogs searchQuery="" />
       </div>
     </div>

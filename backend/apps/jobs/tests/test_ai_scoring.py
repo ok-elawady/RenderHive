@@ -13,25 +13,24 @@ Run with:
 """
 
 import time
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from apps.jobs.scoring.base import BaseScorer, TaskScore
 from apps.jobs.scoring.ai_client import (
-    AIScoreAdjuster,
     AI_SCORE_DELTA_MAX,
-    _cb_failures,
-    _cb_open_until,
+    AIScoreAdjuster,
+    _circuit_is_open,
     _record_failure,
     _record_success,
-    _circuit_is_open,
 )
+from apps.jobs.scoring.base import BaseScorer, TaskScore
 
-from .factories import JobFactory, LayerFactory, TaskFactory
+from .factories import LayerFactory, TaskFactory
 
 User = get_user_model()
 
@@ -371,8 +370,9 @@ class TestCircuitBreaker:
 
     def test_failure_counter_increments_on_request_error(self, db, mock_worker):
         """Network errors increment the failure counter toward the threshold."""
-        import apps.jobs.scoring.ai_client as cb_module
         import requests as req_lib
+
+        import apps.jobs.scoring.ai_client as cb_module
 
         layer = LayerFactory()
         task = TaskFactory(layer=layer, job=layer.job, state="READY")

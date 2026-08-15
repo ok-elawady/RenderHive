@@ -7,7 +7,6 @@ from rest_framework.test import APIClient
 from apps.jobs.models import Job, JobState, Layer, Task, TaskState
 from apps.workers.models import WorkerNode, WorkerPool, WorkerStatus
 
-
 pytestmark = pytest.mark.django_db
 User = get_user_model()
 

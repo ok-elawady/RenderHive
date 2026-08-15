@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   Bot,
   ChevronRight,
   LayoutDashboard,
@@ -142,6 +143,18 @@ export default function AppSidebar() {
                 </CollapsibleContent>
               </SidebarMenuItem>
             </Collapsible>
+
+            {/* Telemetry & Observability */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith("/telemetry")}
+                render={<Link href="/telemetry" />}
+                tooltip="Telemetry & Observability"
+              >
+                <Activity size={18} />
+                <span>Telemetry</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
 
             {/* AI Scheduler */}
             <SidebarMenuItem>
