@@ -545,8 +545,13 @@ class WorkerThread(QThread):
             log_text = ""
             if log_path and os.path.isfile(log_path):
                 try:
-                    with open(log_path, "r", encoding="utf-8", errors="replace") as handle:
-                        log_text = handle.read()
+                    file_size = os.path.getsize(log_path)
+                    max_read_bytes = 2 * 1024 * 1024  # 2 MB ceiling
+                    with open(log_path, "rb") as handle:
+                        if file_size > max_read_bytes:
+                            handle.seek(file_size - max_read_bytes)
+                        log_bytes = handle.read()
+                    log_text = log_bytes.decode("utf-8", errors="replace")
                 except Exception:
                     pass
 

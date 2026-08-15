@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 def snapshot_online_worker_metrics() -> Dict[str, Any]:
     """Capture real-time hardware telemetry samples for all online/rendering worker nodes."""
     from apps.workers.models import WorkerNode, WorkerStatus
-    from apps.telemetry.services.event_recorder import record_worker_metric_sample
+    from apps.telemetry.services import record_worker_metrics
 
     online_workers = WorkerNode.objects.filter(status__in=[WorkerStatus.ONLINE, WorkerStatus.RENDERING])
     recorded_count = 0
@@ -23,12 +23,19 @@ def snapshot_online_worker_metrics() -> Dict[str, Any]:
     for worker in online_workers:
         sys_info = worker.system_info if isinstance(worker.system_info, dict) else {}
         cpu = float(sys_info.get("cpu_percent", 0.0))
-        vram = float(sys_info.get("vram_percent", sys_info.get("memory_percent", 0.0)))
-        mem_used = int(sys_info.get("memory_used_mb", 0))
-        mem_total = int(sys_info.get("memory_total_mb", worker.memory_mb or 4096))
-        active_tasks = int(sys_info.get("active_tasks", 0))
+        if "vram_percent" in sys_info:
+            vram = float(sys_info["vram_percent"])
+        elif float(sys_info.get("gpu_vram_mb", 0)) > 0:
+            vram_used = float(sys_info.get("gpu_vram_used_mb", 0))
+            vram_total = float(sys_info.get("gpu_vram_mb", 1))
+            vram = round((vram_used / vram_total) * 100.0, 1)
+        else:
+            vram = 0.0
+        mem_used = int(sys_info.get("used_memory_mb", sys_info.get("memory_used_mb", 0)))
+        mem_total = int(sys_info.get("total_memory_mb", worker.memory_mb or 4096))
+        active_tasks = 1 if worker.status == WorkerStatus.RENDERING else int(sys_info.get("active_tasks", 0))
 
-        sample = record_worker_metric_sample(
+        sample = record_worker_metrics(
             worker_hostname=worker.hostname,
             cpu_percent=cpu,
             memory_used_mb=mem_used,

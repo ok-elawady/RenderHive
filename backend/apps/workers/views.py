@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import mixins, viewsets
@@ -127,7 +128,8 @@ class WorkerNodeViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             worker.status = next_status
             worker.save(update_fields=["status"])
 
-        threshold = timezone.now() - timezone.timedelta(seconds=30)
+        stale_threshold_secs = getattr(settings, "WORKER_STALE_THRESHOLD_SECONDS", 30)
+        threshold = timezone.now() - timezone.timedelta(seconds=stale_threshold_secs)
         WorkerNode.objects.filter(last_ping__lt=threshold).exclude(
             status=WorkerStatus.OFFLINE
         ).update(status=WorkerStatus.OFFLINE)
@@ -151,7 +153,7 @@ class WorkerNodeViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             vram_total = float(system_info.get("gpu_vram_mb", 1))
             vram_val = round((vram_used / vram_total) * 100.0, 1)
         else:
-            vram_val = float(system_info.get("memory_percent", 0.0))
+            vram_val = 0.0
 
         active_count = 1 if worker.status == WorkerStatus.RENDERING else 0
 

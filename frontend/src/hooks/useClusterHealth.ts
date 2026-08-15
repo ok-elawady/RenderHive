@@ -33,8 +33,8 @@ export function useClusterHealth(): ClusterHealthState {
     }
   );
 
-  const isOffline = !!error || latency === undefined;
-  const isDegraded = !isOffline && (latency ?? 0) > 200;
+  const isOffline = !!error;
+  const isDegraded = !isOffline && latency !== undefined && latency > 200;
 
   return {
     latencyMs: latency ?? null,

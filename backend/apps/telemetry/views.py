@@ -157,6 +157,23 @@ class FarmEventViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.
         return Response(FarmEventSerializer(event).data, status=status.HTTP_201_CREATED)
 
 
+def _get_pool_worker_hostnames(pool_param: str):
+    """Resolve a pool UUID or name to the list of member worker hostnames."""
+    is_valid_uuid = False
+    try:
+        uuid.UUID(str(pool_param))
+        is_valid_uuid = True
+    except (ValueError, TypeError):
+        is_valid_uuid = False
+
+    pool_filter = (
+        (Q(pools__id=pool_param) | Q(pools__name__iexact=pool_param))
+        if is_valid_uuid
+        else Q(pools__name__iexact=pool_param)
+    )
+    return WorkerNode.objects.filter(pool_filter).values_list("hostname", flat=True)
+
+
 @extend_schema(
     summary="Get cluster telemetry history",
     description="Returns time-bucketed historical hardware metrics (CPU, VRAM, active tasks) across the render farm.",
@@ -214,19 +231,7 @@ class ClusterTelemetryHistoryView(generics.GenericAPIView):
         if worker_param:
             snapshots = snapshots.filter(worker_hostname=worker_param)
         elif pool_param:
-            is_valid_uuid = False
-            try:
-                uuid.UUID(str(pool_param))
-                is_valid_uuid = True
-            except (ValueError, TypeError):
-                is_valid_uuid = False
-
-            pool_filter = (
-                (Q(pools__id=pool_param) | Q(pools__name__iexact=pool_param))
-                if is_valid_uuid
-                else Q(pools__name__iexact=pool_param)
-            )
-            pool_worker_hostnames = WorkerNode.objects.filter(pool_filter).values_list("hostname", flat=True)
+            pool_worker_hostnames = _get_pool_worker_hostnames(pool_param)
             snapshots = snapshots.filter(worker_hostname__in=pool_worker_hostnames)
 
         total_snapshots_count = snapshots.count()
@@ -275,19 +280,8 @@ class ClusterTelemetryHistoryView(generics.GenericAPIView):
             if worker_param:
                 online_workers_qs = online_workers_qs.filter(hostname=worker_param)
             elif pool_param:
-                is_valid_uuid = False
-                try:
-                    uuid.UUID(str(pool_param))
-                    is_valid_uuid = True
-                except (ValueError, TypeError):
-                    is_valid_uuid = False
-
-                pool_filter = (
-                    (Q(pools__id=pool_param) | Q(pools__name__iexact=pool_param))
-                    if is_valid_uuid
-                    else Q(pools__name__iexact=pool_param)
-                )
-                online_workers_qs = online_workers_qs.filter(pool_filter)
+                pool_worker_hostnames = _get_pool_worker_hostnames(pool_param)
+                online_workers_qs = online_workers_qs.filter(hostname__in=pool_worker_hostnames)
 
             online_workers = list(online_workers_qs)
             cpu_samples = [
@@ -295,12 +289,18 @@ class ClusterTelemetryHistoryView(generics.GenericAPIView):
                 for w in online_workers
                 if isinstance(w.system_info, dict) and "cpu_percent" in w.system_info
             ]
-            vram_samples = [
-                float(w.system_info.get("vram_percent", w.system_info.get("memory_percent", 0.0)))
-                for w in online_workers
-                if isinstance(w.system_info, dict)
-                and ("vram_percent" in w.system_info or "memory_percent" in w.system_info)
-            ]
+            vram_samples = []
+            for w in online_workers:
+                if isinstance(w.system_info, dict):
+                    if "vram_percent" in w.system_info:
+                        vram_samples.append(float(w.system_info["vram_percent"]))
+                    elif float(w.system_info.get("gpu_vram_mb", 0)) > 0:
+                        v_used = float(w.system_info.get("gpu_vram_used_mb", 0))
+                        v_total = float(w.system_info.get("gpu_vram_mb", 1))
+                        vram_samples.append(round((v_used / v_total) * 100.0, 1))
+                    else:
+                        vram_samples.append(0.0)
+
             ram_samples = [
                 float(w.system_info.get("memory_percent", 0.0))
                 for w in online_workers
