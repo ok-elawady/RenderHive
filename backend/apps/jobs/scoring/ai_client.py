@@ -39,12 +39,18 @@ _cb_open_until: float = 0.0  # epoch seconds; 0 means circuit is closed
 
 def _circuit_is_open() -> bool:
     """Return True if the circuit breaker is open (AI calls should be skipped)."""
+    global _cb_failures, _cb_open_until
     with _cb_lock:
         if _cb_open_until == 0.0:
             return False
         if time.monotonic() < _cb_open_until:
             return True
-        # Cooldown has elapsed — reset to half-open and allow one probe attempt
+        # Cooldown has elapsed — transition to closed state.
+        # Reset both counters atomically so that only the first post-cooldown
+        # caller enters probe mode. Without this reset every concurrent Django
+        # worker would simultaneously probe the AI service (thundering herd).
+        _cb_open_until = 0.0
+        _cb_failures = 0
         return False
 
 
@@ -126,7 +132,9 @@ class AIScoreAdjuster:
         }
 
         try:
+            t0 = time.monotonic()
             resp = requests.post(self.ai_url, json=payload, timeout=self.timeout)
+            latency_ms = (time.monotonic() - t0) * 1000.0
             resp.raise_for_status()
 
             ai_results = resp.json()
@@ -141,6 +149,12 @@ class AIScoreAdjuster:
                 return list(task_scores)
 
             _record_success()
+
+            # Stamp the measured HTTP round-trip on every task in the capped set.
+            # The caller (TaskDispatchView) reads ai_latency_ms from the winning
+            # task to store it in the DispatchTrace telemetry record.
+            for ts in capped_scores:
+                ts.ai_latency_ms = round(latency_ms, 1)
 
             delta_map = {item["task_id"]: item for item in ai_results}
 

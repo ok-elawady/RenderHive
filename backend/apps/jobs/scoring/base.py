@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,10 @@ class TaskScore:
     # for "ai_reason" and "_floor_clamp" — hence Dict[str, Any].
     score_breakdown: Dict[str, Any] = field(default_factory=dict)
     scorer_version: str = "v1.0"
+    # Wall-clock milliseconds for the AI service HTTP round-trip.
+    # Populated by AIScoreAdjuster on the winning task; None when AI was
+    # not invoked (circuit open, single candidate, etc.).
+    ai_latency_ms: Optional[float] = None
 
 
 class BaseScorer:

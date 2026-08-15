@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -41,7 +42,10 @@ CONFIG_FILE = MODELS_DIR / "config.json"
 
 LLM = None
 _llm_lock = threading.Lock()  # llama_cpp Llama objects are NOT thread-safe.
-_download_lock = threading.Lock()  # protects download_state transitions
+# asyncio.Lock for download state — must be asyncio-aware because _download_file
+# is a coroutine. Using threading.Lock inside async def would block the event loop
+# if ever contested, hanging all inference requests.
+_download_lock: asyncio.Lock  # initialised in the startup event below
 
 # Global state
 active_config = {
@@ -120,9 +124,13 @@ def initialize_model():
             logger.error(f"Failed to load LLaMA model: {e}. Running in MOCK mode.")
 
 
-# Initialize on startup
-load_config()
-initialize_model()
+# Initialise on startup
+@app.on_event("startup")
+async def _startup():
+    global _download_lock
+    _download_lock = asyncio.Lock()
+    load_config()
+    initialize_model()
 
 
 # ---------------------------------------------------------------------------
@@ -238,9 +246,11 @@ def rank_tasks(req: RankRequest):
         logger.warning(f"Request truncated to {MAX_TASKS_PER_REQUEST} tasks.")
 
     if LLM is None:
+        # §2 fix: use the already-capped `tasks` slice so mock and production
+        # modes are behaviourally consistent (both respect MAX_TASKS_PER_REQUEST).
         return [
             RankedTask(task_id=t.task_id, score_delta=0.0, reason="Mock mode (no model loaded)")
-            for t in req.tasks
+            for t in tasks
         ]
 
     user_prompt = build_prompt(req.worker_caps, [t.model_dump() for t in tasks])
@@ -252,7 +262,7 @@ def rank_tasks(req: RankRequest):
             if LLM is None:
                 return [
                     RankedTask(task_id=t.task_id, score_delta=0.0, reason="Mock mode (no model loaded)")
-                    for t in req.tasks
+                    for t in tasks
                 ]
             response = LLM(
                 full_prompt,
@@ -426,14 +436,14 @@ async def _download_file(url: str, dest_path: Path):
 
 
 @app.post("/api/v1/models/download")
-def start_download(req: DownloadRequest, background_tasks: BackgroundTasks):
+async def start_download(req: DownloadRequest, background_tasks: BackgroundTasks):
     """Start an async download of a model."""
     global download_state
-    
-    with _download_lock:
+
+    async with _download_lock:
         if download_state["is_downloading"]:
             raise HTTPException(status_code=400, detail="A download is already in progress.")
-            
+
         dest_path = MODELS_DIR / req.filename
         if dest_path.exists():
             raise HTTPException(status_code=400, detail="File already exists.")
@@ -447,21 +457,21 @@ def start_download(req: DownloadRequest, background_tasks: BackgroundTasks):
             "error": None,
             "cancel_requested": False,
         }
-    
+
     background_tasks.add_task(_download_file, req.url, dest_path)
     return {"status": "started", "filename": req.filename}
 
 
 @app.delete("/api/v1/models/download/cancel")
-def cancel_download():
+async def cancel_download():
     """Cancel an active download."""
     global download_state
-    
-    with _download_lock:
+
+    async with _download_lock:
         if not download_state["is_downloading"]:
             raise HTTPException(status_code=400, detail="No download in progress.")
         download_state["cancel_requested"] = True
-        
+
     return {"status": "cancelling"}
 
 
@@ -511,9 +521,12 @@ def unload_model():
 @app.delete("/api/v1/models/{filename}")
 def delete_model(filename: str):
     """Delete a downloaded model from disk."""
-    if "/" in filename or "\\" in filename or ".." in filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-        
+    # §4: Allowlist — only .gguf files may be deleted through this endpoint.
+    # This prevents path traversal variants and accidental deletion of
+    # config.json or other files that live inside MODELS_DIR.
+    if not filename.endswith(".gguf") or "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename: must be a .gguf file without path separators")
+
     model_path = MODELS_DIR / filename
     if not model_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
