@@ -642,6 +642,28 @@ export interface paths {
         patch: operations["pools_partial_update"];
         trace?: never;
     };
+    "/api/pools/{id}/workers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Return workers assigned to this pool.
+         *
+         *     This explicit endpoint is convenient for DCC submitters while the normal
+         *     pool detail endpoint also embeds the same worker list.
+         */
+        get: operations["pools_workers_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/": {
         parameters: {
             query?: never;
@@ -858,8 +880,211 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Atomically find, lock, and dispatch a READY task to a worker. */
+        /**
+         * @description Atomically find, lock, and dispatch a READY task to a worker.
+         *
+         *     Scoring and AI evaluation happen OUTSIDE the DB transaction to avoid
+         *     holding DB connections open during slow network I/O (LLM call). Only
+         *     the final claim step (select_for_update + save) runs inside an atomic
+         *     block, targeting just the single winning task.
+         */
         post: operations["tasks_dispatch_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/recent-dispatches/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get recent task dispatches
+         * @description Return the most recently dispatched tasks with their AI score breakdowns.
+         */
+        get: operations["tasks_recent_dispatches_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/cluster/history/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get cluster telemetry history
+         * @description Returns time-bucketed historical hardware metrics (CPU, VRAM, active tasks) across the render farm.
+         */
+        get: operations["telemetry_cluster_history_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/dispatches/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ViewSet for inspecting scheduler dispatch evaluations and AI reasoning. */
+        get: operations["telemetry_dispatches_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/dispatches/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ViewSet for inspecting scheduler dispatch evaluations and AI reasoning. */
+        get: operations["telemetry_dispatches_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/events/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ViewSet for querying and recording farm audit and lifecycle events. */
+        get: operations["telemetry_events_list"];
+        put?: never;
+        /** @description ViewSet for querying and recording farm audit and lifecycle events. */
+        post: operations["telemetry_events_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/jobs/{job_pk}/logs/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ViewSet for querying and submitting task execution logs. */
+        get: operations["telemetry_jobs_logs_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/logs/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ViewSet for querying and submitting task execution logs. */
+        get: operations["telemetry_logs_list"];
+        put?: never;
+        /** @description Upload an execution log for a specific task attempt. */
+        post: operations["telemetry_logs_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/logs/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ViewSet for querying and submitting task execution logs. */
+        get: operations["telemetry_logs_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/logs/latest/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Return the most recent log attempt for a task with full output. */
+        get: operations["telemetry_logs_latest_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/tasks/{task_pk}/logs/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description ViewSet for querying and submitting task execution logs. */
+        get: operations["telemetry_tasks_logs_list"];
+        put?: never;
+        /** @description Upload an execution log for a specific task attempt. */
+        post: operations["telemetry_tasks_logs_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/tasks/{task_pk}/logs/latest/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Return the most recent log attempt for a task with full output. */
+        get: operations["telemetry_tasks_logs_latest_retrieve"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -965,7 +1190,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Register or update a worker's heartbeat. */
+        /** @description Register or update a worker heartbeat and its DCC capabilities. */
         post: operations["workers_ping_create"];
         delete?: never;
         options?: never;
@@ -984,6 +1209,23 @@ export interface components {
          * @enum {string}
          */
         AccessLevelEnum: "Superuser" | "Staff" | "Client";
+        /** @description Aggregated historical timeseries response for the cluster. */
+        ClusterTelemetryHistoryResponse: {
+            /** @description Query range: 1h, 24h, or 7d. */
+            range: string;
+            /**
+             * Format: double
+             * @description Current latest CPU load percentage.
+             */
+            cpu_load: number;
+            /**
+             * Format: double
+             * @description Current latest GPU VRAM utilization percentage.
+             */
+            vram_usage: number;
+            /** @description Time-bucketed aggregation data points. */
+            points: components["schemas"]["TelemetryPoint"][];
+        };
         /**
          * @description Write-only serializer for creating a new Dependency.
          *
@@ -1113,6 +1355,28 @@ export interface components {
          * @enum {string}
          */
         DependencyTypeEnum: "TASK_ON_TASK" | "LAYER_ON_LAYER";
+        /** @description Read serializer for scheduler and AI dispatch traces. */
+        DispatchTrace: {
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly task: string | null;
+            /** @default Deleted Task */
+            readonly task_name: string;
+            /** Format: uuid */
+            readonly job: string;
+            readonly job_name: string;
+            readonly job_visible_name: string;
+            readonly worker_hostname: string;
+            readonly candidate_count: number;
+            readonly ai_invoked: boolean;
+            /** Format: double */
+            readonly ai_latency_ms: number | null;
+            readonly ai_reason: string;
+            readonly score_breakdown: unknown;
+            /** Format: date-time */
+            readonly dispatched_at: string;
+        };
         /**
          * @description * `IMMEDIATE` - IMMEDIATE
          *     * `LAST` - LAST
@@ -1120,6 +1384,20 @@ export interface components {
          * @enum {string}
          */
         ExecutionModeEnum: "IMMEDIATE" | "LAST" | "WAIT_LAYER";
+        /** @description Serializer for audit trail and farm lifecycle events. */
+        FarmEvent: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly event_type: string;
+            readonly severity: components["schemas"]["SeverityEnum"];
+            readonly actor_username: string;
+            readonly target_type: string;
+            readonly target_id: string;
+            readonly message: string;
+            readonly payload: unknown;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
         /**
          * @description Write-only serializer for job submission.
          *
@@ -1150,6 +1428,7 @@ export interface components {
              * @description Limits how many tasks from this job a single machine can run at once. Used to prevent a single job from monopolizing nodes with high core counts.
              */
             max_tasks_per_worker?: number;
+            max_frames_per_worker?: number;
             /** @description If specified, only workers in these pools can process this job. */
             included_pools?: string[];
             /** @description If specified, workers in these pools are strictly prevented from processing this job. */
@@ -1473,6 +1752,36 @@ export interface components {
             previous?: string | null;
             results: components["schemas"]["DependencyRead"][];
         };
+        PaginatedDispatchTraceList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=4
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=2
+             */
+            previous?: string | null;
+            results: components["schemas"]["DispatchTrace"][];
+        };
+        PaginatedFarmEventList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=4
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=2
+             */
+            previous?: string | null;
+            results: components["schemas"]["FarmEvent"][];
+        };
         PaginatedJobListList: {
             /** @example 123 */
             count: number;
@@ -1503,6 +1812,21 @@ export interface components {
             previous?: string | null;
             results: components["schemas"]["LayerList"][];
         };
+        PaginatedRecentDispatchLogList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=4
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=2
+             */
+            previous?: string | null;
+            results: components["schemas"]["RecentDispatchLog"][];
+        };
         PaginatedTaskListList: {
             /** @example 123 */
             count: number;
@@ -1517,6 +1841,21 @@ export interface components {
              */
             previous?: string | null;
             results: components["schemas"]["TaskList"][];
+        };
+        PaginatedTaskLogListList: {
+            /** @example 123 */
+            count: number;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=4
+             */
+            next?: string | null;
+            /**
+             * Format: uri
+             * @example http://api.example.org/accounts/?page=2
+             */
+            previous?: string | null;
+            results: components["schemas"]["TaskLogList"][];
         };
         PaginatedWorkerNodeList: {
             /** @example 123 */
@@ -1583,18 +1922,74 @@ export interface components {
             title_role?: components["schemas"]["TitleRoleEnum"];
             access_level?: components["schemas"]["AccessLevelEnum"];
         };
+        /** @description Slim pool representation used in list responses and nested inside worker detail. */
         PatchedWorkerPool: {
             /** Format: uuid */
             readonly id?: string;
             name?: string;
             description?: string;
-            readonly worker_count?: number;
-            readonly workers?: string[];
+            /** @default 0 */
+            readonly worker_count: number;
+            /** @default 0 */
+            readonly online_worker_count: number;
+            /** @default 0 */
+            readonly rendering_worker_count: number;
             /** Format: date-time */
             readonly created_at?: string;
             /** Format: date-time */
             readonly updated_at?: string;
         };
+        /** @description Serializer for recent dispatch summaries with AI scoring breakdown. */
+        RecentDispatchLog: {
+            /**
+             * Format: uuid
+             * @description Task UUID.
+             */
+            id: string;
+            /** @description Task display name. */
+            name: string;
+            /** @description Worker hostname. */
+            worker_name: string | null;
+            /**
+             * Format: date-time
+             * @description Dispatch timestamp.
+             */
+            started_at: string | null;
+            /** @description Task state. */
+            state: string;
+            /**
+             * Format: uuid
+             * @description Job UUID.
+             */
+            job_id: string;
+            /** @description Job name. */
+            job_name: string;
+            /** @description Job priority. */
+            job_priority: number;
+            /** @description Layer name. */
+            layer_name: string;
+            /** @description Scoring breakdown dictionary. */
+            last_score_breakdown: {
+                [key: string]: unknown;
+            };
+            /** @description Whether AI adjustment was applied. */
+            ai_was_invoked: boolean;
+            /** @description AI decision rationale. */
+            ai_reason: string;
+            /**
+             * Format: double
+             * @description Final composite priority score.
+             */
+            final_score: number;
+        };
+        /**
+         * @description * `INFO` - Info
+         *     * `WARNING` - Warning
+         *     * `ERROR` - Error
+         *     * `CRITICAL` - Critical
+         * @enum {string}
+         */
+        SeverityEnum: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
         /**
          * @description * `PENDING` - Pending
          *     * `RUNNING` - Running
@@ -1632,6 +2027,8 @@ export interface components {
          *         cores_used: CPU cores reserved at dispatch time.
          *         checkpoint_count: Number of resume checkpoints saved.
          *         dispatch_order: Dispatch priority within the layer.
+         *         last_score_breakdown: JSON breakdown of the dispatch scoring factors,
+         *             including the AI adjustment delta and reason if the AI was invoked.
          */
         TaskDetail: {
             /** Format: uuid */
@@ -1658,6 +2055,8 @@ export interface components {
             readonly checkpoint_count: number;
             /** @description Scheduler priority within the layer. Lower numbers are dispatched first. */
             readonly dispatch_order: number;
+            /** @description Observability field containing the breakdown of the dispatch score and AI adjustments. */
+            readonly last_score_breakdown: unknown;
         };
         /**
          * @description Validates payload when a Worker reports a task as FAILED.
@@ -1668,6 +2067,17 @@ export interface components {
         TaskFail: {
             /** @description Non-zero process exit code from the render process. */
             exit_status: number;
+            /** @default  */
+            log_output: string;
+            /** @default  */
+            error_tail: string;
+            /**
+             * Format: double
+             * @default 0
+             */
+            duration_seconds: number;
+            /** @default  */
+            output_image_path: string;
         };
         /**
          * @description Slim read-only task representation for list views.
@@ -1704,6 +2114,85 @@ export interface components {
             /** Format: date-time */
             readonly stopped_at: string | null;
         };
+        /** @description Full detail serializer for inspecting a specific task log with complete stdout/stderr. */
+        TaskLogDetail: {
+            /** Format: uuid */
+            readonly id: string;
+            /**
+             * Format: uuid
+             * @description The task this log belongs to.
+             */
+            readonly task: string;
+            readonly task_name: string;
+            /**
+             * Format: uuid
+             * @description Denormalized Job foreign key for fast cascading and filtering.
+             */
+            readonly job: string;
+            readonly job_name: string;
+            readonly attempt_number: number;
+            readonly worker_hostname: string;
+            readonly exit_status: number;
+            /** Format: double */
+            readonly duration_seconds: number;
+            readonly peak_memory_mb: number;
+            readonly output_image_path: string;
+            /** @description Fast-access failure excerpt. */
+            readonly error_tail: string;
+            /** @description Full stdout/stderr text, TOAST-compressed. */
+            readonly log_output: string;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
+        /** @description Write serializer for uploading task execution logs from worker nodes. */
+        TaskLogIngest: {
+            /** @default 0 */
+            exit_status: number;
+            /** @default  */
+            log_output: string;
+            /** @default  */
+            error_tail: string;
+            /**
+             * Format: double
+             * @default 0
+             */
+            duration_seconds: number;
+            /** @default 0 */
+            peak_memory_mb: number;
+            /** @default  */
+            output_image_path: string;
+            /** @default  */
+            worker_hostname: string;
+            attempt_number?: number | null;
+        };
+        /** @description Slim serializer for listing task execution logs without the heavy log body. */
+        TaskLogList: {
+            /** Format: uuid */
+            readonly id: string;
+            /**
+             * Format: uuid
+             * @description The task this log belongs to.
+             */
+            readonly task: string;
+            readonly task_name: string;
+            /**
+             * Format: uuid
+             * @description Denormalized Job foreign key for fast cascading and filtering.
+             */
+            readonly job: string;
+            readonly job_name: string;
+            readonly attempt_number: number;
+            readonly worker_hostname: string;
+            readonly exit_status: number;
+            /** Format: double */
+            readonly duration_seconds: number;
+            readonly peak_memory_mb: number;
+            readonly output_image_path: string;
+            /** @description Fast-access failure excerpt. */
+            readonly error_tail: string;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
         /**
          * @description Validates payload when a Worker marks a task as RUNNING.
          *
@@ -1735,6 +2224,39 @@ export interface components {
             max_memory_used_mb: number;
             /** @description Actual CPU cores reserved by the Worker at dispatch time. */
             cores_used?: number | null;
+            /** @default  */
+            log_output: string;
+            /** @default  */
+            error_tail: string;
+            /**
+             * Format: double
+             * @default 0
+             */
+            duration_seconds: number;
+            /** @default  */
+            output_image_path: string;
+        };
+        /** @description Single time-bucket hardware metric aggregation point. */
+        TelemetryPoint: {
+            /** @description Normalized x position percentage (0-100). */
+            x: number;
+            /**
+             * Format: double
+             * @description Average CPU cluster load percentage.
+             */
+            cpu: number;
+            /**
+             * Format: double
+             * @description Average GPU VRAM utilization percentage.
+             */
+            vram: number;
+            /** @description Peak concurrent active rendering tasks. */
+            active_tasks: number;
+            /**
+             * Format: date-time
+             * @description ISO timestamp of the bucket end.
+             */
+            timestamp: string;
         };
         /**
          * @description * `Technical Director` - Technical Director
@@ -1819,6 +2341,7 @@ export interface components {
             cores?: number;
             memory_mb?: number;
             gpu_models?: string[];
+            readonly capabilities: string;
             /** @description Transient and live utilization metrics. */
             system_info?: unknown;
             /** Format: date-time */
@@ -1826,17 +2349,62 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
         };
+        /** @description Compact worker representation used inside pool detail responses. */
+        WorkerNodeSummary: {
+            readonly id: number;
+            readonly hostname: string;
+            readonly ip_address: string | null;
+            readonly status: components["schemas"]["StatusEnum"];
+            readonly tags: string[];
+            readonly cores: number;
+            readonly memory_mb: number;
+            readonly gpu_models: string[];
+            readonly capabilities: string;
+            /** @description Transient and live utilization metrics. */
+            readonly system_info: unknown;
+            /** Format: date-time */
+            readonly last_ping: string;
+        };
+        /** @description Slim pool representation used in list responses and nested inside worker detail. */
         WorkerPool: {
             /** Format: uuid */
             readonly id: string;
             name: string;
             description?: string;
+            /** @default 0 */
             readonly worker_count: number;
-            readonly workers: string[];
+            /** @default 0 */
+            readonly online_worker_count: number;
+            /** @default 0 */
+            readonly rendering_worker_count: number;
             /** Format: date-time */
             readonly created_at: string;
             /** Format: date-time */
             readonly updated_at: string;
+        };
+        /**
+         * @description Full pool representation for retrieve and the /workers/ action.
+         *
+         *     Extends the slim serializer with the full worker list (using
+         *     WorkerNodeSummarySerializer instead of a slug). The viewset prefetches
+         *     ``workers`` only for these actions to avoid N+1 queries on list views.
+         */
+        WorkerPoolDetail: {
+            /** Format: uuid */
+            readonly id: string;
+            name: string;
+            description?: string;
+            /** @default 0 */
+            readonly worker_count: number;
+            /** @default 0 */
+            readonly online_worker_count: number;
+            /** @default 0 */
+            readonly rendering_worker_count: number;
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: date-time */
+            readonly updated_at: string;
+            readonly workers: components["schemas"]["WorkerNodeSummary"][];
         };
     };
     responses: never;
@@ -2587,7 +3155,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WorkerPool"];
+                    "application/json": components["schemas"]["WorkerPoolDetail"];
                 };
             };
         };
@@ -2658,6 +3226,28 @@ export interface operations {
                 "multipart/form-data": components["schemas"]["PatchedWorkerPool"];
             };
         };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkerPool"];
+                };
+            };
+        };
+    };
+    pools_workers_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this worker pool. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             200: {
                 headers: {
@@ -2888,6 +3478,365 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TaskStart"];
+                };
+            };
+        };
+    };
+    tasks_recent_dispatches_list: {
+        parameters: {
+            query?: {
+                /** @description Number of tasks to return (default 30, max 100). */
+                limit?: number;
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                /** @description A search term. */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedRecentDispatchLogList"];
+                };
+            };
+        };
+    };
+    telemetry_cluster_history_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Time range for aggregation: 1h (default), 24h, or 7d. */
+                range?: "1h" | "24h" | "7d";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterTelemetryHistoryResponse"];
+                };
+            };
+        };
+    };
+    telemetry_dispatches_list: {
+        parameters: {
+            query?: {
+                ai_invoked?: boolean;
+                job?: string;
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                /** @description A search term. */
+                search?: string;
+                worker_hostname?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedDispatchTraceList"];
+                };
+            };
+        };
+    };
+    telemetry_dispatches_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this dispatch trace. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DispatchTrace"];
+                };
+            };
+        };
+    };
+    telemetry_events_list: {
+        parameters: {
+            query?: {
+                actor_username?: string;
+                event_type?: string;
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                /** @description A search term. */
+                search?: string;
+                /**
+                 * @description * `INFO` - Info
+                 *     * `WARNING` - Warning
+                 *     * `ERROR` - Error
+                 *     * `CRITICAL` - Critical
+                 */
+                severity?: "CRITICAL" | "ERROR" | "INFO" | "WARNING";
+                target_id?: string;
+                target_type?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedFarmEventList"];
+                };
+            };
+        };
+    };
+    telemetry_events_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["FarmEvent"];
+                "application/x-www-form-urlencoded": components["schemas"]["FarmEvent"];
+                "multipart/form-data": components["schemas"]["FarmEvent"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FarmEvent"];
+                };
+            };
+        };
+    };
+    telemetry_jobs_logs_list: {
+        parameters: {
+            query?: {
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                /** @description A search term. */
+                search?: string;
+            };
+            header?: never;
+            path: {
+                job_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedTaskLogListList"];
+                };
+            };
+        };
+    };
+    telemetry_logs_list: {
+        parameters: {
+            query?: {
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                /** @description A search term. */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedTaskLogListList"];
+                };
+            };
+        };
+    };
+    telemetry_logs_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TaskLogIngest"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskLogIngest"];
+                "multipart/form-data": components["schemas"]["TaskLogIngest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskLogIngest"];
+                };
+            };
+        };
+    };
+    telemetry_logs_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A UUID string identifying this task execution log. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskLogDetail"];
+                };
+            };
+        };
+    };
+    telemetry_logs_latest_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskLogDetail"];
+                };
+            };
+        };
+    };
+    telemetry_tasks_logs_list: {
+        parameters: {
+            query?: {
+                /** @description Which field to use when ordering the results. */
+                ordering?: string;
+                /** @description A page number within the paginated result set. */
+                page?: number;
+                /** @description A search term. */
+                search?: string;
+            };
+            header?: never;
+            path: {
+                task_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedTaskLogListList"];
+                };
+            };
+        };
+    };
+    telemetry_tasks_logs_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TaskLogIngest"];
+                "application/x-www-form-urlencoded": components["schemas"]["TaskLogIngest"];
+                "multipart/form-data": components["schemas"]["TaskLogIngest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskLogIngest"];
+                };
+            };
+        };
+    };
+    telemetry_tasks_logs_latest_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_pk: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskLogDetail"];
                 };
             };
         };

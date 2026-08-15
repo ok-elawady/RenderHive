@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, Cpu, Layers, Plus } from "lucide-react";
+import { ArrowRight, Cpu, Layers, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { WorkerPool } from "@/services/api";
@@ -62,16 +62,16 @@ export function PoolSaturationStrip({ pools, isLoading = false }: PoolSaturation
   return (
     <Card className="border-border p-0 gap-0">
       <CardHeader className="p-3.5 pb-2.5 border-b border-border/50 flex flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2.5">
           <Layers size={15} className="text-primary" />
-          <CardTitle className="text-sm font-bold text-foreground">Hardware Pool Saturation</CardTitle>
+          <CardTitle className="text-sm font-bold text-foreground">Worker Pool Saturation</CardTitle>
         </div>
         <Link
           href="/pools"
           className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 shrink-0 group"
         >
           <span>Manage Pools ({pools.length})</span>
-          <ArrowUpRight size={13} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
         </Link>
       </CardHeader>
 

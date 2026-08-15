@@ -1,8 +1,9 @@
 import logging
-import time
 import threading
-import requests
+import time
 from typing import Any, Dict, List, Optional
+
+import requests
 from django.conf import settings
 
 from .base import TaskScore

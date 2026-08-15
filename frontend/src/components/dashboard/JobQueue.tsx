@@ -5,11 +5,12 @@ import { useMemo, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowUpRight,
+  ArrowRight,
   CheckCircle2,
   Clock,
   Layers,
   Link2,
+  ListOrdered,
   Loader2,
   Pause,
   Play,
@@ -20,11 +21,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-
 import { cn } from "@/lib/utils";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -229,10 +229,10 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
       <Card className="flex flex-col justify-between h-full border-border p-0 gap-0">
         <CardHeader className="p-3.5 pb-2.5 border-b border-border/50 flex flex-row items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-sm font-bold text-foreground mr-2 flex items-center gap-1.5">
-              <Layers size={15} className="text-primary" />
+            <CardTitle className="text-sm font-bold text-foreground mr-2 flex items-center gap-2.5">
+              <ListOrdered size={15} className="text-primary" />
               Live Job Queue
-            </span>
+            </CardTitle>
             {tabs.map((tab) => {
               const isActive = activeTab === tab.id;
               const hasAlert = tab.id === "FAILED" && tab.count > 0;
@@ -272,10 +272,7 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
             className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 shrink-0 group"
           >
             <span>Full Queue</span>
-            <ArrowUpRight
-              size={13}
-              className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-            />
+            <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
         </CardHeader>
 
@@ -283,7 +280,9 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
           <Table className="table-fixed" containerClassName="h-full overflow-auto">
             <TableHeader className="bg-card sticky top-0 z-10 border-b border-border/50">
               <TableRow className="hover:bg-transparent bg-muted/30">
-                <TableHead className="pl-4 w-[35%] font-semibold text-xs text-muted-foreground">Job ID / Project</TableHead>
+                <TableHead className="pl-4 w-[35%] font-semibold text-xs text-muted-foreground">
+                  Job ID / Project
+                </TableHead>
                 <TableHead className="w-[13%] font-semibold text-xs text-muted-foreground">
                   <div className="flex justify-center items-center w-full">State</div>
                 </TableHead>
@@ -296,7 +295,9 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                 <TableHead className="w-[20%] font-semibold text-xs text-muted-foreground">
                   <div className="flex justify-center items-center w-full">Tasks Progress</div>
                 </TableHead>
-                <TableHead className="pr-4 w-[10%] text-right font-semibold text-xs text-muted-foreground">Actions</TableHead>
+                <TableHead className="pr-4 w-[10%] text-right font-semibold text-xs text-muted-foreground">
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="text-xs">
@@ -393,7 +394,10 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                               />
                               <TooltipContent>Resume Job</TooltipContent>
                             </Tooltip>
-                          ) : job.status === "Rendering" || job.status === "Queued" || job.backendState === "RUNNING" || job.backendState === "PENDING" ? (
+                          ) : job.status === "Rendering" ||
+                            job.status === "Queued" ||
+                            job.backendState === "RUNNING" ||
+                            job.backendState === "PENDING" ? (
                             <Tooltip>
                               <TooltipTrigger
                                 render={

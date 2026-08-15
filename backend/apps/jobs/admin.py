@@ -10,7 +10,7 @@ from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 
-from .models import Dependency, Task, Job, Layer
+from .models import Dependency, Job, Layer, Task
 
 
 class LayerInline(admin.TabularInline):

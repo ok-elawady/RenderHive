@@ -655,6 +655,10 @@ class TaskSucceedSerializer(serializers.Serializer):
         min_value=1,
         help_text="Actual CPU cores reserved by the Worker at dispatch time.",
     )
+    log_output = serializers.CharField(required=False, allow_blank=True, default="")
+    error_tail = serializers.CharField(required=False, allow_blank=True, default="")
+    duration_seconds = serializers.FloatField(required=False, default=0.0)
+    output_image_path = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class TaskFailSerializer(serializers.Serializer):
@@ -665,3 +669,27 @@ class TaskFailSerializer(serializers.Serializer):
     """
 
     exit_status = serializers.IntegerField(help_text="Non-zero process exit code from the render process.")
+    log_output = serializers.CharField(required=False, allow_blank=True, default="")
+    error_tail = serializers.CharField(required=False, allow_blank=True, default="")
+    duration_seconds = serializers.FloatField(required=False, default=0.0)
+    output_image_path = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class RecentDispatchLogSerializer(serializers.Serializer):
+    """Serializer for recent dispatch summaries with AI scoring breakdown."""
+
+    id = serializers.UUIDField(help_text="Task UUID.")
+    name = serializers.CharField(help_text="Task display name.")
+    worker_name = serializers.CharField(allow_null=True, help_text="Worker hostname.")
+    started_at = serializers.DateTimeField(allow_null=True, help_text="Dispatch timestamp.")
+    state = serializers.CharField(help_text="Task state.")
+    job_id = serializers.UUIDField(help_text="Job UUID.")
+    job_name = serializers.CharField(help_text="Job name.")
+    job_priority = serializers.IntegerField(help_text="Job priority.")
+    layer_name = serializers.CharField(help_text="Layer name.")
+    last_score_breakdown = serializers.DictField(help_text="Scoring breakdown dictionary.")
+    ai_was_invoked = serializers.BooleanField(help_text="Whether AI adjustment was applied.")
+    ai_reason = serializers.CharField(allow_blank=True, help_text="AI decision rationale.")
+    final_score = serializers.FloatField(help_text="Final composite priority score.")
+
+

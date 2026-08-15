@@ -59,13 +59,63 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        DEV: "true"
+    command: celery -A config worker -l INFO
+    environment:
+      PYTHONUNBUFFERED: "1"
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-123456}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/renderhive}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      TELEMETRY_WORKER_METRIC_INTERVAL_SECONDS: ${TELEMETRY_WORKER_METRIC_INTERVAL_SECONDS:-60}
+      TELEMETRY_RETENTION_DAYS: ${TELEMETRY_RETENTION_DAYS:-30}
+      WORKER_STALE_THRESHOLD_SECONDS: ${WORKER_STALE_THRESHOLD_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        DEV: "true"
+    command: celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      PYTHONUNBUFFERED: "1"
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-123456}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/renderhive}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      WORKER_REAP_INTERVAL_SECONDS: ${WORKER_REAP_INTERVAL_SECONDS:-15.0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_started
+    restart: unless-stopped
+
   ai_scheduler:
     profiles: ["ai"]
     build:
       context: ./services/ai_scheduler
       dockerfile: Dockerfile
       args:
-        USE_CUDA: 1
+        USE_CUDA: ${AI_USE_CUDA:-0}
     ports:
       - "8001:8001"
     environment:
@@ -85,12 +135,7 @@ services:
       resources:
         limits:
           cpus: '4'
-          memory: 12G
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+          memory: 4G
     command: uvicorn main:app --host 0.0.0.0 --port 8001
     restart: unless-stopped
     healthcheck:

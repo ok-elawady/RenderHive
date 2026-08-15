@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 
 from apps.jobs.models import Dependency, DependencyType, JobState
 
-from .factories import TaskFactory, JobFactory, LayerFactory
+from .factories import JobFactory, LayerFactory, TaskFactory
 
 pytestmark = pytest.mark.django_db
 

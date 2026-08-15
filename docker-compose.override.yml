@@ -6,7 +6,14 @@ services:
   api:
     volumes:
       - ./backend:/app
-      - /app/.venv # Prevents host .venv from shadowing container .venv
+
+  celery_worker:
+    volumes:
+      - ./backend:/app
+
+  celery_beat:
+    volumes:
+      - ./backend:/app
 
   frontend:
     volumes:

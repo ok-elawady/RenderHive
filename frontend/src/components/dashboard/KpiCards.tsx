@@ -126,7 +126,7 @@ export default function KpiCards({
       <Card>
         <CardHeader>
           <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-            <span>Cluster Status</span>
+            <span>Cluster Health</span>
             <Cpu size={14} className="opacity-50" />
           </CardTitle>
         </CardHeader>

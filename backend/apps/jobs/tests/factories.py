@@ -2,7 +2,7 @@ import factory
 from django.contrib.auth import get_user_model
 from factory.django import DjangoModelFactory
 
-from apps.jobs.models import Dependency, DependencyType, Task, TaskState, Job, JobState, Layer, LayerType
+from apps.jobs.models import Dependency, DependencyType, Job, JobState, Layer, LayerType, Task, TaskState
 
 User = get_user_model()
 

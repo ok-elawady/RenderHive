@@ -1,8 +1,14 @@
 import createClient from "openapi-fetch";
 import type { paths, components } from "@/types/schema";
 import type {
+  ClusterTelemetryHistory,
+  DispatchTrace,
+  FarmEvent,
   LogEntry,
+  RecentDispatchLog,
   RenderJob,
+  TaskLogDetail,
+  TaskLogList,
   TelemetryMetrics,
   TelemetryPoint,
 } from "@/types/dashboard";
@@ -992,53 +998,75 @@ export function computeClusterTelemetry(
     cpuLoad = Math.min(100, Math.round((activeTasks / totalOnlineCores) * 100));
   }
 
-  // 2. Calculate Real VRAM / Memory Utilization
-  let vramUsage = 0;
-  const workersWithVram = onlineWorkers.filter(
-    (w) =>
-      typeof (w.system_info as Record<string, unknown> | undefined)?.vram_percent === "number" ||
-      typeof (w.system_info as Record<string, unknown> | undefined)?.memory_percent === "number"
+  // 2. Calculate Real System Host Memory (RAM) Utilization
+  let memoryUsage = 0;
+  const workersWithMem = onlineWorkers.filter(
+    (w) => typeof (w.system_info as Record<string, unknown> | undefined)?.memory_percent === "number"
   );
+  if (workersWithMem.length > 0) {
+    memoryUsage = Math.round(
+      workersWithMem.reduce(
+        (sum, w) => sum + ((w.system_info as Record<string, unknown>).memory_percent as number),
+        0
+      ) / workersWithMem.length
+    );
+  } else if (totalOnlineMemoryMb > 0) {
+    memoryUsage = Math.min(100, Math.round(((activeTasks * 2048) / totalOnlineMemoryMb) * 100));
+  }
+
+  // 3. Calculate Real GPU VRAM Utilization
+  let vramUsage = 0;
+  const workersWithVram = onlineWorkers.filter((w) => {
+    const sys = w.system_info as Record<string, unknown> | undefined;
+    return typeof sys?.vram_percent === "number" || typeof sys?.gpu_vram_used_mb === "number";
+  });
   if (workersWithVram.length > 0) {
     vramUsage = Math.round(
       workersWithVram.reduce((sum, w) => {
         const sys = w.system_info as Record<string, unknown>;
-        const val =
-          typeof sys.vram_percent === "number"
-            ? (sys.vram_percent as number)
-            : (sys.memory_percent as number);
-        return sum + val;
+        if (typeof sys.vram_percent === "number") {
+          return sum + (sys.vram_percent as number);
+        }
+        const used = (sys.gpu_vram_used_mb as number) || 0;
+        const total = (sys.gpu_vram_mb as number) || 1;
+        return sum + (used / total) * 100;
       }, 0) / workersWithVram.length
     );
   } else if (totalOnlineMemoryMb > 0) {
     vramUsage = Math.min(100, Math.round(((activeTasks * 3584) / totalOnlineMemoryMb) * 100));
   }
 
-  // 3. Rolling timeseries points
+  // 4. Rolling timeseries points
   const maxPoints = 15;
   let nextPoints: TelemetryPoint[];
 
   if (previousPoints.length === 0) {
     nextPoints = Array.from({ length: maxPoints }, (_, i) => ({
       x: Math.round((i / (maxPoints - 1)) * 100),
-      vram: vramUsage,
       cpu: cpuLoad,
+      ram: memoryUsage,
+      vram: vramUsage,
+      active_tasks: activeTasks,
     }));
   } else {
     const updated = [
       ...previousPoints.slice(-(maxPoints - 1)),
-      { x: 100, vram: vramUsage, cpu: cpuLoad },
+      { x: 100, cpu: cpuLoad, ram: memoryUsage, vram: vramUsage, active_tasks: activeTasks },
     ];
     nextPoints = updated.map((pt, index) => ({
       x: Math.round((index / (updated.length - 1)) * 100),
-      vram: pt.vram,
       cpu: pt.cpu,
+      ram: pt.ram ?? memoryUsage,
+      vram: pt.vram,
+      active_tasks: pt.active_tasks ?? activeTasks,
     }));
   }
 
   return {
-    vramUsage,
     cpuLoad,
+    memoryUsage,
+    ramUsage: memoryUsage,
+    vramUsage,
     points: nextPoints,
   };
 }
@@ -1087,6 +1115,113 @@ export async function fetchRecentDispatches(limit = 30): Promise<DispatchLogEntr
 
   return response.json() as Promise<DispatchLogEntry[]>;
 }
+
+// ── Telemetry & Historical Analytics ──────────────────────────────────────────
+
+export type { ClusterTelemetryHistory };
+
+export async function fetchClusterTelemetryHistory(
+  range: "1h" | "24h" | "7d" = "1h",
+  pool?: string,
+  worker?: string
+): Promise<ClusterTelemetryHistory> {
+  const params = new URLSearchParams({ range });
+  if (pool) params.set("pool", pool);
+  if (worker) params.set("worker", worker);
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/cluster/history/?${params.toString()}`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (!response.ok) {
+    throw new Error(`fetchClusterTelemetryHistory: ${response.status}`);
+  }
+
+  return response.json() as Promise<ClusterTelemetryHistory>;
+}
+
+export async function fetchFarmEvents(
+  limit = 50,
+  severity?: string,
+  eventType?: string
+): Promise<FarmEvent[]> {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", limit.toString());
+  if (severity && severity !== "ALL") params.set("severity", severity);
+  if (eventType) params.set("event_type", eventType);
+
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const response = await fetch(`${API_BASE_URL}/api/telemetry/events/${qs}`, {
+    cache: "no-store",
+    headers: getApiHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`fetchFarmEvents: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (Array.isArray(data) ? data : data.results || []) as FarmEvent[];
+}
+
+export async function fetchDispatchTraces(
+  limit = 50,
+  aiInvoked?: boolean
+): Promise<DispatchTrace[]> {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", limit.toString());
+  if (aiInvoked !== undefined) params.set("ai_invoked", aiInvoked ? "true" : "false");
+
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const response = await fetch(`${API_BASE_URL}/api/telemetry/dispatches/${qs}`, {
+    cache: "no-store",
+    headers: getApiHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`fetchDispatchTraces: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (Array.isArray(data) ? data : data.results || []) as DispatchTrace[];
+}
+
+export async function fetchTaskExecutionLogLatest(
+  taskId: string
+): Promise<TaskLogDetail | null> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/tasks/${taskId}/logs/latest/`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`fetchTaskExecutionLogLatest: ${response.status}`);
+  }
+
+  return response.json() as Promise<TaskLogDetail>;
+}
+
+export async function fetchJobExecutionLogs(
+  jobId: string
+): Promise<TaskLogList[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/jobs/${jobId}/logs/`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (!response.ok) {
+    throw new Error(`fetchJobExecutionLogs: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (Array.isArray(data) ? data : data.results || []) as TaskLogList[];
+}
+
 
 // ── AI Scheduler Health ────────────────────────────────────────────────────────
 
@@ -1212,6 +1347,7 @@ export async function deleteAiModel(filename: string): Promise<void> {
 export type WorkerPool = components["schemas"]["WorkerPool"] & {
   online_worker_count?: number;
   rendering_worker_count?: number;
+  workers?: string[];
 };
 export interface CreateWorkerPoolPayload {
   name: string;

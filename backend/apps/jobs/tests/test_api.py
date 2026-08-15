@@ -11,9 +11,9 @@ from django.contrib.auth.models import Group
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from apps.jobs.models import Task, TaskState, Job, JobState, Layer
+from apps.jobs.models import Job, JobState, Layer, Task, TaskState
 
-from .factories import TaskFactory, JobFactory, LayerFactory
+from .factories import JobFactory, LayerFactory, TaskFactory
 
 User = get_user_model()
 
@@ -657,7 +657,7 @@ class TestJobSubmissionWithDependencies:
         resp = user_client.post("/api/jobs/", payload, format="json")
         assert resp.status_code == 201, resp.json()
 
-        from apps.jobs.models import Dependency, DependencyType, Task, TaskState, Layer
+        from apps.jobs.models import Dependency, DependencyType, Layer, Task, TaskState
         dep = Dependency.objects.get(type=DependencyType.LAYER_ON_LAYER)
         assert not dep.is_satisfied
 
@@ -691,7 +691,7 @@ class TestJobSubmissionWithDependencies:
         resp = user_client.post("/api/jobs/", payload, format="json")
         assert resp.status_code == 201
 
-        from apps.jobs.models import Job, Layer
+        from apps.jobs.models import Job
         job = Job.objects.get()
         assert job.depend_tasks == 3  # 3 composite frames blocked
         assert job.waiting_tasks == 3
@@ -747,8 +747,9 @@ class TestLayerAndJobDependencySignals:
     """Tests that LAYER_ON_LAYER and JOB_ON_JOB signals fire correctly."""
 
     def test_layer_on_layer_satisfied_when_parent_finishes(self):
-        from apps.jobs.models import Dependency, DependencyType, Task, TaskState, Job, JobState, Layer
-        from .factories import TaskFactory, LayerFactory, JobFactory
+        from apps.jobs.models import Dependency, DependencyType, JobState, Layer, TaskState
+
+        from .factories import JobFactory, LayerFactory, TaskFactory
 
         job = JobFactory()
         parent_layer = LayerFactory(job=job)
@@ -772,7 +773,6 @@ class TestLayerAndJobDependencySignals:
         parent_task.save()
 
         # Now push parent layer to FINISHED (triggers layer_pre_save signal)
-        from django.db.models import F
         Layer.objects.filter(pk=parent_layer.pk).update(
             total_tasks=1,
             succeeded_tasks=1,
@@ -788,8 +788,9 @@ class TestLayerAndJobDependencySignals:
         assert dep_task.state == TaskState.READY
 
     def test_job_on_job_satisfied_when_parent_finishes(self):
-        from apps.jobs.models import Dependency, DependencyType, Task, TaskState, JobState
-        from .factories import TaskFactory, JobFactory
+        from apps.jobs.models import Dependency, DependencyType, JobState, TaskState
+
+        from .factories import JobFactory, TaskFactory
 
         parent_job = JobFactory()
         dep_job = JobFactory()
@@ -814,8 +815,9 @@ class TestLayerAndJobDependencySignals:
         assert dep_task.state == TaskState.READY
 
     def test_depend_tasks_counter_increments_on_creation(self):
-        from apps.jobs.models import Dependency, DependencyType, Task, TaskState, Job, Layer
-        from .factories import TaskFactory, LayerFactory, JobFactory
+        from apps.jobs.models import Dependency, DependencyType, TaskState
+
+        from .factories import JobFactory, LayerFactory, TaskFactory
 
         job = JobFactory()
         layer = LayerFactory(job=job)
