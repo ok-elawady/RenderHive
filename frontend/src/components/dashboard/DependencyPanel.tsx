@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import { JobSelector, LayerSelector, TaskSelector } from "@/components/common/Selectors";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DependencyFlow } from "@/components/dashboard/DependencyFlow";
@@ -230,57 +231,7 @@ function AddDependencyDialog({ open, onOpenChange, jobId, onCreated }: AddDepend
   );
 }
 
-// ── Delete Confirmation Dialog ─────────────────────────────────────────────────
 
-interface DeleteConfirmDialogProps {
-  dep: Dependency | null;
-  onClose: () => void;
-  onDeleted: () => void;
-}
-
-function DeleteConfirmDialog({ dep, onClose, onDeleted }: DeleteConfirmDialogProps) {
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleDelete = async () => {
-    if (!dep) return;
-    setIsDeleting(true);
-    try {
-      await deleteDependency(dep.id);
-      toast.success("Dependency removed.");
-      onDeleted();
-      onClose();
-    } catch (err) {
-      toast.error(formatApiError(err));
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  return (
-    <Dialog open={!!dep} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-destructive">
-            <XCircle className="size-4" />
-            Remove Dependency
-          </DialogTitle>
-          <DialogDescription>
-            This will immediately allow the blocked tasks to be re-evaluated. This action cannot be undone.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isDeleting}>
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-            {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-            Remove
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
@@ -296,6 +247,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
   const [isLoading, setIsLoading] = useState(true);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Dependency | null>(null);
+  const [isDeletingDependency, setIsDeletingDependency] = useState(false);
 
   const [inboundPage, setInboundPage] = useState(1);
   const [outboundPage, setOutboundPage] = useState(1);
@@ -553,7 +505,29 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
 
       {/* Dialogs */}
       <AddDependencyDialog open={isAddOpen} onOpenChange={setIsAddOpen} jobId={jobId} onCreated={loadDeps} />
-      <DeleteConfirmDialog dep={pendingDelete} onClose={() => setPendingDelete(null)} onDeleted={loadDeps} />
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        variant="destructive"
+        title="Remove Dependency"
+        description="This will immediately allow the blocked tasks to be re-evaluated. This action cannot be undone."
+        confirmText="Remove Dependency"
+        isLoading={isDeletingDependency}
+        onConfirm={async () => {
+          if (!pendingDelete) return;
+          setIsDeletingDependency(true);
+          try {
+            await deleteDependency(pendingDelete.id);
+            toast.success("Dependency removed.");
+            await loadDeps();
+            setPendingDelete(null);
+          } catch (err) {
+            toast.error(formatApiError(err));
+          } finally {
+            setIsDeletingDependency(false);
+          }
+        }}
+      />
     </Card>
   );
 }

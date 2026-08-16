@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, HardDrive, Clock, Cpu, Monitor, Network } from "lucide-react";
+import { Loader2, Clock, Cpu, HardDrive, Monitor } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -73,7 +73,13 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
     if (search) {
       const q = search.toLowerCase();
       filtered = filtered.filter(
-        (n) => n.hostname.toLowerCase().includes(q) || (n.ip_address && n.ip_address.toLowerCase().includes(q)),
+        (n) =>
+          n.hostname.toLowerCase().includes(q) ||
+          (n.ip_address && n.ip_address.toLowerCase().includes(q)) ||
+          n.pools?.some((p) => p.name.toLowerCase().includes(q)) ||
+          n.tags?.some((t) => t.toLowerCase().includes(q)) ||
+          n.gpu_models?.some((g) => g.toLowerCase().includes(q)) ||
+          (typeof n.system_info?.cpu_name === "string" && n.system_info.cpu_name.toLowerCase().includes(q)),
       );
     }
     if (statusFilter && statusFilter !== "ALL") {
@@ -85,6 +91,17 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
     return [...filtered].sort((a, b) => {
       let aValue: unknown = a[sortConfig.key as keyof WorkerNode];
       let bValue: unknown = b[sortConfig.key as keyof WorkerNode];
+
+      if (sortConfig.key === "gpu_models") {
+        aValue = a.gpu_models?.join(", ") || "";
+        bValue = b.gpu_models?.join(", ") || "";
+      } else if (sortConfig.key === "pools") {
+        aValue = a.pools?.map((p) => p.name).join(", ") || "";
+        bValue = b.pools?.map((p) => p.name).join(", ") || "";
+      } else if (sortConfig.key === "last_ping") {
+        aValue = a.last_ping ? new Date(a.last_ping).getTime() : 0;
+        bValue = b.last_ping ? new Date(b.last_ping).getTime() : 0;
+      }
 
       if (aValue === null || aValue === undefined) aValue = "";
       if (bValue === null || bValue === undefined) bValue = "";
@@ -99,26 +116,27 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
   }, [nodes, sortConfig, search, statusFilter]);
 
   return (
-    <div className="flex-1 font-mono h-full flex flex-col space-y-4">
-      {/* Page-Level Control Bar (DRY & Identical to /jobs) */}
+    <div className="flex-1 font-sans h-full flex flex-col space-y-4">
+      {/* Page-Level Control Bar */}
       <PageControlBar
         chips={statusChips}
         selectedChip={statusFilter}
         onSelectChip={setStatusFilter}
         search={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search hostname or IP..."
+        searchPlaceholder="Search hostname, IP, pool, tag, CPU, or GPU..."
       />
 
       {/* Main Dedicated Table Card */}
       <Card className="flex flex-col border-border p-0 gap-0 overflow-hidden bg-card">
-        <CardContent className="p-0 overflow-hidden">
-          <Table className="table-fixed">
+        <CardContent className="p-0 overflow-x-auto">
+          <Table className="table-fixed min-w-[950px]">
             <TableHeader className="bg-card sticky top-0 z-10 border-b border-border/50">
               <TableRow className="hover:bg-transparent bg-muted/30">
-                <TableHead className="w-[28%] pl-6">
+                {/* 1. Hostname & IP */}
+                <TableHead className="w-[20%] pl-6">
                   <TableSortHeader
-                    label="Hostname / Node"
+                    label="Node / IP"
                     sortKey="hostname"
                     currentSortKey={sortConfig?.key}
                     currentDirection={sortConfig?.direction}
@@ -126,7 +144,9 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                     align="left"
                   />
                 </TableHead>
-                <TableHead className="w-[14%]">
+
+                {/* 2. Status */}
+                <TableHead className="w-[11%]">
                   <TableSortHeader
                     label="Status"
                     sortKey="status"
@@ -136,14 +156,18 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                     align="center"
                   />
                 </TableHead>
-                <TableHead className="w-[18%]">
+
+                {/* 3. Worker Pools */}
+                <TableHead className="w-[13%]">
                   <div className="flex justify-center w-full">
                     <span className="font-semibold text-xs text-muted-foreground">Pools</span>
                   </div>
                 </TableHead>
-                <TableHead className="w-[22%]">
+
+                {/* 4. CPU & RAM (Hardware) */}
+                <TableHead className="w-[17%]">
                   <TableSortHeader
-                    label="Hardware Telemetry"
+                    label="CPU / Memory"
                     sortKey="cores"
                     currentSortKey={sortConfig?.key}
                     currentDirection={sortConfig?.direction}
@@ -151,7 +175,28 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                     align="center"
                   />
                 </TableHead>
-                <TableHead className="w-[18%] pr-6">
+
+                {/* 5. GPU Acceleration */}
+                <TableHead className="w-[18%]">
+                  <TableSortHeader
+                    label="GPU Hardware"
+                    sortKey="gpu_models"
+                    currentSortKey={sortConfig?.key}
+                    currentDirection={sortConfig?.direction}
+                    onSort={handleSort}
+                    align="left"
+                  />
+                </TableHead>
+
+                {/* 6. Tags */}
+                <TableHead className="w-[10%]">
+                  <div className="flex justify-start w-full">
+                    <span className="font-semibold text-xs text-muted-foreground">Tags</span>
+                  </div>
+                </TableHead>
+
+                {/* 7. Last Ping / Heartbeat */}
+                <TableHead className="w-[11%] pr-6">
                   <TableSortHeader
                     label="Last Ping"
                     sortKey="last_ping"
@@ -166,55 +211,39 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
             <TableBody className="text-xs">
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-44 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-44 text-center text-muted-foreground">
                     <Loader2 className="mx-auto mb-2 animate-spin text-primary" size={22} />
                     Loading worker nodes...
                   </TableCell>
                 </TableRow>
               ) : sortedNodes.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-44 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-44 text-center text-muted-foreground">
                     No worker nodes match the selected criteria.
                   </TableCell>
                 </TableRow>
               ) : (
                 sortedNodes.map((item) => (
                   <TableRow key={item.id} className="group transition-colors hover:bg-muted/40">
-                    {/* Hostname & IP */}
+                    {/* 1. Hostname & IP */}
                     <TableCell className="pl-6 py-3 text-left">
-                      <div className="flex flex-col gap-1 min-w-0">
-                        <span className="font-bold text-foreground truncate">{item.hostname}</span>
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                          {item.ip_address && (
-                            <span className="flex items-center gap-1">
-                              <Network size={11} className="opacity-70" />
-                              {item.ip_address}
-                            </span>
-                          )}
-                          {item.tags && item.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {item.tags.map((tag) => (
-                                <Badge
-                                  key={tag}
-                                  variant="secondary"
-                                  className="text-[11px] px-2 py-0.5 h-5 bg-muted/60 text-muted-foreground hover:bg-muted font-mono"
-                                >
-                                  {tag}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="font-bold text-foreground font-mono text-xs truncate" title={item.hostname}>
+                          {item.hostname}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground font-mono truncate">
+                          {item.ip_address || "—"}
+                        </span>
                       </div>
                     </TableCell>
 
-                    {/* Status */}
+                    {/* 2. Status */}
                     <TableCell className="py-3 text-center">
                       <div className="flex justify-center">
                         {item.status === "ONLINE" && (
                           <Badge
                             variant="secondary"
-                            className="bg-success/15 text-success hover:bg-success/20 gap-1.5 font-medium text-[11px] h-5 px-2"
+                            className="bg-success/15 text-success border border-success/30 gap-1.5 font-medium text-xs h-5 px-2.5"
                           >
                             <div className="size-1.5 rounded-full bg-success animate-pulse" />
                             Online
@@ -223,7 +252,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                         {item.status === "RENDERING" && (
                           <Badge
                             variant="secondary"
-                            className="bg-primary/15 text-primary hover:bg-primary/20 gap-1.5 font-medium text-[11px] h-5 px-2"
+                            className="bg-primary/15 text-primary border border-primary/30 gap-1.5 font-medium text-xs h-5 px-2.5"
                           >
                             <Loader2 className="size-2.5 animate-spin" />
                             Rendering
@@ -232,7 +261,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                         {item.status === "OFFLINE" && (
                           <Badge
                             variant="secondary"
-                            className="bg-destructive/15 text-destructive hover:bg-destructive/20 gap-1.5 font-medium text-[11px] h-5 px-2"
+                            className="bg-destructive/15 text-destructive border border-destructive/30 gap-1.5 font-medium text-xs h-5 px-2.5"
                           >
                             <div className="size-1.5 rounded-full bg-destructive" />
                             Offline
@@ -241,7 +270,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                       </div>
                     </TableCell>
 
-                    {/* Pools */}
+                    {/* 3. Pools */}
                     <TableCell className="py-3 text-center">
                       {item.pools && item.pools.length > 0 ? (
                         <div className="flex flex-wrap justify-center gap-1.5">
@@ -250,13 +279,17 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                               <TooltipTrigger>
                                 <Badge
                                   variant="outline"
-                                  className="font-mono text-[11px] px-2 py-0.5 h-5 border-border bg-card hover:border-primary/50 transition-colors"
+                                  className="font-mono text-xs px-2 py-0.5 h-5 border-border bg-muted/30 text-foreground hover:border-primary/50 transition-colors"
                                 >
                                   {pool.name}
                                 </Badge>
                               </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Pool: {pool.name}</p>
+                              <TooltipContent
+                                side="top"
+                                className="flex items-center gap-2 px-3 py-1.5 bg-popover text-popover-foreground border border-border shadow-lg rounded-lg text-xs"
+                              >
+                                <span className="text-muted-foreground font-sans">Pool:</span>
+                                <span className="font-semibold text-foreground font-mono">{pool.name}</span>
                               </TooltipContent>
                             </Tooltip>
                           ))}
@@ -266,39 +299,155 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                       )}
                     </TableCell>
 
-                    {/* Hardware */}
+                    {/* 4. CPU & RAM (Hardware) */}
                     <TableCell className="py-3 text-center">
-                      <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
-                        {item.gpu_models && item.gpu_models.length > 0 && (
-                          <span className="flex items-center gap-1.5 font-medium text-foreground">
-                            <Monitor size={12} className="text-primary" />
-                            <span className="truncate max-w-[160px]">{item.gpu_models.join(", ")}</span>
-                          </span>
-                        )}
-                        <div className="flex items-center justify-center gap-3 text-[11px]">
-                          <span className="flex items-center gap-1">
-                            <Cpu size={11} className="opacity-70" />
-                            {item.cores} cores
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <HardDrive size={11} className="opacity-70" />
-                            {formatMemory(item.memory_mb ?? 0)}
-                          </span>
-                        </div>
-                      </div>
+                      <Tooltip>
+                        <TooltipTrigger className="cursor-default inline-block">
+                          <div className="flex items-center justify-center gap-1.5 text-xs text-foreground font-mono">
+                            <span className="font-semibold text-foreground">{item.cores} cores</span>
+                            <span className="text-muted-foreground/60">•</span>
+                            <span className="font-semibold text-foreground">{formatMemory(item.memory_mb ?? 0)}</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="top"
+                          className="flex flex-col items-start gap-2 max-w-xs p-3 bg-popover text-popover-foreground border border-border shadow-xl rounded-lg"
+                        >
+                          <div className="flex items-center gap-2 border-b border-border/60 pb-1.5 w-full">
+                            <Cpu size={14} className="text-primary shrink-0" />
+                            <span className="font-bold text-xs text-foreground">Hardware Specifications</span>
+                          </div>
+                          <div className="space-y-1.5 w-full text-xs font-mono">
+                            {typeof item.system_info?.cpu_name === "string" && (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-sans font-semibold">Processor</span>
+                                <span className="text-foreground text-xs leading-snug">{item.system_info.cpu_name}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between text-xs pt-0.5">
+                              <span className="text-muted-foreground font-sans">CPU Cores:</span>
+                              <span className="font-semibold text-foreground">{item.cores} Logical</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground font-sans">System Memory:</span>
+                              <span className="font-semibold text-foreground">{formatMemory(item.memory_mb ?? 0)}</span>
+                            </div>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
                     </TableCell>
 
-                    {/* Last Ping */}
+                    {/* 5. GPU Acceleration & VRAM */}
+                    <TableCell className="py-3 text-left">
+                      {item.gpu_models && item.gpu_models.length > 0 ? (
+                        <Tooltip>
+                          <TooltipTrigger className="cursor-default text-left block">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-foreground font-medium text-xs truncate max-w-[170px]" title={item.gpu_models.join(", ")}>
+                                {item.gpu_models.join(", ")}
+                              </span>
+                              {typeof item.system_info?.gpu_vram_mb === "number" && (
+                                <span className="text-[11px] font-mono text-muted-foreground shrink-0">
+                                  ({formatMemory(item.system_info.gpu_vram_mb)})
+                                </span>
+                              )}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="top"
+                            className="flex flex-col items-start gap-2 max-w-xs p-3 bg-popover text-popover-foreground border border-border shadow-xl rounded-lg"
+                          >
+                            <div className="flex items-center gap-2 border-b border-border/60 pb-1.5 w-full">
+                              <Monitor size={14} className="text-primary shrink-0" />
+                              <span className="font-bold text-xs text-foreground">GPU Hardware & VRAM</span>
+                            </div>
+                            <div className="space-y-2 w-full text-xs font-mono">
+                              {Array.isArray(item.system_info?.gpus) && (item.system_info.gpus as Array<Record<string, unknown>>).length > 0 ? (
+                                (item.system_info.gpus as Array<Record<string, unknown>>).map((g, idx) => (
+                                  <div key={idx} className="flex flex-col gap-1 bg-muted/40 p-2 rounded border border-border/40">
+                                    <div className="flex items-center gap-1.5 text-foreground font-semibold">
+                                      <span className="size-1.5 rounded-full bg-primary shrink-0" />
+                                      <span className="truncate">{String(g.name || item.gpu_models[idx] || "GPU")}</span>
+                                    </div>
+                                    {typeof g.vram_mb === "number" && (
+                                      <div className="flex items-center justify-between text-[11px] text-muted-foreground pl-3 font-sans">
+                                        <span>Total VRAM:</span>
+                                        <span className="font-mono text-foreground">{formatMemory(g.vram_mb as number)}</span>
+                                      </div>
+                                    )}
+                                    {item.status !== "OFFLINE" ? (
+                                      <>
+                                        {typeof g.vram_used_mb === "number" && typeof g.vram_mb === "number" && (
+                                          <div className="flex items-center justify-between text-[11px] text-muted-foreground pl-3 font-sans">
+                                            <span>VRAM In Use:</span>
+                                            <span className="font-mono text-foreground">
+                                              {formatMemory(g.vram_used_mb as number)} ({Math.round(((g.vram_used_mb as number) / (g.vram_mb as number)) * 100)}%)
+                                            </span>
+                                          </div>
+                                        )}
+                                        {typeof g.utilization_percent === "number" && (
+                                          <div className="flex items-center justify-between text-[11px] text-muted-foreground pl-3 font-sans">
+                                            <span>Core Utilization:</span>
+                                            <span className="font-mono text-foreground">{g.utilization_percent}%</span>
+                                          </div>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <div className="text-[11px] text-muted-foreground/80 pl-3 font-sans italic pt-0.5">
+                                        Offline — Telemetry unavailable
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              ) : (
+                                item.gpu_models.map((gpu, idx) => (
+                                  <div key={idx} className="flex items-center justify-between gap-2 bg-muted/40 px-2 py-1 rounded border border-border/40">
+                                    <span className="truncate">{gpu}</span>
+                                    {typeof item.system_info?.gpu_vram_mb === "number" && (
+                                      <span className="text-muted-foreground font-mono">{formatMemory(item.system_info.gpu_vram_mb)}</span>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+
+                    {/* 6. Tags */}
+                    <TableCell className="py-3 text-left">
+                      {item.tags && item.tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {item.tags.map((tag) => (
+                            <Badge
+                              key={tag}
+                              variant="outline"
+                              className="text-[11px] px-2 py-0.5 h-5 bg-muted/40 text-foreground font-mono"
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+
+                    {/* 7. Last Ping / Heartbeat */}
                     <TableCell className="pr-6 py-3 text-right">
                       <div className="flex flex-col items-end gap-0.5">
-                        <span className="text-xs font-medium flex items-center gap-1">
-                          <Clock size={11} className="text-muted-foreground" />
+                        <span className="text-xs font-semibold text-foreground flex items-center gap-1">
+                          <Clock size={12} className="text-muted-foreground shrink-0" />
                           {formatRelativeTime(item.last_ping)}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {new Intl.DateTimeFormat("en", { dateStyle: "short", timeStyle: "short" }).format(
-                            new Date(item.last_ping),
-                          )}
+                        <span className="text-[11px] text-muted-foreground">
+                          {new Intl.DateTimeFormat("en", {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          }).format(new Date(item.last_ping))}
                         </span>
                       </div>
                     </TableCell>

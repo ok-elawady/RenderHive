@@ -148,9 +148,13 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-[380px]">
-        <FarmActivityFeed />
-        <AgenticLogs searchQuery="" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:h-[420px]">
+        <div className="h-[420px] lg:h-full min-h-0">
+          <FarmActivityFeed />
+        </div>
+        <div className="h-[420px] lg:h-full min-h-0">
+          <AgenticLogs searchQuery="" />
+        </div>
       </div>
     </div>
   );

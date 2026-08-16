@@ -6,8 +6,6 @@ import {
   AlertCircle,
   AlertOctagon,
   AlertTriangle,
-  ChevronDown,
-  ChevronRight,
   Info,
   Radio,
   RefreshCw,
@@ -73,7 +71,6 @@ function formatEventTime(isoString: string): string {
 
 export default function FarmActivityFeed() {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("ALL");
-  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
   const {
     data: allEvents = [],
@@ -111,10 +108,6 @@ export default function FarmActivityFeed() {
     }
     return allEvents.filter((e) => e.severity === severityFilter);
   }, [allEvents, severityFilter]);
-
-  const toggleExpand = (id: string) => {
-    setExpandedEventId((prev) => (prev === id ? null : id));
-  };
 
   return (
     <Card className="flex flex-col border-border p-0 gap-0 h-full">
@@ -172,43 +165,36 @@ export default function FarmActivityFeed() {
         </Button>
       </CardHeader>
 
-      <CardContent className="p-3.5 flex-1 flex flex-col min-h-0">
-        <div
-          role="region"
-          aria-label="Farm Activity Logs"
-          aria-live="polite"
-          className="bg-surface-deep border border-input rounded-lg font-mono text-xs leading-relaxed flex-1 h-full overflow-y-auto box-border scroll-smooth"
-        >
-          {isLoading && allEvents.length === 0 ? (
-            <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 text-muted-foreground p-6">
-              <RefreshCw size={18} className="animate-spin text-primary opacity-60" />
-              <p className="text-xs">Loading farm events...</p>
-            </div>
-          ) : error ? (
-            <div className="flex h-full min-h-32 flex-col items-center justify-center text-center p-6 gap-2">
-              <Search size={24} className="mb-1 text-destructive opacity-40" />
-              <p className="text-xs font-bold text-foreground">Failed to connect to farm events feed</p>
-              <p className="text-xs text-muted-foreground">Could not reach backend telemetry service.</p>
-            </div>
-          ) : filteredEvents.length === 0 ? (
-            <div className="flex h-full min-h-32 flex-col items-center justify-center text-center p-6">
-              <Search size={24} className="mb-2 text-primary opacity-30" />
-              <p className="text-xs font-bold text-foreground">No farm events recorded</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Cluster events such as worker heartbeats, task timeouts, and failovers will stream here.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border/30">
-              {filteredEvents.map((evt) => {
-                const isExpanded = expandedEventId === evt.id;
-                const hasPayload = Boolean(
-                  evt.payload &&
-                  typeof evt.payload === "object" &&
-                  Object.keys(evt.payload as Record<string, unknown>).length > 0,
-                );
-
-                return (
+      <CardContent className="p-3.5 flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="bg-surface-deep border border-input rounded-lg flex-1 h-full overflow-hidden flex flex-col">
+          <div
+            role="region"
+            aria-label="Farm Activity Logs"
+            aria-live="polite"
+            className="font-mono text-xs leading-relaxed flex-1 h-full overflow-y-auto box-border scroll-smooth"
+          >
+            {isLoading && allEvents.length === 0 ? (
+              <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 text-muted-foreground p-6">
+                <RefreshCw size={18} className="animate-spin text-primary opacity-60" />
+                <p className="text-xs">Loading farm events...</p>
+              </div>
+            ) : error ? (
+              <div className="flex h-full min-h-32 flex-col items-center justify-center text-center p-6 gap-2">
+                <Search size={24} className="mb-1 text-destructive opacity-40" />
+                <p className="text-xs font-bold text-foreground">Failed to connect to farm events feed</p>
+                <p className="text-xs text-muted-foreground">Could not reach backend telemetry service.</p>
+              </div>
+            ) : filteredEvents.length === 0 ? (
+              <div className="flex h-full min-h-32 flex-col items-center justify-center text-center p-6">
+                <Search size={24} className="mb-2 text-primary opacity-30" />
+                <p className="text-xs font-bold text-foreground">No farm events recorded</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Cluster events such as worker heartbeats, task timeouts, and failovers will stream here.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border/30">
+                {filteredEvents.map((evt) => (
                   <div
                     key={evt.id}
                     className="flex flex-col gap-1 px-3 py-2.5 hover:bg-surface-hover transition-colors"
@@ -238,35 +224,13 @@ export default function FarmActivityFeed() {
                         <span className="text-[11px] text-muted-foreground opacity-70 tabular-nums">
                           [{formatEventTime(evt.created_at)}]
                         </span>
-                        {hasPayload && (
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(evt.id)}
-                            className="text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer"
-                            title="Inspect JSON payload"
-                          >
-                            {isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-                          </button>
-                        )}
                       </div>
                     </div>
-
-                    {/* Expanded JSON Payload Drawer */}
-                    {isExpanded && hasPayload && (
-                      <div className="mt-2 p-2.5 bg-background/80 rounded border border-border text-[11px] text-muted-foreground overflow-x-auto">
-                        <div className="flex items-center gap-1.5 text-primary mb-1 font-bold text-[10px]">
-                          <Terminal className="size-3" /> PAYLOAD
-                        </div>
-                        <pre className="text-foreground/90 font-mono text-[10px]">
-                          {JSON.stringify(evt.payload, null, 2)}
-                        </pre>
-                      </div>
-                    )}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   formatApiError,
@@ -79,6 +80,7 @@ export default function LayerInspectorPage() {
 
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [isDeletingDependency, setIsDeletingDependency] = useState<string | null>(null);
+  const [blockerToDelete, setBlockerToDelete] = useState<Dependency | null>(null);
 
   const blockers = useMemo(() => {
     return dependencies.filter((dep) => dep.dep_layer === layer?.id);
@@ -287,7 +289,7 @@ export default function LayerInspectorPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => void handleDeleteBlocker(blocker.id)}
+                              onClick={() => setBlockerToDelete(blocker)}
                               disabled={isDeletingDependency === blocker.id}
                               aria-label="Remove blocker"
                               className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
@@ -450,6 +452,23 @@ export default function LayerInspectorPage() {
         isOpen={Boolean(selectedTaskForLog)}
         onOpenChange={(open) => {
           if (!open) setSelectedTaskForLog(null);
+        }}
+      />
+
+      {/* Blocker Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        open={!!blockerToDelete}
+        onOpenChange={(open) => !open && setBlockerToDelete(null)}
+        variant="destructive"
+        title="Remove Blocker Dependency"
+        description="Are you sure you want to remove this dependency blocker? This will allow blocked tasks to proceed immediately. This action cannot be undone."
+        confirmText="Remove Blocker"
+        isLoading={Boolean(blockerToDelete && isDeletingDependency === blockerToDelete.id)}
+        onConfirm={async () => {
+          if (blockerToDelete) {
+            await handleDeleteBlocker(blockerToDelete.id);
+            setBlockerToDelete(null);
+          }
         }}
       />
     </div>
