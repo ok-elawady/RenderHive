@@ -12,6 +12,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from apps.jobs.models import Job, JobState, Layer, Task, TaskState
+from apps.telemetry.models import EventSeverity, FarmEvent, TaskExecutionLog
 
 from .factories import JobFactory, LayerFactory, TaskFactory
 
@@ -325,21 +326,107 @@ class TestTaskActions:
         assert task.job.running_tasks == 0
         assert task.job.succeeded_tasks == 1
 
-    def test_farm_agent_can_fail_frame_within_retry_budget(self, farm_client):
-        """Failing a frame within retry budget sets it back to READY."""
-        task = TaskFactory(state=TaskState.RUNNING, retries=0, max_retries=3)
-        resp = farm_client.post(f"/api/tasks/{task.pk}/fail/", {"exit_status": 1}, format="json")
+    def test_farm_agent_can_fail_frame(self, farm_client):
+        """Failing a frame transitions it immediately to FAILED and emits TASK_FAILED FarmEvent."""
+        task = TaskFactory(state=TaskState.RUNNING, retries=0, max_retries=3, worker_name="render-node-01")
+        resp = farm_client.post(
+            f"/api/tasks/{task.pk}/fail/",
+            {"exit_status": 1, "error_tail": "Fatal error: Arnold crashed", "worker_hostname": "render-node-01"},
+            format="json",
+        )
         assert resp.status_code == 200
-        task.refresh_from_db()
-        assert task.state == TaskState.READY
-
-    def test_frame_exceeding_retry_budget_becomes_failed(self, farm_client):
-        """Failing a frame that has exhausted retries transitions to FAILED."""
-        task = TaskFactory(state=TaskState.RUNNING, retries=2, max_retries=3)
-        resp = farm_client.post(f"/api/tasks/{task.pk}/fail/", {"exit_status": 1}, format="json")
-        assert resp.status_code == 200
+        assert resp.data["status"] == "failed"
         task.refresh_from_db()
         assert task.state == TaskState.FAILED
+        assert task.stopped_at is not None
+        assert task.retries == 1
+
+        event = FarmEvent.objects.filter(event_type="TASK_FAILED", target_id=str(task.id)).first()
+        assert event is not None
+        assert event.severity == EventSeverity.ERROR
+        assert event.actor_username == "render-node-01"
+        assert event.payload["task_id"] == str(task.id)
+        assert event.payload["exit_status"] == 1
+        assert event.payload["retries"] == 1
+
+        log = TaskExecutionLog.objects.filter(task=task, attempt_number=1).first()
+        assert log is not None
+        assert log.exit_status == 1
+        assert log.worker_hostname == "render-node-01"
+        assert log.error_tail == "Fatal error: Arnold crashed"
+
+    def test_user_can_retry_failed_frame(self, user_client):
+        """Authenticated user can requeue a FAILED frame back to READY state."""
+        task = TaskFactory(state=TaskState.FAILED, retries=1, exit_status=1, worker_name="render-node-01")
+        resp = user_client.post(f"/api/tasks/{task.pk}/retry/")
+        assert resp.status_code == 200
+        assert resp.data["status"] == "ready"
+        task.refresh_from_db()
+        assert task.state == TaskState.READY
+        assert task.worker_name == ""
+        assert task.stopped_at is None
+
+        event = FarmEvent.objects.filter(event_type="TASK_REQUEUED", target_id=str(task.id)).first()
+        assert event is not None
+        assert event.severity == EventSeverity.INFO
+
+    def test_user_can_requeue_succeeded_frame_for_rerender(self, user_client):
+        """Requeuing a SUCCEEDED frame resets it back to READY for re-rendering."""
+        task = TaskFactory(state=TaskState.SUCCEEDED, worker_name="render-node-01")
+        resp = user_client.post(f"/api/tasks/{task.pk}/retry/")
+        assert resp.status_code == 200
+        assert resp.data["status"] == "ready"
+        assert resp.data["previous_state"] == "SUCCEEDED"
+        task.refresh_from_db()
+        assert task.state == TaskState.READY
+        assert task.worker_name == ""
+
+    def test_retry_ready_frame_is_idempotent(self, user_client):
+        """Retrying a frame that is already READY succeeds idempotently."""
+        task = TaskFactory(state=TaskState.READY)
+        resp = user_client.post(f"/api/tasks/{task.pk}/retry/")
+        assert resp.status_code == 200
+        assert resp.data["status"] == "ready"
+
+    def test_user_can_requeue_all_failed_tasks_in_job(self, user_client, user):
+        """Job-level requeue_failed resets all FAILED tasks in the job back to READY."""
+        job = JobFactory(state=JobState.FAILED, submitted_by=user, user=user.username)
+        layer = LayerFactory(job=job)
+        task1 = TaskFactory(job=job, layer=layer, state=TaskState.FAILED, worker_name="node-1")
+        task2 = TaskFactory(job=job, layer=layer, state=TaskState.FAILED, worker_name="node-2")
+        task3 = TaskFactory(job=job, layer=layer, state=TaskState.SUCCEEDED, worker_name="node-3")
+
+        resp = user_client.post(f"/api/jobs/{job.pk}/requeue_failed/")
+        assert resp.status_code == 200
+        assert resp.data["requeued_count"] == 2
+
+        task1.refresh_from_db()
+        task2.refresh_from_db()
+        task3.refresh_from_db()
+        assert task1.state == TaskState.READY
+        assert task2.state == TaskState.READY
+        assert task3.state == TaskState.SUCCEEDED
+
+        event = FarmEvent.objects.filter(event_type="JOB_REQUEUED", target_id=str(job.id)).first()
+        assert event is not None
+        assert event.payload["requeued_count"] == 2
+
+    def test_user_can_requeue_all_failed_tasks_in_layer(self, user_client, user):
+        """Layer-level requeue_failed resets all FAILED tasks in that specific layer."""
+        job = JobFactory(user=user.username)
+        layer1 = LayerFactory(job=job)
+        layer2 = LayerFactory(job=job)
+        task_l1_fail = TaskFactory(job=job, layer=layer1, state=TaskState.FAILED)
+        task_l2_fail = TaskFactory(job=job, layer=layer2, state=TaskState.FAILED)
+
+        resp = user_client.post(f"/api/jobs/{job.pk}/layers/{layer1.pk}/requeue_failed/")
+        assert resp.status_code == 200
+        assert resp.data["requeued_count"] == 1
+
+        task_l1_fail.refresh_from_db()
+        task_l2_fail.refresh_from_db()
+        assert task_l1_fail.state == TaskState.READY
+        assert task_l2_fail.state == TaskState.FAILED
 
     def test_staff_can_skip_failed_frame(self, staff_client):
         """Staff user can skip a FAILED frame."""
@@ -397,12 +484,13 @@ class TestTaskActions:
         assert task.stopped_at is not None
 
     def test_farm_agent_can_fail_from_checkpoint_state(self, farm_client):
-        """Farm agent can report failure on a CHECKPOINT frame (retry path)."""
+        """Farm agent can report failure on a CHECKPOINT frame."""
         task = TaskFactory(state=TaskState.CHECKPOINT, retries=0, max_retries=3)
         resp = farm_client.post(f"/api/tasks/{task.pk}/fail/", {"exit_status": 1}, format="json")
         assert resp.status_code == 200
         task.refresh_from_db()
-        assert task.state == TaskState.READY
+        assert task.state == TaskState.FAILED
+        assert task.stopped_at is not None
 
     def test_skip_non_failed_frame_returns_409(self, staff_client):
         """Trying to skip a frame that is not FAILED returns 409 Conflict."""
@@ -416,17 +504,13 @@ class TestTaskActions:
         resp = anon_client.post(f"/api/tasks/{task.pk}/start/", {"worker_name": "node-01"}, format="json")
         assert resp.status_code in (401, 403)
 
-    def test_fail_within_retry_budget_does_not_set_stopped_at(self, farm_client):
-        """A frame that will be retried (back to READY) must not have stopped_at set.
-
-        stopped_at represents permanent termination. A retried frame is still in
-        flight and should not carry a misleading end timestamp.
-        """
+    def test_fail_sets_stopped_at_timestamp(self, farm_client):
+        """A failed frame must have stopped_at timestamp recorded."""
         task = TaskFactory(state=TaskState.RUNNING, retries=0, max_retries=3)
         farm_client.post(f"/api/tasks/{task.pk}/fail/", {"exit_status": 1}, format="json")
         task.refresh_from_db()
-        assert task.state == TaskState.READY
-        assert task.stopped_at is None
+        assert task.state == TaskState.FAILED
+        assert task.stopped_at is not None
 
 
 # ── Multi-layer Counter Accumulation ─────────────────────────────────────────

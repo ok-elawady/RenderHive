@@ -95,6 +95,17 @@ class DependencyFilter(django_filters.FilterSet):
 
 
 
+from rest_framework.pagination import PageNumberPagination
+
+
+class TaskPagination(PageNumberPagination):
+    """Pagination for Task listing, allowing large frame ranges per layer."""
+
+    page_size = 5000
+    page_size_query_param = "page_size"
+    max_page_size = 10000
+
+
 class TaskFilter(django_filters.FilterSet):
     """FilterSet for the Task list endpoint.
 
@@ -166,7 +177,7 @@ class JobViewSet(viewsets.ModelViewSet):
         Returns:
             A list of instantiated permission objects for the current action.
         """
-        if self.action in ("partial_update", "destroy", "pause", "resume"):
+        if self.action in ("partial_update", "destroy", "pause", "resume", "requeue_failed"):
             return [IsAuthenticated(), IsJobOwnerOrStaff()]
         return [IsAuthenticated()]
 
@@ -249,6 +260,56 @@ class JobViewSet(viewsets.ModelViewSet):
         )
         return Response({"status": "resumed", "is_paused": False})
 
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def requeue_failed(self, request, pk=None):
+        """Requeue all FAILED tasks in this job back to READY state.
+
+        Args:
+            request: The HTTP request.
+            pk: The Job UUID.
+
+        Returns:
+            ``200 OK`` with count of requeued tasks.
+        """
+        job = self.get_object()
+        failed_tasks = list(
+            Task.objects.select_for_update().filter(job=job, state=TaskState.FAILED)
+        )
+        if not failed_tasks:
+            return Response({"requeued_count": 0, "status": "no_failed_tasks"})
+
+        for task in failed_tasks:
+            task.state = TaskState.READY
+            task.worker_name = ""
+            task.stopped_at = None
+            task.started_at = None
+            task.exit_status = -1
+            task.max_memory_used_mb = 0
+            task.save()
+
+        # If job was FAILED, reset to RUNNING (or PENDING if no tasks currently rendering)
+        if job.state == JobState.FAILED:
+            job.state = JobState.RUNNING if job.running_tasks > 0 else JobState.PENDING
+            job.save(update_fields=["state", "updated_at"])
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event
+
+        actor = request.user.username if request.user and request.user.is_authenticated else "operator"
+        job_display = job.visible_name or job.name
+        record_event(
+            event_type="JOB_REQUEUED",
+            message=f"Requeued {len(failed_tasks)} failed task(s) for job '{job_display}'.",
+            actor_username=actor,
+            target_type="job",
+            target_id=str(job.id),
+            target_name=job_display,
+            payload={"requeued_count": len(failed_tasks)},
+            severity=EventSeverity.INFO,
+        )
+        return Response({"requeued_count": len(failed_tasks), "status": "requeued"})
+
 
 # ── Layer ViewSet ─────────────────────────────────────────────────────────────
 
@@ -284,6 +345,51 @@ class LayerViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             return LayerListSerializer
         return LayerDetailSerializer
 
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def requeue_failed(self, request, job_pk=None, pk=None):
+        """Requeue all FAILED tasks in this layer back to READY state.
+
+        Args:
+            request: The HTTP request.
+            job_pk: The Job UUID.
+            pk: The Layer UUID.
+
+        Returns:
+            ``200 OK`` with count of requeued tasks.
+        """
+        layer = get_object_or_404(Layer.objects.filter(job_id=job_pk), pk=pk)
+        failed_tasks = list(
+            Task.objects.select_for_update().filter(layer=layer, state=TaskState.FAILED)
+        )
+        if not failed_tasks:
+            return Response({"requeued_count": 0, "status": "no_failed_tasks"})
+
+        for task in failed_tasks:
+            task.state = TaskState.READY
+            task.worker_name = ""
+            task.stopped_at = None
+            task.started_at = None
+            task.exit_status = -1
+            task.max_memory_used_mb = 0
+            task.save()
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event
+
+        actor = request.user.username if request.user and request.user.is_authenticated else "operator"
+        record_event(
+            event_type="LAYER_REQUEUED",
+            message=f"Requeued {len(failed_tasks)} failed task(s) in layer '{layer.name}'.",
+            actor_username=actor,
+            target_type="layer",
+            target_id=str(layer.id),
+            target_name=layer.name,
+            payload={"requeued_count": len(failed_tasks)},
+            severity=EventSeverity.INFO,
+        )
+        return Response({"requeued_count": len(failed_tasks), "status": "requeued"})
+
 
 # ── Task ViewSet ─────────────────────────────────────────────────────────────
 
@@ -305,6 +411,7 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
     """
 
     filterset_class = TaskFilter
+    pagination_class = TaskPagination
     search_fields = ["name", "worker_name", "layer__job__name", "layer__job__visible_name"]
 
     def get_queryset(self):
@@ -349,8 +456,8 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
         """
         if self.action in ("start", "succeed", "fail", "checkpoint"):
             return [IsFarmAgent()]
-        if self.action == "skip":
-            return [IsAuthenticated()]  # View enforces is_staff internally
+        if self.action in ("skip", "retry"):
+            return [IsAuthenticated()]
         return [IsAuthenticated()]
 
     @action(detail=True, methods=["post"], serializer_class=TaskStartSerializer)
@@ -422,9 +529,10 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             if task.stopped_at and task.started_at
             else data.get("duration_seconds", 0.0)
         )
+        worker_hostname = data.get("worker_hostname") or task.worker_name or "unknown"
         record_task_log(
             task=task,
-            worker_hostname=task.worker_name or "unknown",
+            worker_hostname=worker_hostname,
             exit_status=0,
             log_output=data.get("log_output", ""),
             error_tail=data.get("error_tail", ""),
@@ -464,6 +572,7 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        worker_hostname = data.get("worker_hostname") or task.worker_name or "unknown"
         task.exit_status = data["exit_status"]
         task.retries += 1
 
@@ -479,7 +588,7 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
         # Record telemetry log for this attempt
         record_task_log(
             task=task,
-            worker_hostname=task.worker_name or "unknown",
+            worker_hostname=worker_hostname,
             exit_status=task.exit_status,
             log_output=data.get("log_output", ""),
             error_tail=data.get("error_tail", ""),
@@ -489,29 +598,90 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             attempt_number=task.retries,
         )
 
-        if task.retries >= task.max_retries:
-            task.state = TaskState.FAILED
-            task.stopped_at = timezone.now()
-            task.save()
-            record_event(
-                event_type="TASK_FAILED",
-                message=(
-                    f"Task '{task.name}' failed permanently after {task.retries} attempts "
-                    f"(exit code {task.exit_status})."
-                ),
-                actor_username=task.worker_name or "system",
-                target_type="task",
-                target_id=str(task.id),
-                target_name=task.name,
-                severity=EventSeverity.WARNING,
-            )
-            return Response({"status": "failed"})
-        else:
-            # Task will be re-dispatched; stopped_at is intentionally not set
-            # so it doesn't show a misleading end timestamp for a task still in flight.
-            task.state = TaskState.READY
-            task.save()
-            return Response({"status": "retrying", "retries": task.retries})
+        job_name = task.job.name if task.job else ""
+        layer_name = task.layer.name if task.layer else ""
+        payload = {
+            "task_id": str(task.id),
+            "job_id": str(task.job_id),
+            "job_name": job_name,
+            "layer_id": str(task.layer_id) if task.layer_id else "",
+            "layer_name": layer_name,
+            "worker_hostname": worker_hostname,
+            "exit_status": task.exit_status,
+            "error_tail": data.get("error_tail", "")[:500] if data.get("error_tail") else "",
+            "retries": task.retries,
+            "max_retries": task.max_retries,
+            "duration_seconds": duration,
+        }
+
+        task.state = TaskState.FAILED
+        task.stopped_at = timezone.now()
+        task.save()
+        record_event(
+            event_type="TASK_FAILED",
+            message=(
+                f"Task '{task.name}' failed on worker '{worker_hostname}' "
+                f"(exit code {task.exit_status}, attempt #{task.retries})."
+            ),
+            actor_username=worker_hostname,
+            target_type="task",
+            target_id=str(task.id),
+            target_name=task.name,
+            payload=payload,
+            severity=EventSeverity.ERROR,
+        )
+        return Response({"status": "failed"})
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def retry(self, request, pk=None, **kwargs):
+        """Requeue a task back to READY state (supports FAILED, SUCCEEDED, SKIPPED, RUNNING, or already READY).
+
+        Args:
+            request: HTTP request.
+            pk: Task UUID.
+
+        Returns:
+            ``200 OK`` with status.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        task = get_object_or_404(queryset.select_for_update(), pk=pk)
+        self.check_object_permissions(self.request, task)
+
+        prev_state = task.state
+        if task.state == TaskState.WAITING:
+            # If waiting on dependencies, ensure worker/timestamps are cleared
+            task.worker_name = ""
+            task.stopped_at = None
+            task.started_at = None
+            task.exit_status = -1
+            task.max_memory_used_mb = 0
+            task.save(update_fields=["worker_name", "stopped_at", "started_at", "exit_status", "max_memory_used_mb", "updated_at"])
+            return Response({"status": "waiting", "previous_state": prev_state, "detail": "Task is waiting on dependencies."})
+
+        task.state = TaskState.READY
+        task.worker_name = ""
+        task.stopped_at = None
+        task.started_at = None
+        task.exit_status = -1
+        task.max_memory_used_mb = 0
+        task.save()
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event
+
+        actor = request.user.username if request.user and request.user.is_authenticated else "operator"
+        record_event(
+            event_type="TASK_REQUEUED",
+            message=f"Task '{task.name}' ({prev_state}) was requeued for execution by {actor}.",
+            actor_username=actor,
+            target_type="task",
+            target_id=str(task.id),
+            target_name=task.name,
+            payload={"previous_state": prev_state},
+            severity=EventSeverity.INFO,
+        )
+        return Response({"status": "ready", "previous_state": prev_state})
 
     @action(detail=True, methods=["post"])
     @transaction.atomic
@@ -651,10 +821,11 @@ class TaskDispatchView(generics.GenericAPIView):
         )
 
         # Build an unordered, unlocked queryset — we do NOT lock the full batch.
-        # select_related ensures BaseScorer can access task.job and task.layer
-        # without additional queries.
+        # select_related and prefetch_related ensure BaseScorer can access task.job,
+        # task.layer, and historical execution_logs without additional queries.
         candidates_qs = (
             Task.objects.select_related("layer", "job")
+            .prefetch_related("execution_logs")
             .filter(state=TaskState.READY, job_id__in=allowed_jobs)
         )
 
@@ -755,14 +926,22 @@ class TaskDispatchView(generics.GenericAPIView):
         # Telemetry: Record historical dispatch trace for observability
         from apps.telemetry.services import record_dispatch_trace
 
+        ai_reason_str = str((final_score_breakdown or {}).get("ai_reason", ""))
+        is_mock_ai = "mock" in ai_reason_str.lower() or "only one candidate" in ai_reason_str.lower()
+        has_real_ai = bool(
+            final_score_breakdown
+            and "ai_adjustment" in final_score_breakdown
+            and not is_mock_ai
+        )
+
         record_dispatch_trace(
             task=task,
             job=job,
             worker_hostname=worker_name,
             candidate_count=len(supported_tasks),
-            ai_invoked="ai_adjustment" in (final_score_breakdown or {}),
-            ai_latency_ms=getattr(best, "ai_latency_ms", None),
-            ai_reason=str(final_score_breakdown.get("ai_reason", "")),
+            ai_invoked=has_real_ai,
+            ai_latency_ms=getattr(best, "ai_latency_ms", None) if has_real_ai else None,
+            ai_reason=ai_reason_str,
             score_breakdown=final_score_breakdown,
         )
         scene_info = layer.scene_info if isinstance(layer.scene_info, dict) else {}

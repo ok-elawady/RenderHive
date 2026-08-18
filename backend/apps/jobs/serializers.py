@@ -659,6 +659,7 @@ class TaskSucceedSerializer(serializers.Serializer):
     error_tail = serializers.CharField(required=False, allow_blank=True, default="")
     duration_seconds = serializers.FloatField(required=False, default=0.0)
     output_image_path = serializers.CharField(required=False, allow_blank=True, default="")
+    worker_hostname = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class TaskFailSerializer(serializers.Serializer):
@@ -673,6 +674,7 @@ class TaskFailSerializer(serializers.Serializer):
     error_tail = serializers.CharField(required=False, allow_blank=True, default="")
     duration_seconds = serializers.FloatField(required=False, default=0.0)
     output_image_path = serializers.CharField(required=False, allow_blank=True, default="")
+    worker_hostname = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class RecentDispatchLogSerializer(serializers.Serializer):

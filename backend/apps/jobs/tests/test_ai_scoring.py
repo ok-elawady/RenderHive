@@ -184,6 +184,40 @@ class TestBaseScorer:
         scores = {ts.task.id: ts.base_score for ts in results}
         assert scores[task_fresh.id] > scores[task_retried.id]
 
+    def test_failed_worker_receives_affinity_penalty(self, db, mock_worker):
+        """A worker that previously failed a task gets penalized on re-dispatch for that task."""
+        from apps.telemetry.models import TaskExecutionLog
+        from apps.workers.models import WorkerNode
+
+        layer = LayerFactory(min_cores=4, min_memory_mb=8192)
+        task = TaskFactory(layer=layer, job=layer.job, state="READY", retries=1, max_retries=3)
+
+        # Record a failed attempt on mock_worker (render-worker-01)
+        TaskExecutionLog.objects.create(
+            task=task,
+            job=task.job,
+            attempt_number=1,
+            worker_hostname=mock_worker.hostname,
+            exit_status=1,
+            duration_seconds=10.0,
+        )
+
+        clean_worker = WorkerNode(
+            hostname="clean-worker-02",
+            cores=8,
+            memory_mb=16384,
+            gpu_models=[],
+            tags=[],
+        )
+
+        scorer = BaseScorer()
+        results_failed_worker = scorer.score(mock_worker, [task])
+        results_clean_worker = scorer.score(clean_worker, [task])
+
+        assert results_failed_worker[0].score_breakdown["failed_worker_penalty"] == -0.15
+        assert results_clean_worker[0].score_breakdown["failed_worker_penalty"] == 0.0
+        assert results_clean_worker[0].base_score > results_failed_worker[0].base_score
+
 
 # ===========================================================================
 # Tests: AIScoreAdjuster — Bug 3, Bug 4, Gap 2

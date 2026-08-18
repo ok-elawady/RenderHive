@@ -404,15 +404,42 @@ class WorkerThread(QThread):
         self._emit_progress_snapshot(task.task_id)
 
     def run_task(self, raw_task: Dict[str, object]) -> Tuple[int, str, str, float, str]:
+        task = None
         try:
             task = normalize_task(raw_task)
             adapter = self.adapter_factory.for_task(task)
             plan = adapter.build_plan(task)
         except (AdapterError, ValueError) as error:
             self.log_signal.emit("Task preparation failed: {}".format(error))
+            fallback_ui = build_task_ui_payload(raw_task, task)
+            fallback_ui.update(
+                {
+                    "status": "FAILED",
+                    "exit_code": -2,
+                    "duration_seconds": 0.0,
+                    "error_tail": str(error),
+                    "progress": 0,
+                    "phase": "Failed",
+                    "progress_detail": "Preparation failed: {}".format(error),
+                }
+            )
+            self.task_finished_signal.emit(fallback_ui)
             return -2, "", str(error), 0.0, ""
         except Exception as error:
             self.log_signal.emit("Unexpected task preparation error: {}".format(error))
+            fallback_ui = build_task_ui_payload(raw_task, task)
+            fallback_ui.update(
+                {
+                    "status": "FAILED",
+                    "exit_code": -3,
+                    "duration_seconds": 0.0,
+                    "error_tail": str(error),
+                    "progress": 0,
+                    "phase": "Failed",
+                    "progress_detail": "Preparation error: {}".format(error),
+                }
+            )
+            self.task_finished_signal.emit(fallback_ui)
             return -3, "", str(error), 0.0, ""
 
         task_ui = build_task_ui_payload(raw_task, task)

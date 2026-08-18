@@ -63,6 +63,24 @@ class BaseScorer:
         if task.max_retries > 0:
             retry_penalty = (task.retries / task.max_retries) * 0.10
         breakdown["failure_penalty"] = -retry_penalty
+
+        # 2b. Failed Worker Affinity Penalty (weight: 15%)
+        # If this task previously failed on the candidate worker, penalize re-dispatching
+        # to the SAME worker so alternative healthy nodes get an opportunity to execute it.
+        failed_worker_penalty = 0.0
+        if worker and getattr(task, "retries", 0) > 0:
+            worker_host = str(getattr(worker, "hostname", "")).lower()
+            failed_hosts = set()
+            if hasattr(task, "execution_logs"):
+                try:
+                    for log in task.execution_logs.all():
+                        if getattr(log, "exit_status", 0) != 0 and getattr(log, "worker_hostname", ""):
+                            failed_hosts.add(str(log.worker_hostname).lower())
+                except Exception:
+                    pass
+            if worker_host and worker_host in failed_hosts:
+                failed_worker_penalty = 0.15
+        breakdown["failed_worker_penalty"] = -failed_worker_penalty
         
         # 3. Resource Fit (weight: 20%)
         # Reward workers whose available resources are a close, efficient match to the
