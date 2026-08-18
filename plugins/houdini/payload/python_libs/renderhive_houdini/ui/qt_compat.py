@@ -64,7 +64,14 @@ ITEM_IS_USER_CHECKABLE = _enum(QtCore.Qt, "ItemFlag", "ItemIsUserCheckable")
 SINGLE_SELECTION = _enum(
     QtWidgets.QAbstractItemView, "SelectionMode", "SingleSelection"
 )
+NO_SELECTION = _enum(
+    QtWidgets.QAbstractItemView, "SelectionMode", "NoSelection"
+)
+NO_ITEM_FLAGS = _enum(QtCore.Qt, "ItemFlag", "NoItemFlags")
 DIALOG_CLOSE = _enum(QtWidgets.QDialogButtonBox, "StandardButton", "Close")
+DIALOG_OK = _enum(QtWidgets.QDialogButtonBox, "StandardButton", "Ok")
+DIALOG_CANCEL = _enum(QtWidgets.QDialogButtonBox, "StandardButton", "Cancel")
+MESSAGE_YES = _enum(QtWidgets.QMessageBox, "StandardButton", "Yes")
 
 Signal = getattr(QtCore, "Signal", None)
 Slot = getattr(QtCore, "Slot", None)

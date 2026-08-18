@@ -8,6 +8,14 @@ import maya.cmds as cmds
 # Codes are grouped by the actual change they perform. Some validation modules
 # report the same scene issue using slightly different codes.
 FIX_GROUPS = {
+    "set_arnold_renderer": {
+        "codes": {
+            "ARNOLD_REQUIRED",
+            "SCENE_RENDERER_NOT_ARNOLD",
+        },
+        "batch_safe": True,
+        "confirmation": False,
+    },
     "load_mtoa": {
         "codes": {
             "ARNOLD_NOT_LOADED",
@@ -18,7 +26,6 @@ FIX_GROUPS = {
     },
     "make_camera_renderable": {
         "codes": {
-            "CAMERA_NOT_RENDERABLE",
             "RENDER_CAMERA_NOT_RENDERABLE",
         },
         "batch_safe": True,
@@ -122,6 +129,7 @@ def fix_label(result):
     )
 
     labels = {
+        "set_arnold_renderer": "Set Arnold Renderer",
         "load_mtoa": "Load Arnold",
         "make_camera_renderable": "Make Camera Renderable",
         "create_output_folder": "Create Output Folder",
@@ -148,6 +156,9 @@ def fix_key(result):
 
     data = result.get("data") or {}
     node = result.get("node") or data.get("node") or ""
+
+    if group_name == "set_arnold_renderer":
+        return (group_name, "arnold")
 
     if group_name == "load_mtoa":
         return (group_name, "mtoa")
@@ -342,6 +353,29 @@ def _set_string_or_enum(plug, value):
             value
         )
 
+
+
+def _fix_set_arnold_renderer(result):
+    try:
+        if not cmds.pluginInfo("mtoa", query=True, registered=True):
+            raise RuntimeError("Arnold for Maya (mtoa) is not installed.")
+    except RuntimeError:
+        raise
+    except Exception:
+        raise RuntimeError("Could not verify the Arnold for Maya plugin.")
+
+    try:
+        if not cmds.pluginInfo("mtoa", query=True, loaded=True):
+            cmds.loadPlugin("mtoa", quiet=True)
+    except Exception as error:
+        raise RuntimeError("Could not load Arnold for Maya: {}".format(error))
+
+    cmds.setAttr(
+        "defaultRenderGlobals.currentRenderer",
+        "arnold",
+        type="string",
+    )
+    return "Scene renderer set to Arnold."
 
 def _fix_load_mtoa(result):
     try:
@@ -611,6 +645,7 @@ def _fix_save_scene(result):
 
 
 FIXERS = {
+    "set_arnold_renderer": _fix_set_arnold_renderer,
     "load_mtoa": _fix_load_mtoa,
     "make_camera_renderable": _fix_camera_renderable,
     "create_output_folder": _fix_output_folder,

@@ -111,7 +111,6 @@ class MayaAdapter(BaseAdapter):
             command.insert(-1, mel_cmd)
             command.insert(-1, "-fnc")
             command.insert(-1, "3")
-
         env = dict(task.env)
         env["RENDERHIVE_DCC"] = "maya"
         env["RENDERHIVE_MAYA_VERSION"] = installation.version

@@ -5,6 +5,7 @@ from . import lighting_checks
 from . import geometry_checks
 from . import dependency_checks
 from . import render_checks
+from . import submission_checks
 
 
 CHECK_MODULES = [
@@ -15,6 +16,7 @@ CHECK_MODULES = [
     geometry_checks,
     dependency_checks,
     render_checks,
+    submission_checks,
 ]
 
 

@@ -1,9 +1,220 @@
 openapi: 3.0.3
 info:
   title: RenderHive API
-  version: 0.1.0
+  version: 0.2.0
   description: REST API for the RenderHive render farm management system.
 paths:
+  /api/dependencies/:
+    get:
+      operationId: dependencies_list
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: query
+        name: dep_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_task
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: is_satisfied
+        schema:
+          type: boolean
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - in: query
+        name: parent_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_task
+        schema:
+          type: string
+          format: uuid
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - JOB_ON_JOB
+          - LAYER_ON_LAYER
+          - TASK_ON_TASK
+        description: |-
+          * `JOB_ON_JOB` - Job on Job
+          * `LAYER_ON_LAYER` - Layer on Layer
+          * `TASK_ON_TASK` - Task on Task
+      tags:
+      - dependencies
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDependencyReadList'
+          description: ''
+    post:
+      operationId: dependencies_create
+      description: |-
+        Create a dependency and return the full read representation.
+
+        Validates with DependencyCreateSerializer (which runs cycle detection),
+        saves the instance, then serializes the response with DependencyReadSerializer
+        so the caller receives all fields including is_satisfied and timestamps.
+
+        Returns:
+            ``201 Created`` with the full dependency representation.
+      tags:
+      - dependencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyCreate'
+          description: ''
+  /api/dependencies/{id}/:
+    get:
+      operationId: dependencies_retrieve
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      tags:
+      - dependencies
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyRead'
+          description: ''
+    delete:
+      operationId: dependencies_destroy
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      tags:
+      - dependencies
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/jobs/:
     get:
       operationId: jobs_list
@@ -116,6 +327,238 @@ paths:
               schema:
                 $ref: '#/components/schemas/JobCreate'
           description: ''
+  /api/jobs/{job_pk}/dependencies/:
+    get:
+      operationId: jobs_dependencies_list
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: query
+        name: dep_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_task
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: is_satisfied
+        schema:
+          type: boolean
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - in: query
+        name: parent_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_task
+        schema:
+          type: string
+          format: uuid
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - JOB_ON_JOB
+          - LAYER_ON_LAYER
+          - TASK_ON_TASK
+        description: |-
+          * `JOB_ON_JOB` - Job on Job
+          * `LAYER_ON_LAYER` - Layer on Layer
+          * `TASK_ON_TASK` - Task on Task
+      tags:
+      - jobs
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDependencyReadList'
+          description: ''
+    post:
+      operationId: jobs_dependencies_create
+      description: |-
+        Create a dependency and return the full read representation.
+
+        Validates with DependencyCreateSerializer (which runs cycle detection),
+        saves the instance, then serializes the response with DependencyReadSerializer
+        so the caller receives all fields including is_satisfied and timestamps.
+
+        Returns:
+            ``201 Created`` with the full dependency representation.
+      parameters:
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      tags:
+      - jobs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyCreate'
+          description: ''
+  /api/jobs/{job_pk}/dependencies/{id}/:
+    get:
+      operationId: jobs_dependencies_retrieve
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      tags:
+      - jobs
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyRead'
+          description: ''
+    delete:
+      operationId: jobs_dependencies_destroy
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      tags:
+      - jobs
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/jobs/{job_pk}/layers/:
     get:
       operationId: jobs_layers_list
@@ -919,7 +1362,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkerPool'
+                $ref: '#/components/schemas/WorkerPoolDetail'
           description: ''
     put:
       operationId: pools_update
@@ -1012,6 +1455,35 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/pools/{id}/workers/:
+    get:
+      operationId: pools_workers_retrieve
+      description: |-
+        Return workers assigned to this pool.
+
+        This explicit endpoint is convenient for DCC submitters while the normal
+        pool detail endpoint also embeds the same worker list.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this worker pool.
+        required: true
+      tags:
+      - pools
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPool'
+          description: ''
   /api/tasks/:
     get:
       operationId: tasks_list
@@ -1682,7 +2154,7 @@ paths:
   /api/workers/ping/:
     post:
       operationId: workers_ping_create
-      description: Register or update a worker's heartbeat.
+      description: Register or update a worker heartbeat and its DCC capabilities.
       tags:
       - workers
       requestBody:
@@ -1720,6 +2192,208 @@ components:
         * `Superuser` - Superuser
         * `Staff` - Staff
         * `Client` - Client
+    DependencyCreate:
+      type: object
+      description: |-
+        Write-only serializer for creating a new Dependency.
+
+        Validates that the dependency type matches the provided FKs, that no
+        self-dependency is introduced, and that adding the edge would not form
+        a cycle in the dependency graph.
+
+        Attributes:
+            type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+            dep_job: The blocked Job.
+            dep_layer: The blocked Layer (required for LAYER_ON_LAYER).
+            dep_task: The blocked Task (required for TASK_ON_TASK).
+            parent_job: The blocking Job.
+            parent_layer: The blocking Layer (required for LAYER_ON_LAYER).
+            parent_task: The blocking Task (required for TASK_ON_TASK).
+      properties:
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        dep_job:
+          type: string
+          format: uuid
+          title: Blocked job
+          description: The job that is WAITING. It cannot start until the blocking
+            (parent) entity completes.
+        dep_layer:
+          type: string
+          format: uuid
+          nullable: true
+          title: Blocked layer
+          description: The specific layer that is WAITING (required for LAYER_ON_LAYER
+            dependencies).
+        dep_task:
+          type: string
+          format: uuid
+          nullable: true
+          title: Blocked task
+          description: The specific task that is WAITING (required for TASK_ON_TASK
+            dependencies).
+        parent_job:
+          type: string
+          format: uuid
+          title: Blocking job
+          description: The job that must complete FIRST before the blocked entity
+            is released.
+        parent_layer:
+          type: string
+          format: uuid
+          nullable: true
+          title: Blocking layer
+          description: The specific layer that must complete FIRST (required for LAYER_ON_LAYER
+            dependencies).
+        parent_task:
+          type: string
+          format: uuid
+          nullable: true
+          title: Blocking task
+          description: The specific task that must complete FIRST (required for TASK_ON_TASK
+            dependencies).
+      required:
+      - dep_job
+      - parent_job
+      - type
+    DependencyRead:
+      type: object
+      description: |-
+        Full read-only representation of a Dependency.
+
+        Attributes:
+            id: UUID primary key.
+            type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+            dep_job: The blocked Job UUID.
+            dep_layer: The blocked Layer UUID (if applicable).
+            dep_task: The blocked Task UUID (if applicable).
+            parent_job: The blocking Job UUID.
+            parent_layer: The blocking Layer UUID (if applicable).
+            parent_task: The blocking Task UUID (if applicable).
+            is_satisfied: True once the blocking entity has completed.
+            created_at: Creation timestamp.
+            satisfied_at: Satisfaction timestamp.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TypeEnum'
+          readOnly: true
+        dep_job:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Blocked job
+          description: The job that is WAITING. It cannot start until the blocking
+            (parent) entity completes.
+        dep_job_name:
+          type: string
+          readOnly: true
+        dep_layer:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocked layer
+          description: The specific layer that is WAITING (required for LAYER_ON_LAYER
+            dependencies).
+        dep_layer_name:
+          type: string
+          readOnly: true
+        dep_task:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocked task
+          description: The specific task that is WAITING (required for TASK_ON_TASK
+            dependencies).
+        dep_task_name:
+          type: string
+          readOnly: true
+        parent_job:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Blocking job
+          description: The job that must complete FIRST before the blocked entity
+            is released.
+        parent_job_name:
+          type: string
+          readOnly: true
+        parent_layer:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocking layer
+          description: The specific layer that must complete FIRST (required for LAYER_ON_LAYER
+            dependencies).
+        parent_layer_name:
+          type: string
+          readOnly: true
+        parent_task:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocking task
+          description: The specific task that must complete FIRST (required for TASK_ON_TASK
+            dependencies).
+        parent_task_name:
+          type: string
+          readOnly: true
+        is_satisfied:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        satisfied_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - dep_job
+      - dep_job_name
+      - dep_layer
+      - dep_layer_name
+      - dep_task
+      - dep_task_name
+      - id
+      - is_satisfied
+      - parent_job
+      - parent_job_name
+      - parent_layer
+      - parent_layer_name
+      - parent_task
+      - parent_task_name
+      - satisfied_at
+      - type
+    DependencyTypeEnum:
+      enum:
+      - TASK_ON_TASK
+      - LAYER_ON_LAYER
+      type: string
+      description: |-
+        * `TASK_ON_TASK` - TASK_ON_TASK
+        * `LAYER_ON_LAYER` - LAYER_ON_LAYER
+    ExecutionModeEnum:
+      enum:
+      - IMMEDIATE
+      - LAST
+      - WAIT_LAYER
+      type: string
+      description: |-
+        * `IMMEDIATE` - IMMEDIATE
+        * `LAST` - LAST
+        * `WAIT_LAYER` - WAIT_LAYER
     JobCreate:
       type: object
       description: |-
@@ -1768,6 +2442,10 @@ components:
           description: Limits how many tasks from this job a single machine can run
             at once. Used to prevent a single job from monopolizing nodes with high
             core counts.
+        max_frames_per_worker:
+          type: integer
+          minimum: 0
+          writeOnly: true
         included_pools:
           type: array
           items:
@@ -1786,11 +2464,46 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LayerCreate'
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobDependencySpec'
+          description: Optional list of JOB_ON_JOB external dependencies.
       required:
       - layers
       - log_directory
       - project
       - user
+    JobDependencySpec:
+      type: object
+      description: |-
+        Nested serializer for declaring JOB_ON_JOB deps at job submission.
+
+        Attributes:
+            parent_job: The UUID of the job that must finish first.
+            parent_layer: The name of the layer that must finish first (optional).
+            dep_layer: The name of the layer that is blocked (optional).
+      properties:
+        type:
+          type: string
+          default: JOB_ON_JOB
+        parent_job:
+          type: string
+          format: uuid
+          description: UUID of the job that must complete first (the blocker).
+        parent_layer:
+          type: string
+          nullable: true
+          description: Optional name of the specific layer in the parent job that
+            must complete.
+          maxLength: 256
+        dep_layer:
+          type: string
+          nullable: true
+          description: Optional name of the specific layer in this job that is blocked.
+          maxLength: 256
+      required:
+      - parent_job
     JobDetail:
       type: object
       description: |-
@@ -2122,7 +2835,26 @@ components:
             env: Environment variable overrides.
             max_retries: Per-task retry ceiling.
             timeout_seconds: Task execution timeout.
+            execution_mode: Dependency logic mode.
+            depends_on_layer: The layer name to wait for (if WAIT_LAYER).
+            dependency_type: The dependency mapping type (if WAIT_LAYER).
       properties:
+        execution_mode:
+          allOf:
+          - $ref: '#/components/schemas/ExecutionModeEnum'
+          writeOnly: true
+          default: IMMEDIATE
+        depends_on_layer:
+          type: string
+          writeOnly: true
+          nullable: true
+          maxLength: 256
+        dependency_type:
+          writeOnly: true
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/DependencyTypeEnum'
+          - $ref: '#/components/schemas/NullEnum'
         name:
           type: string
           maxLength: 256
@@ -2400,6 +3132,32 @@ components:
         * `RENDER` - Render
         * `UTIL` - Utility
         * `POST` - Post
+    NullEnum:
+      enum:
+      - null
+    PaginatedDependencyReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyRead'
     PaginatedJobListList:
       type: object
       required:
@@ -2591,6 +3349,18 @@ components:
           maxLength: 128
         description:
           type: string
+        worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        online_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        rendering_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
         created_at:
           type: string
           format: date-time
@@ -2873,6 +3643,16 @@ components:
         * `FX Artist` - FX Artist
         * `Lighting Lead` - Lighting Lead
         * `Render User` - Render User
+    TypeEnum:
+      enum:
+      - JOB_ON_JOB
+      - LAYER_ON_LAYER
+      - TASK_ON_TASK
+      type: string
+      description: |-
+        * `JOB_ON_JOB` - Job on Job
+        * `LAYER_ON_LAYER` - Layer on Layer
+        * `TASK_ON_TASK` - Task on Task
     User:
       type: object
       properties:
@@ -3040,6 +3820,9 @@ components:
           items:
             type: string
             maxLength: 128
+        capabilities:
+          type: string
+          readOnly: true
         system_info:
           description: Transient and live utilization metrics.
         last_ping:
@@ -3051,11 +3834,70 @@ components:
           format: date-time
           readOnly: true
       required:
+      - capabilities
       - created_at
       - hostname
       - id
       - last_ping
       - pools
+    WorkerNodeSummary:
+      type: object
+      description: Compact worker representation used inside pool detail responses.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        hostname:
+          type: string
+          readOnly: true
+        ip_address:
+          type: string
+          readOnly: true
+          nullable: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          readOnly: true
+        tags:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          readOnly: true
+        cores:
+          type: integer
+          readOnly: true
+        memory_mb:
+          type: integer
+          readOnly: true
+        gpu_models:
+          type: array
+          items:
+            type: string
+            maxLength: 128
+          readOnly: true
+        capabilities:
+          type: string
+          readOnly: true
+        system_info:
+          readOnly: true
+          description: Transient and live utilization metrics.
+        last_ping:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - capabilities
+      - cores
+      - gpu_models
+      - hostname
+      - id
+      - ip_address
+      - last_ping
+      - memory_mb
+      - status
+      - system_info
+      - tags
     WorkerPool:
       type: object
       properties:
@@ -3068,6 +3910,18 @@ components:
           maxLength: 128
         description:
           type: string
+        worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        online_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        rendering_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
         created_at:
           type: string
           format: date-time
@@ -3080,7 +3934,56 @@ components:
       - created_at
       - id
       - name
+      - online_worker_count
+      - rendering_worker_count
       - updated_at
+      - worker_count
+    WorkerPoolDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 128
+        description:
+          type: string
+        worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        online_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        rendering_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        workers:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerNodeSummary'
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - online_worker_count
+      - rendering_worker_count
+      - updated_at
+      - worker_count
+      - workers
   securitySchemes:
     XSessionTokenAuth:
       type: apiKey

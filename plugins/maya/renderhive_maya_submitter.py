@@ -226,6 +226,141 @@ def get_renderable_camera():
     return cameras[0] if cameras else "NoCamera"
 
 
+def get_current_render_layer():
+    """Return Maya's currently active render layer node/name."""
+    try:
+        value = cmds.editRenderLayerGlobals(
+            query=True,
+            currentRenderLayer=True,
+        )
+        if value:
+            return str(value)
+    except Exception:
+        pass
+    return "defaultRenderLayer"
+
+
+def _render_layer_renderable(name, default=True):
+    try:
+        if cmds.objExists(name + ".renderable"):
+            return bool(cmds.getAttr(name + ".renderable"))
+    except Exception:
+        pass
+    return bool(default)
+
+
+def get_render_layers():
+    """Return Render Setup/legacy layers in a stable UI-friendly format.
+
+    The returned ``name`` is the value passed to Maya ``Render.exe -rl``.
+    Render Setup is queried first because its display names are the artist-facing
+    layer identifiers. Legacy renderLayer nodes are then used as a compatibility
+    fallback and to guarantee that the master/default layer is represented.
+    """
+    records = []
+    seen = set()
+    current = get_current_render_layer()
+
+    def add_record(name, renderable=True, source="legacy", is_default=False):
+        clean = str(name or "").strip()
+        if not clean or clean in seen:
+            return
+        seen.add(clean)
+        records.append({
+            "name": clean,
+            "display_name": "defaultRenderLayer (Beauty / Master)" if is_default else clean,
+            "renderable": bool(renderable),
+            "is_default": bool(is_default),
+            "is_current": clean == current,
+            "source": str(source or "legacy"),
+        })
+
+    # Maya Render Setup (2017+) is the authoritative source when available.
+    render_setup_found = False
+    try:
+        from maya.app.renderSetup.model import renderSetup
+
+        setup = renderSetup.instance()
+        setup_layers = setup.getRenderLayers() or []
+        setup_records = []
+        for layer in setup_layers:
+            try:
+                setup_name = layer.name()
+            except Exception:
+                setup_name = str(layer or "")
+            setup_name = str(setup_name or "").strip()
+            if setup_name:
+                setup_records.append((layer, setup_name))
+
+        render_setup_found = bool(setup_records)
+        has_custom_setup_layers = any(
+            name != "defaultRenderLayer" for _layer, name in setup_records
+        )
+
+        for layer, name in setup_records:
+            try:
+                renderable = bool(layer.isRenderable())
+            except Exception:
+                renderable = _render_layer_renderable(name, True)
+
+            # The master/beauty layer remains available for an explicit artist
+            # choice, but custom Render Setup layers must not cause it to be
+            # auto-selected alongside them.
+            if name == "defaultRenderLayer" and has_custom_setup_layers:
+                renderable = False
+
+            add_record(
+                name,
+                renderable=renderable,
+                source="renderSetup",
+                is_default=(name == "defaultRenderLayer"),
+            )
+    except Exception:
+        pass
+
+    # Legacy nodes remain useful for older scenes and for the master layer.
+    # When Render Setup is active, only import the default layer from the
+    # legacy node list so internal/compatibility renderLayer nodes are not
+    # accidentally exposed as submit targets.
+    try:
+        legacy_layers = cmds.ls(type="renderLayer") or []
+    except Exception:
+        legacy_layers = []
+
+    for name in legacy_layers:
+        clean = str(name or "").strip()
+        if not clean:
+            continue
+        if render_setup_found and clean != "defaultRenderLayer":
+            continue
+        add_record(
+            clean,
+            renderable=(
+                False
+                if render_setup_found and clean == "defaultRenderLayer"
+                else _render_layer_renderable(clean, True)
+            ),
+            source="legacy",
+            is_default=(clean == "defaultRenderLayer"),
+        )
+
+    if "defaultRenderLayer" not in seen:
+        add_record(
+            "defaultRenderLayer",
+            renderable=(
+                False
+                if render_setup_found
+                else _render_layer_renderable("defaultRenderLayer", True)
+            ),
+            source="legacy",
+            is_default=True,
+        )
+
+    # Keep the master layer first, then preserve Maya's layer order.
+    records.sort(key=lambda item: (0 if item.get("is_default") else 1))
+    return records
+
+
 def save_scene_if_needed():
     scene_path = get_scene_path()
 
@@ -637,180 +772,22 @@ def export_validation_report(*args):
 
 
 def build_task():
-    scene_name = get_scene_name()
-    scene_path = get_scene_path()
-    project_path = get_project_path()
-    output_path = get_default_output_path()
-    frame_start, frame_end = get_frame_range()
-    width, height = get_resolution()
+    """Build the canonical RenderHive Maya task model."""
+    from submission.task_builder import build_task as build_submission_task
 
-    return {
-        "job_name": get_text(
-            "rh_job_name",
-            scene_name
-        ),
-        "project_name": get_text(
-            "rh_project_name",
-            (
-                os.path.basename(
-                    os.path.normpath(
-                        project_path
-                    )
-                )
-                if project_path
-                else "RenderHive Project"
-            )
-        ),
-        "software": "maya",
-        "scene_path": get_text(
-            "rh_scene_path",
-            scene_path
-        ),
-        "project_path": get_text(
-            "rh_project_path",
-            project_path
-        ),
-        "output_path": get_text(
-            "rh_output_path",
-            output_path
-        ),
-        "frame_start": get_int(
-            "rh_frame_start",
-            frame_start
-        ),
-        "frame_end": get_int(
-            "rh_frame_end",
-            frame_end
-        ),
-        "renderer": get_option(
-            "rh_renderer",
-            get_current_renderer()
-        ),
-        "camera": get_option(
-            "rh_camera",
-            get_renderable_camera()
-        ),
-        "image_name": get_text(
-            "rh_image_name",
-            scene_name
-        ),
-        "image_format": get_option(
-            "rh_image_format",
-            "png"
-        ),
-        "frame_padding": get_int(
-            "rh_frame_padding",
-            4
-        ),
-        "width": get_int(
-            "rh_width",
-            width
-        ),
-        "height": get_int(
-            "rh_height",
-            height
-        ),
-        "priority": get_int(
-            "rh_priority",
-            50
-        ),
-    }
+    return build_submission_task(
+        sys.modules[__name__],
+        window=None,
+        widgets=None,
+        validation_report=VALIDATION_REPORT,
+    )
 
 
 def validate_task(task):
-    errors = []
+    """Run the canonical production submission guard."""
+    from submission.task_validation import validate_task as validate_submission_task
 
-    if not task.get("job_name"):
-        errors.append(
-            "Job name is empty."
-        )
-
-    scene_path = task.get(
-        "scene_path"
-    )
-
-    if not scene_path:
-        errors.append(
-            "Scene path is empty. Save the Maya scene first."
-        )
-    elif not os.path.isfile(
-        scene_path
-    ):
-        errors.append(
-            "Scene file does not exist:\n{}".format(
-                scene_path
-            )
-        )
-
-    project_path = task.get(
-        "project_path"
-    )
-
-    if not project_path:
-        errors.append(
-            "Project path is empty."
-        )
-    elif not os.path.isdir(
-        project_path
-    ):
-        errors.append(
-            "Project path does not exist:\n{}".format(
-                project_path
-            )
-        )
-
-    if not task.get(
-        "output_path"
-    ):
-        errors.append(
-            "Output path is empty."
-        )
-
-    if (
-        task.get("frame_start", 1)
-        > task.get("frame_end", 1)
-    ):
-        errors.append(
-            "Frame start cannot be greater than frame end."
-        )
-
-    if task.get(
-        "camera"
-    ) in (
-        "",
-        None,
-        "NoCamera",
-    ):
-        errors.append(
-            "No valid camera selected."
-        )
-
-    if not task.get(
-        "image_name"
-    ):
-        errors.append(
-            "Image name is empty."
-        )
-
-    if int(
-        task.get(
-            "frame_padding",
-            0
-        )
-    ) < 1:
-        errors.append(
-            "Frame padding must be at least 1."
-        )
-
-    if (
-        int(task.get("width", 0)) <= 0
-        or int(task.get("height", 0)) <= 0
-    ):
-        errors.append(
-            "Resolution must be greater than zero."
-        )
-
-    return errors
+    return validate_submission_task(task)
 
 
 # -----------------------------------------------------------------------------

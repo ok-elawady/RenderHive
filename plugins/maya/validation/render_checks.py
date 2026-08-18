@@ -25,17 +25,6 @@ ARNOLD_ALLOWED_FORMATS = {
     "tiff",
 }
 
-GENERIC_ALLOWED_FORMATS = {
-    "exr",
-    "png",
-    "jpg",
-    "jpeg",
-    "tif",
-    "tiff",
-    "bmp",
-    "iff",
-}
-
 
 def make_result(
     severity,
@@ -108,19 +97,29 @@ def check_renderer(context):
         ))
         return results
 
-    if scene_renderer and requested_renderer != scene_renderer:
+    if str(requested_renderer).lower() != "arnold":
         results.append(make_result(
-            "WARNING",
-            "RENDERER_MISMATCH",
-            (
-                "The task renderer is '{}' while the scene renderer is '{}'. "
-                "The worker may override the scene renderer."
-            ).format(
-                requested_renderer,
-                scene_renderer
-            ),
+            "ERROR",
+            "ARNOLD_REQUIRED",
+            "RenderHive Maya currently supports Arnold only.",
+            fixable=True,
             data={
                 "task_renderer": requested_renderer,
+                "scene_renderer": scene_renderer,
+            }
+        ))
+        return results
+
+    if scene_renderer and str(scene_renderer).lower() != "arnold":
+        results.append(make_result(
+            "ERROR",
+            "SCENE_RENDERER_NOT_ARNOLD",
+            (
+                "The Maya scene renderer is '{}'. RenderHive Maya requires Arnold."
+            ).format(scene_renderer),
+            fixable=True,
+            data={
+                "task_renderer": "arnold",
                 "scene_renderer": scene_renderer,
             }
         ))
@@ -169,25 +168,6 @@ def check_renderer(context):
                 "RENDERER_AVAILABLE",
                 "Arnold and mtoa are available."
             ))
-
-    elif requested_renderer in {"mayaSoftware", "sw", "mayaHardware2"}:
-        results.append(make_result(
-            "PASSED",
-            "RENDERER_AVAILABLE",
-            "Selected renderer is available: {}.".format(
-                requested_renderer
-            )
-        ))
-
-    else:
-        results.append(make_result(
-            "WARNING",
-            "RENDERER_AVAILABILITY_UNKNOWN",
-            (
-                "RenderHive cannot confirm that renderer '{}' is installed "
-                "on every worker."
-            ).format(requested_renderer)
-        ))
 
     return results
 
@@ -577,6 +557,31 @@ def check_output_path(context):
             data={"path": output_path}
         ))
 
+    project_path = get_context_value(context, "project_path", "")
+    if project_path:
+        project_path = os.path.abspath(
+            os.path.expandvars(os.path.expanduser(str(project_path)))
+        )
+        try:
+            inside_project = os.path.commonpath([output_path, project_path]) == project_path
+        except (ValueError, OSError):
+            inside_project = False
+
+        if inside_project:
+            results.append(make_result(
+                "PASSED",
+                "OUTPUT_INSIDE_PROJECT",
+                "Render output is inside the Maya project.",
+                data={"output_path": output_path, "project_path": project_path},
+            ))
+        else:
+            results.append(make_result(
+                "WARNING",
+                "OUTPUT_OUTSIDE_PROJECT",
+                "Render output is outside the Maya project. Ensure the farm can access this path.",
+                data={"output_path": output_path, "project_path": project_path},
+            ))
+
     return results
 
 
@@ -677,11 +682,7 @@ def check_image_format(context):
         ))
         return results
 
-    allowed = (
-        ARNOLD_ALLOWED_FORMATS
-        if renderer == "arnold"
-        else GENERIC_ALLOWED_FORMATS
-    )
+    allowed = ARNOLD_ALLOWED_FORMATS
 
     if image_format not in allowed:
         results.append(make_result(
@@ -820,57 +821,104 @@ def check_frame_padding(context):
 def check_render_layers(context):
     results = []
 
+    selected_layers = context.get("render_layers")
+    missing_names = [
+        str(value or "").strip()
+        for value in context.get("render_layer_missing_names") or []
+        if str(value or "").strip()
+    ]
+
+    if isinstance(selected_layers, list):
+        names = []
+        disabled = []
+        for layer in selected_layers:
+            if isinstance(layer, dict):
+                name = str(layer.get("name") or "").strip()
+                renderable = bool(layer.get("renderable", True))
+            else:
+                name = str(layer or "").strip()
+                renderable = True
+
+            if not name:
+                results.append(make_result(
+                    "ERROR",
+                    "RENDER_LAYER_NAME_EMPTY",
+                    "A selected render layer has no Maya layer name.",
+                ))
+                continue
+            if name in names:
+                results.append(make_result(
+                    "ERROR",
+                    "RENDER_LAYER_DUPLICATE",
+                    "Render layer is selected more than once: {}.".format(name),
+                    data={"render_layer": name},
+                ))
+                continue
+            names.append(name)
+            if not renderable:
+                disabled.append(name)
+
+        if missing_names:
+            results.append(make_result(
+                "ERROR",
+                "RENDER_LAYER_MISSING",
+                "Selected render layer(s) no longer exist: {}.".format(", ".join(missing_names)),
+                data={"render_layers": missing_names},
+            ))
+
+        if not names:
+            results.append(make_result(
+                "ERROR",
+                "NO_RENDER_LAYER_SELECTED",
+                "Select at least one Maya render layer for submission.",
+            ))
+        else:
+            results.append(make_result(
+                "PASSED",
+                "RENDER_LAYER_SELECTION_VALID",
+                "{} render layer(s) selected for submission.".format(len(names)),
+                data={"render_layers": names},
+            ))
+
+        if disabled:
+            results.append(make_result(
+                "INFO",
+                "SELECTED_LAYER_DISABLED_IN_SCENE",
+                "Selected layer(s) are disabled in Maya but were explicitly selected in RenderHive: {}.".format(
+                    ", ".join(disabled)
+                ),
+                data={"render_layers": disabled},
+            ))
+        return results
+
+    # Compatibility path for callers that do not provide RenderHive's explicit
+    # layer selection in the validation context.
     layers = cmds.ls(type="renderLayer") or []
-    renderable_layers = []
-
-    for layer in layers:
-        renderable = safe_get_attr(
-            layer,
-            "renderable",
-            default=False
-        )
-
-        if renderable:
-            renderable_layers.append(layer)
+    renderable_layers = [
+        layer
+        for layer in layers
+        if safe_get_attr(layer, "renderable", default=False)
+    ]
 
     if not layers:
         results.append(make_result(
             "WARNING",
             "NO_RENDER_LAYERS_FOUND",
-            "No legacy render layers were found."
+            "No Maya render layers were found.",
         ))
-
     elif not renderable_layers:
         results.append(make_result(
             "ERROR",
             "NO_RENDERABLE_LAYER",
-            "No render layer is enabled for rendering."
+            "No render layer is enabled for rendering.",
         ))
-
     else:
         results.append(make_result(
             "PASSED",
             "RENDER_LAYER_AVAILABLE",
-            "{} renderable layer(s) were found.".format(
-                len(renderable_layers)
-            ),
-            data={
-                "renderable_layers": renderable_layers,
-            }
+            "{} renderable layer(s) were found.".format(len(renderable_layers)),
+            data={"renderable_layers": renderable_layers},
         ))
-
-        if len(renderable_layers) > 1:
-            results.append(make_result(
-                "INFO",
-                "MULTIPLE_RENDERABLE_LAYERS",
-                (
-                    "Multiple render layers are enabled. Render time and "
-                    "output count may increase."
-                ),
-                data={
-                    "renderable_layers": renderable_layers,
-                }
-            ))
 
     return results
 

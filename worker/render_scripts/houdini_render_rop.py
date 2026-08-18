@@ -102,6 +102,28 @@ def _apply_overrides(node, args):
         print("RENDERHIVE_OVERRIDES {}".format(",".join(changed)))
 
 
+
+
+def _frame_values(start, end, step):
+    """Return deterministic frame values without accumulating float drift."""
+    values = []
+    current = float(start)
+    limit = float(end)
+    increment = max(float(step or 1.0), 0.000001)
+    guard = 0
+    while current <= limit + 1e-7 and guard < 10000000:
+        values.append(current)
+        current += increment
+        guard += 1
+    return values or [float(start)]
+
+
+def _display_frame(value):
+    numeric = float(value)
+    if numeric.is_integer():
+        return str(int(numeric))
+    return ("{:.6f}".format(numeric)).rstrip("0").rstrip(".")
+
 def _parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Render a Houdini ROP node.")
     parser.add_argument("--scene", required=True)
@@ -167,11 +189,27 @@ def main(argv=None):
             print("RENDERHIVE_ERROR Selected node is not renderable: {}".format(args.node))
             return 15
 
-        node.render(
-            frame_range=(start, end, step),
-            verbose=True,
-            output_progress=True,
-        )
+        frames = _frame_values(start, end, step)
+        total = len(frames)
+        for index, frame in enumerate(frames, 1):
+            frame_text = _display_frame(frame)
+            print(
+                "RENDERHIVE_FRAME_START frame={} index={} total={}".format(
+                    frame_text, index, total
+                )
+            )
+            sys.stdout.flush()
+            node.render(
+                frame_range=(frame, frame, 1.0),
+                verbose=True,
+                output_progress=True,
+            )
+            print(
+                "RENDERHIVE_FRAME_DONE frame={} index={} total={}".format(
+                    frame_text, index, total
+                )
+            )
+            sys.stdout.flush()
         print("RENDERHIVE_SUCCESS node={} range={}:{}:{}".format(args.node, start, end, step))
         return 0
     except Exception:

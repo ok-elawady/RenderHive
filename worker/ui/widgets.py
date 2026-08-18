@@ -22,8 +22,8 @@ class SectionCard(QFrame):
         super().__init__(parent)
         self.setObjectName("SectionCard")
         self.root = QVBoxLayout(self)
-        self.root.setContentsMargins(16, 14, 16, 16)
-        self.root.setSpacing(12)
+        self.root.setContentsMargins(11, 9, 11, 10)
+        self.root.setSpacing(8)
 
         if title or subtitle:
             header = QVBoxLayout()
@@ -51,8 +51,8 @@ class StatCard(QFrame):
         super().__init__(parent)
         self.setObjectName("StatCard")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(4)
+        layout.setContentsMargins(11, 8, 11, 8)
+        layout.setSpacing(2)
 
         self.caption_label = QLabel(caption)
         self.caption_label.setObjectName("CardCaption")
@@ -79,8 +79,8 @@ class ResourceMeter(QFrame):
         super().__init__(parent)
         self.setObjectName("MetricCard")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(13, 11, 13, 12)
-        layout.setSpacing(7)
+        layout.setContentsMargins(10, 7, 10, 8)
+        layout.setSpacing(5)
 
         header = QHBoxLayout()
         self.title_label = QLabel(title)
@@ -107,6 +107,11 @@ class ResourceMeter(QFrame):
         self.value_label.setText("{}%".format(safe))
         self.detail_label.setText(detail or "—")
 
+    def set_unavailable(self, detail: str = "") -> None:
+        self.bar.setValue(0)
+        self.value_label.setText("N/A")
+        self.detail_label.setText(detail or "Telemetry unavailable")
+
 
 class StatusChip(QLabel):
     COLORS = {
@@ -122,7 +127,7 @@ class StatusChip(QLabel):
     def __init__(self, status: str = "OFFLINE", parent=None):
         super().__init__(parent)
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumHeight(26)
+        self.setMinimumHeight(24)
         self.setContentsMargins(10, 0, 10, 0)
         self.set_status(status)
 
@@ -153,8 +158,8 @@ class InfoGrid(QWidget):
         self._labels = {}
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(20)
-        grid.setVerticalSpacing(10)
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(7)
         fields_list: List[Tuple[str, str]] = list(fields)
         columns = max(1, int(columns))
 
@@ -195,15 +200,20 @@ class EmptyState(QFrame):
         super().__init__(parent)
         self.setObjectName("EmptyCard")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 36, 24, 36)
+        layout.setContentsMargins(24, 20, 24, 20)
         layout.setAlignment(Qt.AlignCenter)
-        layout.setSpacing(7)
+        layout.setSpacing(6)
+        icon_label = QLabel("◇")
+        icon_label.setObjectName("EmptyStateIcon")
+        icon_label.setAlignment(Qt.AlignCenter)
         title_label = QLabel(title)
-        title_label.setObjectName("SectionTitle")
+        title_label.setObjectName("EmptyStateTitle")
         title_label.setAlignment(Qt.AlignCenter)
         message_label = QLabel(message)
-        message_label.setObjectName("MutedLabel")
+        message_label.setObjectName("EmptyStateMessage")
         message_label.setAlignment(Qt.AlignCenter)
         message_label.setWordWrap(True)
+        message_label.setMaximumWidth(310)
+        layout.addWidget(icon_label)
         layout.addWidget(title_label)
         layout.addWidget(message_label)

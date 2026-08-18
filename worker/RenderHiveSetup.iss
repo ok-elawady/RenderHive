@@ -3,7 +3,7 @@
 
 [Setup]
 AppName=RenderHive Worker
-AppVersion=0.0.1
+AppVersion=1.3.1
 AppPublisher=RenderHive
 DefaultDirName={autopf}\RenderHive\Worker
 DefaultGroupName=RenderHive
@@ -17,7 +17,7 @@ PrivilegesRequired=admin
 
 [Files]
 ; Make sure you run build.bat (PyInstaller) before compiling this setup script
-Source: "dist\RenderHiveWorker\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\RenderHiveWorker.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\RenderHive Worker"; Filename: "{app}\RenderHiveWorker.exe"

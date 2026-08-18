@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStackedWidget,
     QSystemTrayIcon,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -52,6 +53,7 @@ from PySide6.QtWidgets import (
 
 from adapters import AdapterFactory
 from adapters.base import AdapterError
+from core.gpu_info import GPUDetector
 from core.dcc_discovery import (
     DCCInstallation,
     build_capabilities,
@@ -59,15 +61,15 @@ from core.dcc_discovery import (
     discover_all,
 )
 from core.process_runner import run_process
+from core.progress import TaskProgressTracker
+from core.smooth_progress import SmoothProgressValue
 from core.runtime_paths import writable_log_root
 from core.task_normalizer import normalize_task
 from core.ui_helpers import (
     build_task_ui_payload,
-    extract_progress_frame,
     format_bytes,
     format_duration,
     format_timestamp,
-    frame_progress_percent,
     local_ip_address,
     mac_address,
     machine_user,
@@ -172,13 +174,15 @@ class WorkerThread(QThread):
         self.current_task_id = ""
         self.current_task_ui: Dict[str, Any] = {}
         self.session = requests.Session()
+        self._last_system_info: Dict[str, Any] = {}
         self.started_monotonic = time.monotonic()
         self.last_worker_profile_fetch = 0.0
         self.poll_interval = max(2, min(30, int(self.profile.get("poll_interval", 5) or 5)))
         self._last_progress_frame = None
-        # Cached system info, populated by each heartbeat. Re-used in the dispatch
-        # payload to avoid running nvidia-smi on every poll cycle.
-        self._last_system_info: Dict[str, Any] = {}
+        self._progress_tracker: TaskProgressTracker | None = None
+        self._last_progress_signature = None
+        self._last_progress_emit = 0.0
+        self.gpu_detector = GPUDetector()
 
     def get_headers(self) -> Dict[str, str]:
         return {
@@ -236,50 +240,19 @@ class WorkerThread(QThread):
         except Exception:
             info["cpu_name"] = platform.processor()
 
-        gpu_models: List[str] = []
-        try:
-            nvidia_smi = shutil.which("nvidia-smi")
-            if nvidia_smi:
-                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
-                output = subprocess.check_output(
-                    [
-                        nvidia_smi,
-                        "--query-gpu=name,memory.total,memory.used,utilization.gpu",
-                        "--format=csv,noheader,nounits",
-                    ],
-                    creationflags=creationflags,
-                    text=True,
-                    stderr=subprocess.DEVNULL,
-                    timeout=5,
-                )
-                rows = []
-                for line in output.strip().splitlines():
-                    parts = [part.strip() for part in line.split(",")]
-                    if len(parts) < 4:
-                        continue
-                    gpu_models.append(parts[0])
-                    rows.append(
-                        {
-                            "name": parts[0],
-                            "vram_mb": int(float(parts[1])),
-                            "vram_used_mb": int(float(parts[2])),
-                            "utilization_percent": float(parts[3]),
-                        }
-                    )
-                if rows:
-                    info["gpus"] = rows
-                    info["gpu_name"] = rows[0]["name"]
-                    info["gpu_vram_mb"] = rows[0]["vram_mb"]
-                    info["gpu_vram_used_mb"] = rows[0]["vram_used_mb"]
-                    info["gpu_percent"] = rows[0]["utilization_percent"]
-                    if rows[0]["vram_mb"] > 0:
-                        info["vram_percent"] = round((rows[0]["vram_used_mb"] / rows[0]["vram_mb"]) * 100.0, 1)
-                    else:
-                        info["vram_percent"] = 0.0
-        except Exception:
-            pass
+        if self.current_task_ui:
+            info["current_task"] = {
+                "task_id": safe_text(self.current_task_ui.get("task_id")),
+                "job_name": safe_text(self.current_task_ui.get("job_name")),
+                "phase": safe_text(self.current_task_ui.get("phase")),
+                "progress_percent": int(self.current_task_ui.get("progress") or 0),
+                "current_frame": self.current_task_ui.get("current_frame"),
+                "total_frames": int(self.current_task_ui.get("total_frames") or 1),
+                "elapsed_seconds": float(self.current_task_ui.get("elapsed_seconds") or 0.0),
+                "eta_seconds": self.current_task_ui.get("eta_seconds"),
+            }
 
-        info["gpu_models"] = gpu_models
+        info.update(self.gpu_detector.query())
         return info
 
     def heartbeat_payload(self) -> Dict[str, object]:
@@ -301,11 +274,7 @@ class WorkerThread(QThread):
 
     def send_heartbeat(self) -> bool:
         payload = self.heartbeat_payload()
-        system_info = payload.get("system_info") or {}
-        # Cache the latest system info so it can be reused in dispatch payloads
-        # without spawning a redundant nvidia-smi process.
-        self._last_system_info = system_info
-        self.system_info_signal.emit(system_info)
+        self.system_info_signal.emit(payload.get("system_info") or {})
         try:
             response = self.session.post(
                 "{}/workers/ping/".format(self.api_url),
@@ -387,35 +356,64 @@ class WorkerThread(QThread):
     def request_profile_refresh(self) -> None:
         self.force_profile_refresh = True
 
-    def _process_output_line(self, task, line: str) -> None:
-        frame = extract_progress_frame(line, task.frame_start, task.frame_end)
-        if frame is None or frame == self._last_progress_frame:
+    def _emit_progress_snapshot(self, task_id: str, status: str = "RENDERING", force: bool = False) -> None:
+        tracker = self._progress_tracker
+        if tracker is None:
             return
-        self._last_progress_frame = frame
-        percent = frame_progress_percent(frame, task.frame_start, task.frame_end, task.frame_step)
-        if self.current_task_ui:
-            self.current_task_ui["progress"] = percent
-            self.current_task_ui["current_frame"] = frame
-        self.task_progress_signal.emit(
-            {
-                "task_id": task.task_id,
-                "frame": frame,
-                "percent": percent,
-                "status": "RENDERING",
-            }
+        data = tracker.snapshot().to_dict()
+        data.update({"task_id": task_id, "status": status})
+        signature = (
+            data.get("phase"),
+            data.get("percent"),
+            data.get("current_frame"),
+            data.get("completed_frames"),
+            round(float(data.get("renderer_percent") or 0.0), 1),
+            data.get("detail"),
         )
+        now = time.monotonic()
+        if not force and signature == self._last_progress_signature and now - self._last_progress_emit < 1.0:
+            return
+        self._last_progress_signature = signature
+        self._last_progress_emit = now
+        if self.current_task_ui:
+            self.current_task_ui.update(
+                {
+                    "progress": data.get("percent", 0),
+                    "phase": data.get("phase", "Rendering"),
+                    "current_frame": data.get("current_frame"),
+                    "completed_frames": data.get("completed_frames", 0),
+                    "total_frames": data.get("total_frames", 1),
+                    "elapsed_seconds": data.get("elapsed_seconds", 0.0),
+                    "eta_seconds": data.get("eta_seconds"),
+                    "progress_detail": data.get("detail", ""),
+                    "renderer_percent": data.get("renderer_percent"),
+                }
+            )
+        self.task_progress_signal.emit(data)
 
-    def run_task(self, raw_task: Dict[str, object]) -> int:
+    def _process_event(self, task, event: str) -> None:
+        if self._progress_tracker is None:
+            return
+        self._progress_tracker.on_process_event(event)
+        self._emit_progress_snapshot(task.task_id)
+
+    def _process_output_line(self, task, line: str) -> None:
+        if self._progress_tracker is None:
+            return
+        self._progress_tracker.on_line(line)
+        self._emit_progress_snapshot(task.task_id)
+
+    def run_task(self, raw_task: Dict[str, object]) -> Tuple[int, str, str, float, str]:
         try:
             task = normalize_task(raw_task)
             adapter = self.adapter_factory.for_task(task)
             plan = adapter.build_plan(task)
         except (AdapterError, ValueError) as error:
             self.log_signal.emit("Task preparation failed: {}".format(error))
-            return -2
+            return -2, "", str(error), 0.0, ""
         except Exception as error:
             self.log_signal.emit("Unexpected task preparation error: {}".format(error))
-            return -3
+            return -3, "", str(error), 0.0, ""
 
         task_ui = build_task_ui_payload(raw_task, task)
         detail = self.fetch_job_detail(safe_text(task_ui.get("job_id")))
@@ -427,9 +425,27 @@ class WorkerThread(QThread):
         self.cancel_current_requested = False
         self._last_progress_frame = None
         started = time.monotonic()
-        task_ui["status"] = "RENDERING"
-        task_ui["started_at_monotonic"] = started
+        self._progress_tracker = TaskProgressTracker(
+            task.frame_start, task.frame_end, task.frame_step, started_at=started
+        )
+        self._last_progress_signature = None
+        self._last_progress_emit = 0.0
+        initial_progress = self._progress_tracker.snapshot().to_dict()
+        task_ui.update(
+            {
+                "status": "RENDERING",
+                "started_at_monotonic": started,
+                "progress": initial_progress.get("percent", 1),
+                "phase": initial_progress.get("phase", "Preparing Task"),
+                "current_frame": initial_progress.get("current_frame"),
+                "completed_frames": initial_progress.get("completed_frames", 0),
+                "elapsed_seconds": initial_progress.get("elapsed_seconds", 0.0),
+                "eta_seconds": initial_progress.get("eta_seconds"),
+                "progress_detail": initial_progress.get("detail", "Preparing Task"),
+            }
+        )
         self.task_started_signal.emit(dict(task_ui))
+        self._emit_progress_snapshot(task.task_id, force=True)
 
         self.log_signal.emit(
             "Executing task {} | {} | Frames {}-{} step {}".format(
@@ -453,6 +469,7 @@ class WorkerThread(QThread):
             heartbeat=self.send_heartbeat,
             log=self.log_signal.emit,
             line_callback=lambda line: self._process_output_line(task, line),
+            event_callback=lambda event: self._process_event(task, event),
         )
 
         arnold_gpu_failed = False
@@ -461,7 +478,7 @@ class WorkerThread(QThread):
         
         if result.exit_code == 0 and is_arnold:
             try:
-                with open(result.log_path, "r") as log_r:
+                with open(result.log_path, "r", encoding="utf-8", errors="replace") as log_r:
                     log_contents = log_r.read()
                 gpu_failure_patterns = [
                     "Unable to load Optix library",
@@ -487,12 +504,17 @@ class WorkerThread(QThread):
                     heartbeat=self.send_heartbeat,
                     log=self.log_signal.emit,
                     line_callback=lambda line: self._process_output_line(task, line),
+                    event_callback=lambda event: self._process_event(task, event),
                 )
             except Exception as error:
                 self.log_signal.emit(f"Task retry preparation failed: {error}")
-
         duration = max(0.0, time.monotonic() - started)
         cancelled = self.cancel_current_requested
+        final_progress = (
+            self._progress_tracker.finish(result.exit_code == 0, cancelled=cancelled).to_dict()
+            if self._progress_tracker is not None
+            else {}
+        )
         self.current_task_id = ""
         self.cancel_current_requested = False
 
@@ -507,11 +529,19 @@ class WorkerThread(QThread):
                 "log_path": display_log,
                 "output_image_path": result.output_image_path,
                 "error_tail": result.error_tail,
-                "progress": 100 if result.exit_code == 0 else task_ui.get("progress", 0),
+                "progress": int(final_progress.get("percent", 100 if result.exit_code == 0 else task_ui.get("progress", 0))),
+                "phase": final_progress.get("phase", final_status.title()),
+                "current_frame": final_progress.get("current_frame"),
+                "completed_frames": final_progress.get("completed_frames", 0),
+                "total_frames": final_progress.get("total_frames", task_ui.get("total_frames", 1)),
+                "elapsed_seconds": duration,
+                "eta_seconds": final_progress.get("eta_seconds"),
+                "progress_detail": final_progress.get("detail", final_status.title()),
             }
         )
         self.task_finished_signal.emit(finished_payload)
         self.current_task_ui = {}
+        self._progress_tracker = None
 
         if result.exit_code == 0:
             message = "Task {} completed successfully.".format(task.task_id)
@@ -617,8 +647,6 @@ class WorkerThread(QThread):
                         "worker_name": HOSTNAME,
                         "tags": build_capability_tags(self.discovered),
                         "capabilities": build_capabilities(self.discovered),
-                        # Reuse the cached snapshot from the last heartbeat to avoid
-                        # spawning nvidia-smi on every poll cycle (every 2-5 seconds).
                         "capabilities_snapshot": self._last_system_info,
                     },
                     headers=self.get_headers(),
@@ -676,7 +704,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("RenderHive Worker Settings")
-        self.setMinimumSize(720, 690)
+        self.setMinimumSize(660, 600)
         self.settings = QSettings("RenderHive", "WorkerDaemon")
 
         root = QVBoxLayout(self)
@@ -806,8 +834,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("RenderHive Worker {}".format(WORKER_VERSION))
-        self.resize(1120, 760)
-        self.setMinimumSize(960, 650)
+        self.resize(800, 520)
+        self.setMinimumSize(720, 470)
         self.is_quitting = False
         self.worker_status = "OFFLINE"
         self.scheduler_status = "STOPPED"
@@ -815,6 +843,13 @@ class MainWindow(QMainWindow):
         self.worker_started_monotonic = 0.0
         self.current_task: Dict[str, Any] = {}
         self.current_task_started = 0.0
+        self.current_progress_percent = 0
+        self.current_progress_target = 0
+        self.progress_animator = SmoothProgressValue(0.0, 0.0)
+        self.current_progress_phase = "Idle"
+        self.current_progress_frame = None
+        self.current_progress_total_frames = 1
+        self.current_progress_eta_seconds = None
         self.last_system_info: Dict[str, Any] = {}
         self.server_worker: Dict[str, Any] = {}
         self.current_log_path = ""
@@ -826,6 +861,8 @@ class MainWindow(QMainWindow):
         self.settings = QSettings("RenderHive", "WorkerDaemon")
         self.worker_thread: WorkerThread | None = None
         self.discovered = discover_all()
+        self.local_gpu_detector = GPUDetector()
+        self._last_local_gpu_query = 0.0
 
         self.tray_icon = QSystemTrayIcon(self)
         if os.path.exists(icon_path):
@@ -851,10 +888,32 @@ class MainWindow(QMainWindow):
         QApplication.instance().aboutToQuit.connect(self.stop_worker)
         self._build_ui(icon_path)
 
+        geometry = self.settings.value("compact_geometry_v131")
+        if geometry:
+            try:
+                self.restoreGeometry(geometry)
+            except Exception:
+                pass
+        try:
+            self.main_tabs.setCurrentIndex(
+                max(0, min(1, int(self.settings.value("compact_tab_v131", 0) or 0)))
+            )
+        except Exception:
+            pass
+
         self.ui_timer = QTimer(self)
         self.ui_timer.setInterval(1000)
         self.ui_timer.timeout.connect(self.update_live_ui)
         self.ui_timer.start()
+
+        # Renderer output is often sparse (for example 1%, 25%, 75%, 100%).
+        # Keep a separate high-frequency visual timer so the percentage label
+        # counts through every integer and the bar moves continuously toward
+        # the latest real renderer target without fabricating extra progress.
+        self.progress_animation_timer = QTimer(self)
+        self.progress_animation_timer.setInterval(25)
+        self.progress_animation_timer.timeout.connect(self._animate_progress_tick)
+        self.progress_animation_timer.start()
 
         self.refresh_dcc_tables()
         self.refresh_local_snapshot()
@@ -869,206 +928,216 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self, icon_path: str) -> None:
         central = QWidget()
+        central.setObjectName("RootWidget")
         self.setCentralWidget(central)
         outer = QVBoxLayout(central)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
+        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setSpacing(8)
 
         header = QFrame()
         header.setObjectName("HeaderCard")
-        header.setStyleSheet("QFrame#HeaderCard { border-radius: 0; border-left: 0; border-right: 0; border-top: 0; }")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(18, 12, 18, 12)
-        header_layout.setSpacing(12)
+        header_layout.setContentsMargins(10, 7, 10, 7)
+        header_layout.setSpacing(8)
 
         if icon_path and os.path.exists(icon_path):
             logo = QLabel()
-            logo.setPixmap(QIcon(icon_path).pixmap(34, 34))
+            logo.setObjectName("BrandLogo")
+            logo.setFixedSize(32, 32)
+            logo.setAlignment(Qt.AlignCenter)
+            logo.setPixmap(QIcon(icon_path).pixmap(28, 28))
             header_layout.addWidget(logo)
 
         title_box = QVBoxLayout()
+        title_box.setContentsMargins(0, 0, 6, 0)
         title_box.setSpacing(1)
         title = QLabel("RENDERHIVE WORKER")
         title.setObjectName("TitleLabel")
-        subtitle = QLabel("{}  •  Multi-DCC Render Node".format(HOSTNAME))
+        subtitle = QLabel(HOSTNAME)
         subtitle.setObjectName("MutedLabel")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
         header_layout.addLayout(title_box)
-        header_layout.addSpacing(12)
+        header_layout.setStretchFactor(title_box, 0)
 
         self.header_status_chip = StatusChip("OFFLINE")
         self.header_connection_chip = StatusChip("DISCONNECTED")
         header_layout.addWidget(self.header_status_chip)
         header_layout.addWidget(self.header_connection_chip)
-        header_layout.addStretch()
+
+        self.header_dcc_label = QLabel(self.short_dcc_summary().replace("\n", "  |  "))
+        self.header_dcc_label.setObjectName("CompactBadge")
+        self.header_dcc_label.setMinimumWidth(150)
+        self.header_dcc_label.setAlignment(Qt.AlignCenter)
+        self.header_dcc_label.setToolTip(_format_installations(self.discovered))
+        header_layout.addWidget(self.header_dcc_label, 1)
 
         version_label = QLabel("v{}".format(WORKER_VERSION))
-        version_label.setObjectName("MutedLabel")
+        version_label.setObjectName("VersionLabel")
         header_layout.addWidget(version_label)
+
         self.settings_btn = QPushButton("Settings")
         self.settings_btn.setObjectName("SecondaryBtn")
         self.settings_btn.clicked.connect(self.open_settings)
         header_layout.addWidget(self.settings_btn)
-        self.start_btn = QPushButton("Start Worker")
+
+        self.start_btn = QPushButton("Start")
         self.start_btn.clicked.connect(self.start_worker)
         header_layout.addWidget(self.start_btn)
-        self.stop_btn = QPushButton("Stop Worker")
+
+        self.stop_btn = QPushButton("Stop")
         self.stop_btn.setObjectName("DestructiveBtn")
         self.stop_btn.clicked.connect(self.stop_worker)
         self.stop_btn.setEnabled(False)
         header_layout.addWidget(self.stop_btn)
         outer.addWidget(header)
 
-        body = QHBoxLayout()
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(0)
-        outer.addLayout(body, 1)
+        self.main_tabs = QTabWidget()
+        self.main_tabs.setObjectName("MainTabs")
+        self.page_stack = self.main_tabs
+        self.nav_buttons = []
+        self.main_tabs.addTab(self.build_job_page(), "Job Information")
+        self.main_tabs.addTab(self.build_worker_page(), "Worker Information")
+        outer.addWidget(self.main_tabs, 1)
 
-        sidebar = QFrame()
-        sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(188)
-        side_layout = QVBoxLayout(sidebar)
-        side_layout.setContentsMargins(12, 18, 12, 14)
-        side_layout.setSpacing(6)
-        section_label = QLabel("WORKER CONSOLE")
-        section_label.setObjectName("FieldLabel")
-        side_layout.addWidget(section_label)
-        side_layout.addSpacing(4)
+        command_bar = QFrame()
+        command_bar.setObjectName("CommandBar")
+        command_layout = QHBoxLayout(command_bar)
+        command_layout.setContentsMargins(9, 6, 9, 6)
+        command_layout.setSpacing(6)
 
-        self.nav_buttons: List[NavButton] = []
-        for index, caption in enumerate(("Overview", "Current Job", "Worker Info", "Logs")):
-            button = NavButton(caption)
-            button.clicked.connect(lambda checked=False, page=index: self.switch_page(page))
-            self.nav_buttons.append(button)
-            side_layout.addWidget(button)
-        side_layout.addStretch()
-
-        self.sidebar_worker_chip = StatusChip("OFFLINE")
-        side_layout.addWidget(self.sidebar_worker_chip)
-        self.sidebar_scheduler_label = QLabel("Scheduler: Stopped")
-        self.sidebar_scheduler_label.setObjectName("MutedLabel")
-        self.sidebar_scheduler_label.setWordWrap(True)
-        side_layout.addWidget(self.sidebar_scheduler_label)
-        self.sidebar_dcc_label = QLabel(self.short_dcc_summary())
-        self.sidebar_dcc_label.setObjectName("MutedLabel")
-        self.sidebar_dcc_label.setWordWrap(True)
-        side_layout.addWidget(self.sidebar_dcc_label)
-        body.addWidget(sidebar)
-
-        self.page_stack = QStackedWidget()
-        body.addWidget(self.page_stack, 1)
-        self.page_stack.addWidget(self.build_overview_page())
-        self.page_stack.addWidget(self.build_job_page())
-        self.page_stack.addWidget(self.build_worker_page())
-        self.page_stack.addWidget(self.build_logs_page())
-        self.switch_page(0)
-
-    def page_container(self, title: str, subtitle: str = ""):
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        page = QWidget()
-        scroll.setWidget(page)
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 18, 20, 20)
-        layout.setSpacing(14)
-        title_label = QLabel(title)
-        title_label.setObjectName("PageTitle")
-        layout.addWidget(title_label)
-        if subtitle:
-            subtitle_label = QLabel(subtitle)
-            subtitle_label.setObjectName("MutedLabel")
-            subtitle_label.setWordWrap(True)
-            layout.addWidget(subtitle_label)
-        return scroll, layout
-
-    def build_overview_page(self) -> QWidget:
-        page, layout = self.page_container(
-            "Worker Overview",
-            "Live status, active workload, machine utilization, and scheduling controls.",
-        )
-
-        cards = QGridLayout()
-        cards.setSpacing(10)
-        self.status_card = StatCard("Worker Status", "Offline", HOSTNAME)
-        self.scheduler_card = StatCard("Scheduler", "Stopped", "Not accepting tasks")
-        self.current_job_card = StatCard("Current Job", "Idle", "Waiting for a compatible task")
-        completed = int(self.settings.value("completed_tasks", 0) or 0)
-        failed = int(self.settings.value("failed_tasks", 0) or 0)
-        self.history_card = StatCard("Task History", "{} complete".format(completed), "{} failed".format(failed))
-        for index, card in enumerate((self.status_card, self.scheduler_card, self.current_job_card, self.history_card)):
-            cards.addWidget(card, 0, index)
-            cards.setColumnStretch(index, 1)
-        layout.addLayout(cards)
-
-        metrics_card = SectionCard("System Activity", "Live machine metrics are updated while the application is open.")
-        metrics = QGridLayout()
-        metrics.setSpacing(10)
-        self.cpu_meter = ResourceMeter("CPU")
-        self.memory_meter = ResourceMeter("Memory")
-        self.disk_meter = ResourceMeter("System Disk")
-        self.gpu_meter = ResourceMeter("GPU")
-        metrics.addWidget(self.cpu_meter, 0, 0)
-        metrics.addWidget(self.memory_meter, 0, 1)
-        metrics.addWidget(self.disk_meter, 1, 0)
-        metrics.addWidget(self.gpu_meter, 1, 1)
-        metrics_card.add_layout(metrics)
-        layout.addWidget(metrics_card)
-
-        control_card = SectionCard("Scheduling Controls")
-        control_row = QHBoxLayout()
         self.pause_dispatch_btn = QPushButton("Pause Dispatch")
         self.pause_dispatch_btn.setObjectName("SecondaryBtn")
         self.pause_dispatch_btn.clicked.connect(self.toggle_dispatch_pause)
         self.pause_dispatch_btn.setEnabled(False)
-        self.after_task_btn = QPushButton("Pause After Current Task")
+        command_layout.addWidget(self.pause_dispatch_btn)
+
+        self.after_task_btn = QPushButton("Pause After Task")
         self.after_task_btn.setObjectName("SecondaryBtn")
         self.after_task_btn.setCheckable(True)
         self.after_task_btn.clicked.connect(self.toggle_pause_after_task)
         self.after_task_btn.setEnabled(False)
-        refresh_btn = QPushButton("Refresh Server Data")
+        command_layout.addWidget(self.after_task_btn)
+
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.setObjectName("SecondaryBtn")
         refresh_btn.clicked.connect(self.refresh_server_data)
-        control_row.addWidget(self.pause_dispatch_btn)
-        control_row.addWidget(self.after_task_btn)
-        control_row.addWidget(refresh_btn)
-        control_row.addStretch()
-        control_card.add_layout(control_row)
-        layout.addWidget(control_card)
+        command_layout.addWidget(refresh_btn)
 
-        dcc_card = SectionCard("Detected DCC Applications")
-        self.overview_dcc_table = self.create_dcc_table()
-        self.overview_dcc_table.setMinimumHeight(160)
-        dcc_card.add_widget(self.overview_dcc_table)
-        layout.addWidget(dcc_card)
-        layout.addStretch()
-        return page
+        self.footer_scheduler_label = QLabel("Scheduler: Stopped")
+        self.footer_scheduler_label.setObjectName("SchedulerHint")
+        command_layout.addWidget(self.footer_scheduler_label)
+        command_layout.addStretch()
+
+        self.log_preview_label = QLabel("Ready")
+        self.log_preview_label.setObjectName("LogPreview")
+        self.log_preview_label.setMinimumWidth(180)
+        self.log_preview_label.setToolTip("Latest worker event")
+        command_layout.addWidget(self.log_preview_label, 1)
+
+        self.log_toggle_btn = QPushButton("Show Log")
+        self.log_toggle_btn.setObjectName("GhostBtn")
+        self.log_toggle_btn.clicked.connect(self.toggle_log_drawer)
+        command_layout.addWidget(self.log_toggle_btn)
+        outer.addWidget(command_bar)
+
+        self.log_drawer = QFrame()
+        self.log_drawer.setObjectName("LogDrawer")
+        log_layout = QVBoxLayout(self.log_drawer)
+        log_layout.setContentsMargins(10, 8, 10, 10)
+        log_layout.setSpacing(6)
+
+        log_tools = QHBoxLayout()
+        self.log_search_input = QLineEdit()
+        self.log_search_input.setPlaceholderText("Find in log")
+        self.log_search_input.returnPressed.connect(self.find_in_log)
+        log_tools.addWidget(self.log_search_input, 1)
+
+        copy_btn = QPushButton("Copy")
+        copy_btn.setObjectName("SecondaryBtn")
+        copy_btn.clicked.connect(self.copy_log_view)
+        log_tools.addWidget(copy_btn)
+
+        clear_btn = QPushButton("Clear")
+        clear_btn.setObjectName("SecondaryBtn")
+        clear_btn.clicked.connect(self.clear_log_view)
+        log_tools.addWidget(clear_btn)
+
+        open_btn = QPushButton("Open Folder")
+        open_btn.setObjectName("SecondaryBtn")
+        open_btn.clicked.connect(self.open_log_folder)
+        log_tools.addWidget(open_btn)
+        log_layout.addLayout(log_tools)
+
+        self.log_console = QPlainTextEdit()
+        self.log_console.setReadOnly(True)
+        self.log_console.setMaximumBlockCount(5000)
+        self.log_console.setMinimumHeight(118)
+        self.log_console.setMaximumHeight(170)
+        log_layout.addWidget(self.log_console)
+
+        expanded = str(self.settings.value("compact_log_expanded_v131", "false")).lower() == "true"
+        self.log_drawer.setVisible(expanded)
+        self.log_toggle_btn.setText("Hide Log" if expanded else "Show Log")
+        outer.addWidget(self.log_drawer)
+
+    def page_container(self, title: str = "", subtitle: str = ""):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        page = QWidget()
+        page.setObjectName("PageRoot")
+        scroll.setWidget(page)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(10, 9, 10, 10)
+        layout.setSpacing(8)
+        if title:
+            title_label = QLabel(title)
+            title_label.setObjectName("SectionTitle")
+            if subtitle:
+                title_label.setToolTip(subtitle)
+            layout.addWidget(title_label)
+        return scroll, layout
+
+    def build_overview_page(self) -> QWidget:
+        return self.build_worker_page()
 
     def build_job_page(self) -> QWidget:
-        page, layout = self.page_container(
-            "Current Job",
-            "Job, task, frame, renderer, and output information for the active or most recently completed task.",
-        )
+        page, layout = self.page_container()
         self.job_state_stack = QStackedWidget()
+        self.job_state_stack.setObjectName("JobStateStack")
+
+        empty_page = QWidget()
+        empty_page.setObjectName("EmptyStatePage")
+        empty_layout = QVBoxLayout(empty_page)
+        empty_layout.setContentsMargins(24, 24, 24, 24)
+        empty_layout.addStretch(1)
         self.job_empty = EmptyState(
-            "No task has been received",
-            "Start the worker and submit a compatible Maya or Houdini job. The task details will appear here automatically.",
+            "No active task",
+            "Start the worker, then submit a compatible Maya or Houdini job.",
         )
-        self.job_state_stack.addWidget(self.job_empty)
+        self.job_empty.setMaximumWidth(390)
+        self.job_empty.setMinimumWidth(320)
+        empty_row = QHBoxLayout()
+        empty_row.addStretch(1)
+        empty_row.addWidget(self.job_empty)
+        empty_row.addStretch(1)
+        empty_layout.addLayout(empty_row)
+        empty_layout.addStretch(1)
+        self.job_state_stack.addWidget(empty_page)
 
         active = QWidget()
         active_layout = QVBoxLayout(active)
         active_layout.setContentsMargins(0, 0, 0, 0)
-        active_layout.setSpacing(12)
+        active_layout.setSpacing(8)
 
         progress_card = SectionCard()
         progress_header = QHBoxLayout()
-        self.job_title_label = QLabel("Job")
+        self.job_title_label = QLabel("Current Job")
         self.job_title_label.setObjectName("TitleLabel")
         self.job_status_chip = StatusChip("OFFLINE")
         self.job_elapsed_label = QLabel("Elapsed: 00h 00m 00s")
         self.job_elapsed_label.setObjectName("MutedLabel")
-        self.cancel_task_btn = QPushButton("Cancel Current Task")
+        self.cancel_task_btn = QPushButton("Cancel Task")
         self.cancel_task_btn.setObjectName("DestructiveBtn")
         self.cancel_task_btn.clicked.connect(self.cancel_current_task)
         self.cancel_task_btn.setEnabled(False)
@@ -1078,60 +1147,77 @@ class MainWindow(QMainWindow):
         progress_header.addWidget(self.job_elapsed_label)
         progress_header.addWidget(self.cancel_task_btn)
         progress_card.add_layout(progress_header)
+
+        progress_meta = QHBoxLayout()
+        progress_meta.setSpacing(8)
+        self.job_phase_label = QLabel("Preparing Task")
+        self.job_phase_label.setObjectName("AccentLabel")
+        self.job_frame_label = QLabel("Frame — / —")
+        self.job_frame_label.setObjectName("MutedLabel")
+        self.job_eta_label = QLabel("Remaining: Estimating…")
+        self.job_eta_label.setObjectName("MutedLabel")
+        self.job_percent_label = QLabel("0%")
+        self.job_percent_label.setObjectName("ProgressPercent")
+        progress_meta.addWidget(self.job_phase_label)
+        progress_meta.addWidget(self.job_frame_label)
+        progress_meta.addStretch()
+        progress_meta.addWidget(self.job_eta_label)
+        progress_meta.addWidget(self.job_percent_label)
+        progress_card.add_layout(progress_meta)
+
         self.job_progress = QProgressBar()
-        self.job_progress.setRange(0, 100)
+        self.job_progress.setRange(0, 1000)
         self.job_progress.setValue(0)
+        self.job_progress.setTextVisible(False)
         progress_card.add_widget(self.job_progress)
-        self.job_progress_detail = QLabel("Waiting")
+        self.job_progress_detail = QLabel("Waiting for a task")
         self.job_progress_detail.setObjectName("MutedLabel")
         progress_card.add_widget(self.job_progress_detail)
         active_layout.addWidget(progress_card)
 
-        job_card = SectionCard("Job Information")
+        summary_row = QHBoxLayout()
+        summary_row.setSpacing(8)
+
+        job_card = SectionCard("Job")
         self.job_info = InfoGrid(
             [
                 ("job_name", "Name"),
                 ("job_user", "User"),
                 ("department", "Department"),
-                ("project", "Project"),
+                ("pool", "Pool"),
                 ("priority", "Priority"),
-                ("submit_date", "Submit Date"),
-                ("pool", "Pool Routing"),
-                ("notes", "Notes"),
+                ("submit_date", "Submitted"),
             ],
             columns=2,
         )
         job_card.add_widget(self.job_info)
-        active_layout.addWidget(job_card)
+        summary_row.addWidget(job_card, 1)
 
-        task_card = SectionCard("Task & Render Information")
+        task_card = SectionCard("Task")
         self.task_info = InfoGrid(
             [
                 ("task_id", "Task ID"),
-                ("task_name", "Task Name"),
-                ("layer_name", "Layer"),
                 ("frame_range", "Frames"),
-                ("dcc", "DCC"),
-                ("dcc_version", "DCC Version"),
+                ("dcc", "Application"),
+                ("dcc_version", "Version"),
                 ("renderer", "Renderer"),
-                ("execution_mode", "Execution Mode"),
+                ("execution_mode", "Mode"),
+                ("phase", "Phase"),
+                ("progress_display", "Progress"),
                 ("render_node", "Render Node"),
-                ("camera", "Camera"),
                 ("exit_code", "Exit Code"),
-                ("output_image_path", "Last Output Image"),
             ],
             columns=2,
         )
         task_card.add_widget(self.task_info)
-        active_layout.addWidget(task_card)
+        summary_row.addWidget(task_card, 1)
+        active_layout.addLayout(summary_row)
 
-        path_card = SectionCard("Scene & Output Paths")
+        path_card = SectionCard("Scene & Output")
         self.path_info = InfoGrid(
             [
-                ("scene_path", "Scene File"),
-                ("project_path", "Project Path"),
-                ("output_path", "Output Path"),
-                ("log_path", "Task Log"),
+                ("scene_path", "Scene"),
+                ("output_path", "Output"),
             ],
             columns=1,
         )
@@ -1141,96 +1227,98 @@ class MainWindow(QMainWindow):
 
         self.job_state_stack.addWidget(active)
         layout.addWidget(self.job_state_stack)
-        layout.addStretch()
         return page
 
     def build_worker_page(self) -> QWidget:
-        page, layout = self.page_container(
-            "Worker Information",
-            "Scheduler state, server assignments, task statistics, machine specifications, and installed render software.",
-        )
+        page, layout = self.page_container()
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
+        self.status_card = StatCard("Worker", "Offline", HOSTNAME)
+        self.scheduler_card = StatCard("Scheduler", "Stopped", "Not accepting tasks")
+        completed = int(self.settings.value("completed_tasks", 0) or 0)
+        failed = int(self.settings.value("failed_tasks", 0) or 0)
+        self.history_card = StatCard("Task History", "{} complete".format(completed), "{} failed".format(failed))
+        top_row.addWidget(self.status_card, 1)
+        top_row.addWidget(self.scheduler_card, 1)
+        top_row.addWidget(self.history_card, 1)
+        layout.addLayout(top_row)
+
+        details_row = QHBoxLayout()
+        details_row.setSpacing(8)
 
         schedule_card = SectionCard("Worker & Scheduler")
         self.worker_schedule_info = InfoGrid(
             [
                 ("worker_status", "Worker Status"),
-                ("scheduler_status", "Scheduler Status"),
-                ("backend", "Connected to Backend"),
+                ("scheduler_status", "Scheduler"),
+                ("backend", "Backend"),
                 ("running_time", "Running Time"),
-                ("after_task", "After Current Task"),
-                ("region", "Region"),
-                ("description", "Description"),
-                ("comment", "Comment"),
+                ("after_task", "After Task"),
                 ("pools", "Assigned Pools"),
-                ("groups", "Groups / Worker Tags"),
-                ("dequeue_mode", "Dequeuing Mode"),
-                ("concurrent_limit", "Concurrent Task Limit"),
-                ("completed", "Completed Tasks"),
-                ("failed", "Failed Tasks"),
+                ("completed", "Completed"),
+                ("failed", "Failed"),
             ],
             columns=2,
         )
         schedule_card.add_widget(self.worker_schedule_info)
-        layout.addWidget(schedule_card)
+        details_row.addWidget(schedule_card, 1)
 
-        specs_card = SectionCard("Worker Specifications")
+        specs_card = SectionCard("Machine")
         self.worker_specs_info = InfoGrid(
             [
                 ("os", "Operating System"),
-                ("user", "Machine User"),
+                ("user", "User"),
                 ("cpu", "CPU"),
-                ("cores", "Logical / Physical Cores"),
-                ("memory", "Memory Usage"),
+                ("memory", "Memory"),
+                ("gpu", "GPU"),
                 ("ip", "IP Address"),
-                ("mac", "MAC Address"),
-                ("disk", "Free Disk Space"),
-                ("gpu", "Video Card"),
-                ("gpu_usage", "GPU Usage"),
-                ("worker_version", "Worker Version"),
-                ("last_ping", "Last Server Ping"),
+                ("disk", "Free Disk"),
+                ("last_ping", "Last Ping"),
             ],
             columns=2,
         )
         specs_card.add_widget(self.worker_specs_info)
-        layout.addWidget(specs_card)
+        details_row.addWidget(specs_card, 1)
+        layout.addLayout(details_row)
 
-        dcc_card = SectionCard("DCC Capabilities")
-        self.worker_dcc_table = self.create_dcc_table()
-        self.worker_dcc_table.setMinimumHeight(200)
-        dcc_card.add_widget(self.worker_dcc_table)
+        metrics_card = SectionCard("Live Utilization")
+        metrics = QGridLayout()
+        metrics.setSpacing(8)
+        self.cpu_meter = ResourceMeter("CPU")
+        self.memory_meter = ResourceMeter("Memory")
+        self.disk_meter = ResourceMeter("Disk")
+        self.gpu_meter = ResourceMeter("GPU")
+        metrics.addWidget(self.cpu_meter, 0, 0)
+        metrics.addWidget(self.memory_meter, 0, 1)
+        metrics.addWidget(self.disk_meter, 1, 0)
+        metrics.addWidget(self.gpu_meter, 1, 1)
+        metrics_card.add_layout(metrics)
+        layout.addWidget(metrics_card)
+
+        dcc_card = SectionCard("Render Applications")
+        dcc_row = QHBoxLayout()
+        self.dcc_summary_label = QLabel(self.short_dcc_summary().replace("\n", "  |  "))
+        self.dcc_summary_label.setObjectName("FieldValue")
+        self.dcc_summary_label.setToolTip(_format_installations(self.discovered))
+        dcc_row.addWidget(self.dcc_summary_label, 1)
+        details_btn = QPushButton("View Details")
+        details_btn.setObjectName("SecondaryBtn")
+        details_btn.clicked.connect(self.show_dcc_details)
+        dcc_row.addWidget(details_btn)
+        dcc_card.add_layout(dcc_row)
         layout.addWidget(dcc_card)
         layout.addStretch()
+
+        self.current_job_card = None
+        self.overview_dcc_table = None
+        self.worker_dcc_table = None
         return page
 
     def build_logs_page(self) -> QWidget:
-        page, layout = self.page_container(
-            "Worker Logs",
-            "Live worker events are shown here. Full DCC output is written to per-task log files.",
-        )
-        tools = QHBoxLayout()
-        self.log_search_input = QLineEdit()
-        self.log_search_input.setPlaceholderText("Find in log…")
-        self.log_search_input.returnPressed.connect(self.find_in_log)
-        clear_btn = QPushButton("Clear View")
-        clear_btn.setObjectName("SecondaryBtn")
-        clear_btn.clicked.connect(self.clear_log_view)
-        copy_btn = QPushButton("Copy Log")
-        copy_btn.setObjectName("SecondaryBtn")
-        copy_btn.clicked.connect(self.copy_log_view)
-        open_btn = QPushButton("Open Log Folder")
-        open_btn.setObjectName("SecondaryBtn")
-        open_btn.clicked.connect(self.open_log_folder)
-        tools.addWidget(self.log_search_input, 1)
-        tools.addWidget(clear_btn)
-        tools.addWidget(copy_btn)
-        tools.addWidget(open_btn)
-        layout.addLayout(tools)
-
-        self.log_console = QPlainTextEdit()
-        self.log_console.setReadOnly(True)
-        self.log_console.setMaximumBlockCount(5000)
-        self.log_console.setMinimumHeight(520)
-        layout.addWidget(self.log_console, 1)
+        page, layout = self.page_container()
+        message = EmptyState("Logs moved", "Use the Show Log button at the bottom of the window.")
+        layout.addWidget(message)
         return page
 
     def create_dcc_table(self) -> QTableWidget:
@@ -1248,15 +1336,14 @@ class MainWindow(QMainWindow):
         return table
 
     def refresh_dcc_tables(self) -> None:
-        rows = _installation_rows(self.discovered)
-        for table in (self.overview_dcc_table, self.worker_dcc_table):
-            table.setRowCount(len(rows))
-            for row_index, row in enumerate(rows):
-                for column_index, value in enumerate(row):
-                    item = QTableWidgetItem(value)
-                    item.setToolTip(value)
-                    table.setItem(row_index, column_index, item)
-        self.sidebar_dcc_label.setText(self.short_dcc_summary())
+        summary = self.short_dcc_summary().replace("\n", "  |  ")
+        detail = _format_installations(self.discovered)
+        if hasattr(self, "header_dcc_label"):
+            self.header_dcc_label.setText(summary)
+            self.header_dcc_label.setToolTip(detail)
+        if hasattr(self, "dcc_summary_label"):
+            self.dcc_summary_label.setText(summary)
+            self.dcc_summary_label.setToolTip(detail)
 
     def short_dcc_summary(self) -> str:
         maya_versions = [item.version for item in self.discovered.get("maya") or []]
@@ -1278,9 +1365,8 @@ class MainWindow(QMainWindow):
         }
 
     def switch_page(self, index: int) -> None:
-        self.page_stack.setCurrentIndex(index)
-        for button_index, button in enumerate(self.nav_buttons):
-            button.setChecked(button_index == index)
+        if hasattr(self, "main_tabs"):
+            self.main_tabs.setCurrentIndex(max(0, min(index, self.main_tabs.count() - 1)))
 
     @Slot(str)
     def log(self, message: str) -> None:
@@ -1292,26 +1378,20 @@ class MainWindow(QMainWindow):
         cursor = self.log_console.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         self.log_console.setTextCursor(cursor)
+        latest = lines[-1].strip() or "Ready"
+        self.log_preview_label.setText(latest)
+        self.log_preview_label.setToolTip(text)
 
     @Slot(str)
     def update_status(self, status: str) -> None:
         self.worker_status = str(status or "OFFLINE").upper()
         self.header_status_chip.set_status(self.worker_status)
-        self.sidebar_worker_chip.set_status(self.worker_status)
         self.status_card.set_value(self.worker_status.title(), HOSTNAME)
         self.worker_schedule_info.set_value("worker_status", self.worker_status.title())
-        if self.worker_status == "RENDERING":
-            self.current_job_card.set_value(
-                safe_text(self.current_task.get("job_name"), "Rendering"),
-                safe_text(self.current_task.get("frame_range"), "Task in progress"),
-            )
-        elif self.worker_status in ("ONLINE", "PAUSED") and not self.current_task:
-            self.current_job_card.set_value("Idle", "Waiting for a compatible task")
 
     @Slot(str)
     def update_scheduler(self, status: str) -> None:
         self.scheduler_status = str(status or "STOPPED").upper()
-        self.sidebar_scheduler_label.setText("Scheduler: {}".format(self.scheduler_status.title()))
         detail = {
             "WAITING": "Accepting compatible tasks",
             "PAUSED": "Dispatch is paused",
@@ -1320,9 +1400,9 @@ class MainWindow(QMainWindow):
         }.get(self.scheduler_status, "")
         self.scheduler_card.set_value(self.scheduler_status.title(), detail)
         self.worker_schedule_info.set_value("scheduler_status", self.scheduler_status.title())
+        self.footer_scheduler_label.setText("Scheduler: {}".format(self.scheduler_status.title()))
         self.pause_dispatch_btn.setText("Resume Dispatch" if self.scheduler_status == "PAUSED" else "Pause Dispatch")
 
-    @Slot(bool)
     def update_connection(self, connected: bool) -> None:
         self.backend_connected = bool(connected)
         self.header_connection_chip.set_status("CONNECTED" if connected else "DISCONNECTED")
@@ -1346,10 +1426,24 @@ class MainWindow(QMainWindow):
     def on_task_started(self, payload: object) -> None:
         self.current_task = safe_dict(payload)
         self.current_task_started = time.monotonic()
+        initial_target = max(1, min(100, int(self.current_task.get("progress") or 1)))
+        self.current_progress_percent = 1
+        self.current_progress_target = initial_target
+        self.progress_animator.reset(1.0)
+        self.progress_animator.set_target(initial_target)
+        self.current_progress_phase = safe_text(self.current_task.get("phase"), "Preparing Task")
+        self.current_progress_frame = self.current_task.get("current_frame")
+        self.current_progress_total_frames = max(1, int(self.current_task.get("total_frames") or 1))
+        self.current_progress_eta_seconds = None
         self.job_state_stack.setCurrentIndex(1)
         self.job_title_label.setText(safe_text(self.current_task.get("job_name"), "Current Job"))
         self.job_status_chip.set_status("RENDERING")
-        self.job_progress.setRange(0, 0)
+        self.job_progress.setRange(0, 1000)
+        self.job_progress.setValue(self.progress_animator.bar_value)
+        self.job_percent_label.setText("{}%".format(self.current_progress_percent))
+        self.job_phase_label.setText(self.current_progress_phase)
+        self.job_frame_label.setText(self._progress_frame_text())
+        self.job_eta_label.setText("Remaining: Estimating…")
         self.job_progress_detail.setText(
             "Frames {}  •  {} {}  •  {}".format(
                 safe_text(self.current_task.get("frame_range"), "—"),
@@ -1358,33 +1452,72 @@ class MainWindow(QMainWindow):
                 safe_text(self.current_task.get("renderer"), "Renderer not specified"),
             )
         )
+        self.current_task["progress_display"] = "{}%".format(self.current_progress_percent)
         self.cancel_task_btn.setEnabled(True)
         self.job_info.set_values(self.current_task)
         self.task_info.set_values(self.current_task)
         self.path_info.set_values(self.current_task)
-        self.current_job_card.set_value(
-            safe_text(self.current_task.get("job_name"), "Rendering"),
-            safe_text(self.current_task.get("frame_range"), "Task in progress"),
-        )
 
     @Slot(object)
     def on_task_progress(self, payload: object) -> None:
         data = safe_dict(payload)
         percent = max(0, min(100, int(data.get("percent") or 0)))
-        self.job_progress.setRange(0, 100)
-        self.job_progress.setValue(percent)
-        frame = data.get("frame")
-        self.job_progress_detail.setText("Rendering frame {}  •  {}%".format(frame, percent))
+        phase = safe_text(data.get("phase"), self.current_progress_phase, "Rendering")
+        self.current_progress_target = max(self.current_progress_target, percent)
+        self.progress_animator.set_target(self.current_progress_target)
+        self.current_progress_phase = phase
+        self.current_progress_frame = data.get("current_frame")
+        self.current_progress_total_frames = max(1, int(data.get("total_frames") or self.current_progress_total_frames or 1))
+        eta = data.get("eta_seconds")
+        try:
+            self.current_progress_eta_seconds = max(0.0, float(eta)) if eta is not None else None
+        except Exception:
+            self.current_progress_eta_seconds = None
+
+        self.current_task.update(data)
+        self.current_task["progress_target"] = percent
+        self.current_task["progress"] = self.current_progress_percent
+        self.current_task["progress_display"] = "{}%".format(self.current_progress_percent)
+        self.current_task["phase"] = phase
+
+        self.job_phase_label.setText(phase)
+        self.job_frame_label.setText(self._progress_frame_text())
+        self.job_eta_label.setText(self._progress_eta_text())
+        detail = safe_text(data.get("detail"))
+        renderer_percent = data.get("renderer_percent")
+        if renderer_percent is not None:
+            try:
+                renderer_text = "Renderer {:.0f}%".format(float(renderer_percent))
+                detail = "{}  •  {}".format(detail, renderer_text) if detail else renderer_text
+            except Exception:
+                pass
+        self.job_progress_detail.setText(detail or phase)
+        self.task_info.set_value("phase", phase)
+        self.task_info.set_value("progress_display", "{}%".format(self.current_progress_percent))
 
     @Slot(object)
     def on_task_finished(self, payload: object) -> None:
         data = safe_dict(payload)
         self.current_task = data
         self.current_task_started = 0.0
+        final_target = max(0, min(100, int(data.get("progress") or 0)))
+        self.current_progress_target = 100 if safe_text(data.get("status"), "FAILED").upper() == "SUCCEEDED" else max(self.current_progress_target, final_target)
+        self.progress_animator.set_target(self.current_progress_target)
+        self.current_progress_phase = safe_text(data.get("phase"), data.get("status"), "Finished")
+        self.current_progress_frame = data.get("current_frame")
+        self.current_progress_total_frames = max(1, int(data.get("total_frames") or 1))
+        self.current_progress_eta_seconds = None
         status = safe_text(data.get("status"), "FAILED").upper()
         self.job_status_chip.set_status("ONLINE" if status == "SUCCEEDED" else "ERROR")
-        self.job_progress.setRange(0, 100)
-        self.job_progress.setValue(100 if status == "SUCCEEDED" else self.job_progress.value())
+        self.job_progress.setRange(0, 1000)
+        self.job_progress.setValue(self.progress_animator.bar_value)
+        self.job_percent_label.setText("{}%".format(self.current_progress_percent))
+        self.job_phase_label.setText("Complete" if status == "SUCCEEDED" else self.current_progress_phase)
+        self.job_frame_label.setText(self._progress_frame_text())
+        self.job_eta_label.setText("Remaining: 00h 00m 00s" if status == "SUCCEEDED" else "Remaining: —")
+        data["progress_target"] = self.current_progress_target
+        data["progress"] = self.current_progress_percent
+        data["progress_display"] = "{}%".format(self.current_progress_percent)
         self.job_progress_detail.setText(
             "{}  •  {}  •  Exit code {}".format(
                 status.title(),
@@ -1409,10 +1542,6 @@ class MainWindow(QMainWindow):
         self.history_card.set_value("{} complete".format(completed), "{} failed".format(failed))
         self.worker_schedule_info.set_value("completed", completed)
         self.worker_schedule_info.set_value("failed", failed)
-        self.current_job_card.set_value(
-            safe_text(data.get("job_name"), "Last Task"),
-            "{} in {}".format(status.title(), format_duration(data.get("duration_seconds"))),
-        )
 
     def apply_system_info(self, info: Dict[str, Any]) -> None:
         if not info:
@@ -1438,12 +1567,21 @@ class MainWindow(QMainWindow):
         gpu_name = safe_text(info.get("gpu_name"), "Not detected")
         gpu_detail = gpu_name
         if info.get("gpu_vram_mb"):
-            gpu_detail = "{}  •  {} / {} VRAM".format(
-                gpu_name,
-                format_bytes(int(info.get("gpu_vram_used_mb") or 0) * 1024 * 1024),
-                format_bytes(int(info.get("gpu_vram_mb") or 0) * 1024 * 1024),
-            )
-        self.gpu_meter.set_metric(gpu_percent, gpu_detail)
+            if info.get("gpu_telemetry_available"):
+                gpu_detail = "{}  •  {} / {} VRAM".format(
+                    gpu_name,
+                    format_bytes(int(info.get("gpu_vram_used_mb") or 0) * 1024 * 1024),
+                    format_bytes(int(info.get("gpu_vram_mb") or 0) * 1024 * 1024),
+                )
+            else:
+                gpu_detail = "{}  •  {} VRAM".format(
+                    gpu_name,
+                    format_bytes(int(info.get("gpu_vram_mb") or 0) * 1024 * 1024),
+                )
+        if info.get("gpu_name") and not info.get("gpu_telemetry_available"):
+            self.gpu_meter.set_unavailable(gpu_detail + "  •  Usage unavailable")
+        else:
+            self.gpu_meter.set_metric(gpu_percent, gpu_detail)
 
         self.worker_specs_info.set_values(
             {
@@ -1466,7 +1604,11 @@ class MainWindow(QMainWindow):
                     format_bytes(info.get("disk_total_bytes")),
                 ),
                 "gpu": gpu_name,
-                "gpu_usage": "{}%".format(int(round(gpu_percent))) if info.get("gpu_name") else "—",
+                "gpu_usage": (
+                    "{}%".format(int(round(gpu_percent)))
+                    if info.get("gpu_name") and info.get("gpu_telemetry_available")
+                    else ("N/A" if info.get("gpu_name") else "—")
+                ),
                 "worker_version": safe_text(info.get("worker_version"), WORKER_VERSION),
             }
         )
@@ -1476,6 +1618,10 @@ class MainWindow(QMainWindow):
             memory = psutil.virtual_memory()
             disk = psutil.disk_usage(_disk_root())
             snapshot = dict(self.last_system_info)
+            now = time.monotonic()
+            if now - self._last_local_gpu_query >= 5.0:
+                snapshot.update(self.local_gpu_detector.query())
+                self._last_local_gpu_query = now
             snapshot.update(
                 {
                     "operating_system": "{} {}".format(platform.system(), platform.release()).strip(),
@@ -1499,6 +1645,72 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _apply_progress_visual(self) -> None:
+        """Keep the percentage label and bar locked to the same visual value."""
+        self.current_progress_percent = self.progress_animator.display_percent
+        self.job_progress.setRange(0, 1000)
+        self.job_progress.setValue(self.progress_animator.bar_value)
+        self.job_percent_label.setText("{}%".format(self.current_progress_percent))
+        if self.current_task:
+            self.current_task["progress"] = self.current_progress_percent
+            self.current_task["progress_display"] = "{}%".format(self.current_progress_percent)
+            self.current_task["progress_target"] = self.current_progress_target
+            self.task_info.set_value("progress_display", "{}%".format(self.current_progress_percent))
+
+    def _animate_progress_tick(self) -> None:
+        """Animate through every percentage toward the latest real target.
+
+        A sub-one-percent step guarantees that the visible counter cannot skip
+        an integer.  Completion is slightly faster so a finished task reaches
+        100% promptly while still showing 91, 92, ... 100 in sequence.
+        """
+        if not self.current_task:
+            return
+        self.progress_animator.set_target(self.current_progress_target)
+        step = 0.80 if self.current_progress_target >= 100 else 0.50
+        previous = self.progress_animator.current
+        current = self.progress_animator.tick(step=step)
+        if current != previous or self.current_progress_percent != self.progress_animator.display_percent:
+            self._apply_progress_visual()
+
+    def _progress_frame_text(self) -> str:
+        total = max(1, int(self.current_progress_total_frames or 1))
+        frame = self.current_progress_frame
+        if frame is None:
+            completed = int(self.current_task.get("completed_frames") or 0) if self.current_task else 0
+            if completed > 0:
+                return "Frames {} / {}".format(min(completed, total), total)
+            return "Frame — / {}".format(total)
+
+        try:
+            start = int(self.current_task.get("frame_start") or frame)
+            step = max(1, int(self.current_task.get("frame_step") or 1))
+            index = ((int(frame) - start) // step) + 1
+            index = max(1, min(total, index))
+        except Exception:
+            index = max(1, int(self.current_task.get("completed_frames") or 0) + 1)
+        return "Frame {} / {}".format(index, total)
+
+    def _progress_eta_text(self) -> str:
+        eta_percent = max(self.current_progress_percent, self.current_progress_target)
+        if eta_percent >= 100:
+            return "Remaining: 00h 00m 00s"
+        if not self.current_task_started or eta_percent < 5:
+            return "Remaining: Estimating…"
+
+        elapsed = max(0.0, time.monotonic() - self.current_task_started)
+        completed = int(self.current_task.get("completed_frames") or 0) if self.current_task else 0
+        total = max(1, int(self.current_progress_total_frames or 1))
+        if total > 1 and completed > 0:
+            remaining = (elapsed / float(completed)) * max(0, total - completed)
+        else:
+            remaining = elapsed * (
+                (100.0 - float(eta_percent))
+                / max(1.0, float(eta_percent))
+            )
+        remaining = max(0.0, min(remaining, 7.0 * 24.0 * 60.0 * 60.0))
+        return "Remaining: ~{}".format(format_duration(remaining))
+
     def update_live_ui(self) -> None:
         self.refresh_local_snapshot()
         if self.worker_started_monotonic:
@@ -1514,6 +1726,10 @@ class MainWindow(QMainWindow):
             self.job_elapsed_label.setText(
                 "Elapsed: {}".format(format_duration(time.monotonic() - self.current_task_started))
             )
+            self.job_eta_label.setText(self._progress_eta_text())
+            self._apply_progress_visual()
+            self.job_phase_label.setText(self.current_progress_phase)
+            self.job_frame_label.setText(self._progress_frame_text())
         elif self.current_task:
             self.job_elapsed_label.setText(
                 "Duration: {}".format(format_duration(self.current_task.get("duration_seconds")))
@@ -1530,6 +1746,53 @@ class MainWindow(QMainWindow):
                 "failed": int(self.settings.value("failed_tasks", 0) or 0),
             }
         )
+
+    def toggle_log_drawer(self) -> None:
+        visible = not self.log_drawer.isVisible()
+        self.log_drawer.setVisible(visible)
+        self.log_toggle_btn.setText("Hide Log" if visible else "Show Log")
+        self.settings.setValue("compact_log_expanded_v131", visible)
+        if visible:
+            self.log_console.setFocus()
+
+    def show_dcc_details(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Detected Render Applications")
+        dialog.resize(720, 360)
+        root = QVBoxLayout(dialog)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(8)
+        table = self.create_dcc_table()
+        rows = _installation_rows(self.discovered)
+        table.setRowCount(len(rows))
+        for row_index, row in enumerate(rows):
+            for column_index, value in enumerate(row):
+                item = QTableWidgetItem(value)
+                item.setToolTip(value)
+                table.setItem(row_index, column_index, item)
+        root.addWidget(table, 1)
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        refresh = QPushButton("Refresh Detection")
+        refresh.setObjectName("SecondaryBtn")
+        refresh.clicked.connect(lambda: self._refresh_dcc_dialog(table))
+        close = QPushButton("Close")
+        close.clicked.connect(dialog.accept)
+        buttons.addWidget(refresh)
+        buttons.addWidget(close)
+        root.addLayout(buttons)
+        dialog.exec()
+
+    def _refresh_dcc_dialog(self, table: QTableWidget) -> None:
+        self.discovered = discover_all()
+        self.refresh_dcc_tables()
+        rows = _installation_rows(self.discovered)
+        table.setRowCount(len(rows))
+        for row_index, row in enumerate(rows):
+            for column_index, value in enumerate(row):
+                item = QTableWidgetItem(value)
+                item.setToolTip(value)
+                table.setItem(row_index, column_index, item)
 
     def open_settings(self) -> None:
         dialog = SettingsDialog(self)
@@ -1564,7 +1827,7 @@ class MainWindow(QMainWindow):
         self.worker_thread.task_started_signal.connect(self.on_task_started)
         self.worker_thread.task_progress_signal.connect(self.on_task_progress)
         self.worker_thread.task_finished_signal.connect(self.on_task_finished)
-        self.worker_thread.capabilities_signal.connect(lambda text: self.sidebar_dcc_label.setToolTip(text))
+        self.worker_thread.capabilities_signal.connect(lambda text: self.dcc_summary_label.setToolTip(text))
         self.worker_thread.finished.connect(self.on_worker_finished)
         self.worker_thread.start()
 
@@ -1661,6 +1924,8 @@ class MainWindow(QMainWindow):
         QApplication.instance().quit()
 
     def closeEvent(self, event) -> None:
+        self.settings.setValue("compact_geometry_v131", self.saveGeometry())
+        self.settings.setValue("compact_tab_v131", self.main_tabs.currentIndex())
         if self.is_quitting:
             event.accept()
             return

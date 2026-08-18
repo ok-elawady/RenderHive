@@ -1,7 +1,7 @@
 {
   "api": {
     "title": "RenderHive API",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "REST API for the RenderHive render farm management system."
   },
   "endpoint_checks": [
@@ -51,9 +51,9 @@
       "ok": true
     },
     {
-      "endpoint": "job_layer_frame_detail",
-      "configured_path": "/api/jobs/{job_id}/layers/{layer_id}/frames/{frame_id}/",
-      "openapi_path": "/api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/",
+      "endpoint": "job_layer_task_detail",
+      "configured_path": "/api/jobs/{job_id}/layers/{layer_id}/tasks/{task_id}/",
+      "openapi_path": "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/",
       "path_match": true,
       "required_methods": [
         "GET"
@@ -65,9 +65,9 @@
       "ok": true
     },
     {
-      "endpoint": "job_layer_frames",
-      "configured_path": "/api/jobs/{job_id}/layers/{layer_id}/frames/",
-      "openapi_path": "/api/jobs/{job_pk}/layers/{layer_pk}/frames/",
+      "endpoint": "job_layer_tasks",
+      "configured_path": "/api/jobs/{job_id}/layers/{layer_id}/tasks/",
+      "openapi_path": "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/",
       "path_match": true,
       "required_methods": [
         "GET"
@@ -230,49 +230,95 @@
     }
   ],
   "all_submitter_endpoints_valid": true,
+  "worker_endpoint_checks": [
+    {
+      "expected_path": "/api/tasks/dispatch/",
+      "openapi_path": "/api/tasks/dispatch/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/checkpoint/",
+      "openapi_path": "/api/tasks/{id}/checkpoint/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/fail/",
+      "openapi_path": "/api/tasks/{id}/fail/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/skip/",
+      "openapi_path": "/api/tasks/{id}/skip/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/start/",
+      "openapi_path": "/api/tasks/{id}/start/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/succeed/",
+      "openapi_path": "/api/tasks/{id}/succeed/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/workers/ping/",
+      "openapi_path": "/api/workers/ping/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    }
+  ],
+  "all_worker_endpoints_valid": true,
   "payload": {
     "built": true,
     "schema_valid": true,
+    "pool_targeting": true,
+    "dependencies": true,
+    "pool_names_used_as_tags": false,
     "error": ""
+  },
+  "contract_features": {
+    "job_pool_targeting": true,
+    "job_dependencies": true,
+    "layer_execution_mode": true,
+    "max_frames_per_worker": true
   },
   "security": {
     "token_auth_present": true,
     "x_session_token_present": true
   },
-  "worker_owned_endpoints": [
-    "/api/frames/dispatch/",
-    "/api/frames/{id}/checkpoint/",
-    "/api/frames/{id}/fail/",
-    "/api/frames/{id}/skip/",
-    "/api/frames/{id}/start/",
-    "/api/frames/{id}/succeed/",
-    "/api/workers/ping/"
-  ],
   "backend_gaps": [
     {
       "id": "job_create_response_reference",
-      "severity": "required_backend_change",
-      "message": "POST /api/jobs/ returns JobCreate, which has no id/state. Return JobDetail or a response containing id, state and created_at."
-    },
-    {
-      "id": "pool_targeting_not_persisted",
-      "severity": "required_backend_change",
-      "message": "LayerCreate has no target pool field. Maya can read pools and send metadata, but the API contract cannot guarantee pool-based dispatch."
-    },
-    {
-      "id": "missing_start_suspended",
-      "severity": "optional_backend_change",
-      "message": "JobCreate has no atomic start_suspended field; Maya currently submits then pauses."
-    },
-    {
-      "id": "missing_machine_limit",
-      "severity": "optional_backend_change",
-      "message": "JobCreate has no machine_limit field; that UI value is metadata only."
-    },
-    {
-      "id": "missing_dependencies",
-      "severity": "optional_backend_change",
-      "message": "JobCreate has no job dependency field; dependency text is metadata only."
+      "severity": "backend_recommended",
+      "message": "POST /api/jobs/ is documented as returning JobCreate, so the response has no id/state. The Maya plugin has a deterministic task_uid lookup fallback, but JobDetail is the cleaner production contract."
     }
   ]
 }

@@ -214,11 +214,13 @@ def main(argv=None):
     if not callable(render_method):
         raise RuntimeError("Node is not directly renderable: {}".format(args.node))
 
+    print("RENDERHIVE_FRAME_START {}".format(frame), flush=True)
     render_method(
         frame_range=(frame, frame, 1.0),
         ignore_inputs=False,
         verbose=True,
     )
+    print("RENDERHIVE_FRAME_DONE {}".format(frame), flush=True)
     return 0
 
 

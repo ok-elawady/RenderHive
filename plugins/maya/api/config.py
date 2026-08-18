@@ -26,7 +26,7 @@ from core.runtime_log import get_logger
 
 
 LOGGER = get_logger("config")
-CONFIG_SCHEMA_VERSION = 3
+CONFIG_SCHEMA_VERSION = 4
 
 DEFAULT_CONFIG = {
     "schema_version": CONFIG_SCHEMA_VERSION,
@@ -56,8 +56,8 @@ DEFAULT_CONFIG = {
         "job_delete": "/api/jobs/{job_id}/",
         "job_layers": "/api/jobs/{job_id}/layers/",
         "job_layer_detail": "/api/jobs/{job_id}/layers/{layer_id}/",
-        "job_layer_frames": "/api/jobs/{job_id}/layers/{layer_id}/frames/",
-        "job_layer_frame_detail": "/api/jobs/{job_id}/layers/{layer_id}/frames/{frame_id}/",
+        "job_layer_tasks": "/api/jobs/{job_id}/layers/{layer_id}/tasks/",
+        "job_layer_task_detail": "/api/jobs/{job_id}/layers/{layer_id}/tasks/{task_id}/",
         "workers": "/api/workers/",
         "worker_detail": "/api/workers/{worker_id}/",
         "pools": "/api/pools/",
@@ -66,16 +66,13 @@ DEFAULT_CONFIG = {
     "contract": {
         "version": API_CONTRACT_VERSION,
         "job_create_returns_id": False,
-        "layer_pool_ids_field": "",
-        "job_start_suspended_field": "",
-        "job_machine_limit_field": "",
-        "job_dependencies_field": "",
+        "job_pool_targeting": True,
+        "job_dependencies": True,
     },
     "maya": {
         "render_executable": "Render.exe",
         "frame_token": "{frame}",
         "layer_name": "beauty",
-        "use_pool_as_tag": True,
         "submission_log_retention": 200,
     },
 }
@@ -197,8 +194,6 @@ def get_config_backup_path():
     return get_config_path() + ".bak"
 
 
-def get_template_path():
-    return os.path.join(_package_root(), "config", "api_config.template.json")
 
 
 def get_credential_info():
@@ -318,10 +313,28 @@ def normalize_config(config):
         result["endpoints"] = copy.deepcopy(DEFAULT_CONFIG["endpoints"])
     result["endpoints"].pop("worker_ping", None)
     result["endpoints"].pop("frame_dispatch", None)
+    # Contract 0.2.0 renamed legacy frame resources to task resources.
+    result["endpoints"].pop("job_layer_frames", None)
+    result["endpoints"].pop("job_layer_frame_detail", None)
     validate_endpoint_config(result["endpoints"])
 
     if not isinstance(result.get("contract"), dict):
         result["contract"] = copy.deepcopy(DEFAULT_CONFIG["contract"])
+    result["contract"] = _deep_merge(
+        DEFAULT_CONFIG["contract"],
+        result["contract"],
+    )
+    # This plugin build is pinned to RenderHive API 0.2.0. Do not let stale
+    # 0.1.x user configuration silently disable or remap fields that are now
+    # part of the official backend contract.
+    result["contract"].pop("layer_pool_ids_field", None)
+    result["contract"].pop("job_dependencies_field", None)
+    result["contract"].pop("job_start_suspended_field", None)
+    result["contract"].pop("job_machine_limit_field", None)
+    result["contract"]["version"] = API_CONTRACT_VERSION
+    result["contract"]["job_create_returns_id"] = False
+    result["contract"]["job_pool_targeting"] = True
+    result["contract"]["job_dependencies"] = True
     contract_capabilities(result)
 
     if not isinstance(result.get("maya"), dict):
@@ -330,9 +343,10 @@ def normalize_config(config):
     result["maya"]["submission_log_retention"] = _bounded_int(
         result["maya"].get("submission_log_retention"), 200, 10, 5000
     )
-    result["maya"]["use_pool_as_tag"] = _as_bool(
-        result["maya"].get("use_pool_as_tag"), True
-    )
+    # Remove the pre-0.2.0 compatibility switch. Pool targeting is a native
+    # JobCreate field now; carrying this stale key forward can make a migrated
+    # user config behave differently from a clean install.
+    result["maya"].pop("use_pool_as_tag", None)
     return result
 
 

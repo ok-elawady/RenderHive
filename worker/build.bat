@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo ============================================================
-echo RenderHive Worker Multi-DCC Build v1.2.1
+echo RenderHive Worker Multi-DCC Build v1.4.1
 echo ============================================================
 
 if not exist ".venv\Scripts\python.exe" (
