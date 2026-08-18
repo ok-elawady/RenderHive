@@ -617,7 +617,22 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
   };
 }
 
-function getRendererName(engine: string): string {
+// ── Layer Command Builder ───────────────────────────────────────────────────
+
+export interface LayerCommandBuilderOptions {
+  engine: string;
+  renderer?: string;
+  scenePath?: string;
+  startFrame?: string | number;
+  endFrame?: string | number;
+  frameStep?: string | number;
+  renderNode?: string;
+  camera?: string;
+  outputPath?: string;
+  useDynamicTokens?: boolean;
+}
+
+export function getRendererName(engine: string): string {
   const normalizedEngine = engine.toLowerCase();
 
   if (normalizedEngine.includes("arnold")) return "arnold";
@@ -634,32 +649,97 @@ function getRendererName(engine: string): string {
   return engine.trim().toLowerCase() || "default_renderer";
 }
 
+export function generateLayerCommand(options: LayerCommandBuilderOptions): string {
+  const {
+    engine,
+    renderer = "",
+    scenePath = "",
+    startFrame = "1",
+    endFrame = "100",
+    frameStep = "1",
+    renderNode = "",
+    camera = "",
+    outputPath = "",
+    useDynamicTokens = true,
+  } = options;
+
+  const normalized = engine.toLowerCase();
+  const sceneToken = useDynamicTokens ? (scenePath ? `"${scenePath}"` : '"{SCENE_PATH}"') : scenePath || "scene";
+  const startToken = useDynamicTokens ? "{START_FRAME}" : String(startFrame);
+  const endToken = useDynamicTokens ? "{END_FRAME}" : String(endFrame);
+  const stepToken = useDynamicTokens ? "{FRAME_STEP}" : String(frameStep);
+  const frameToken = useDynamicTokens ? "{FRAME}" : String(startFrame);
+  const nodeToken = useDynamicTokens ? (renderNode ? `"${renderNode}"` : '"{RENDER_NODE}"') : renderNode || "";
+  const camToken = useDynamicTokens ? (camera ? `"${camera}"` : '"{CAMERA}"') : camera || "";
+
+  // Houdini (Karma / Mantra / Hython ROP)
+  if (normalized.includes("houdini") || normalized.includes("karma") || normalized.includes("mantra")) {
+    if (normalized.includes("husk")) {
+      const activeRenderer = renderer || "Karma XPU";
+      return `husk --renderer "${activeRenderer}" --frame ${frameToken} ${sceneToken}`;
+    }
+    const ropParam = renderNode ? ` --rop ${nodeToken}` : ' --rop "{RENDER_NODE}"';
+    return `"hython" -m renderhive_houdini.worker.render_rop --scene ${sceneToken}${ropParam} --frame ${frameToken}`;
+  }
+
+  // Maya (Arnold / V-Ray / Redshift)
+  if (normalized.includes("maya")) {
+    const activeRenderer = renderer || "arnold";
+    const parts = ["Render.exe", "-r", activeRenderer, "-s", startToken, "-e", endToken, "-b", stepToken];
+    if (camera) {
+      parts.push("-cam", camToken);
+    }
+    if (outputPath) {
+      parts.push("-rd", `"${outputPath}"`);
+    }
+    parts.push(sceneToken);
+    return parts.join(" ");
+  }
+
+  // Blender (Cycles / Eevee)
+  if (normalized.includes("blender") || normalized.includes("cycles")) {
+    const activeEngine = (renderer || "CYCLES").toUpperCase();
+    return `blender -b ${sceneToken} -E ${activeEngine} -s ${startToken} -e ${endToken} -a`;
+  }
+
+  // Unreal Engine 5 (MRQ)
+  if (normalized.includes("unreal") || normalized.includes("mrq")) {
+    return `ue-mrq-render --scene ${sceneToken} --frames ${startToken}-${endToken}`;
+  }
+
+  // Nuke
+  if (normalized.includes("nuke")) {
+    const nodeArg = renderNode ? ` -X "${renderNode}"` : " -x";
+    return `nuke${nodeArg} -F ${startToken}-${endToken} ${sceneToken}`;
+  }
+
+  // Standalone Arnold Kick
+  if (normalized.includes("kick") || normalized.includes("arnold kick")) {
+    return `kick -i ${sceneToken} -frame ${frameToken}`;
+  }
+
+  // Standalone V-Ray
+  if (normalized.includes("vray") || normalized.includes("v-ray standalone")) {
+    return `vray -sceneFile=${sceneToken} -frames=${frameToken}`;
+  }
+
+  // Generic fallback
+  return `render --renderer ${renderer || getRendererName(engine)} --frames ${startToken}-${endToken} ${sceneToken}`;
+}
+
 export function getDefaultRenderCommand(
   engine: string,
   startFrame: string,
   endFrame: string,
 ): string {
-  const frameRange = `${startFrame}-${endFrame}`;
-  const renderer = getRendererName(engine);
-
-  if (renderer === "karma" || renderer === "mantra") {
-    return `hython render.py --renderer ${renderer} --frames ${frameRange}`;
-  }
-
-  if (renderer === "arnold" || renderer === "vray") {
-    return `render -renderer ${renderer} -f ${frameRange}`;
-  }
-
-  if (renderer === "mrq") {
-    return `ue-mrq-render --frames ${frameRange}`;
-  }
-
-  if (renderer === "cycles") {
-    return `blender -b scene.blend -E CYCLES -s ${startFrame} -e ${endFrame} -a`;
-  }
-
-  return `render --renderer ${renderer} --frames ${frameRange}`;
+  return generateLayerCommand({
+    engine,
+    startFrame,
+    endFrame,
+    useDynamicTokens: true,
+  });
 }
+
 
 
 

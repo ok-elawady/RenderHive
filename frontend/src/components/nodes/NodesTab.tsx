@@ -79,7 +79,8 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
           n.pools?.some((p) => p.name.toLowerCase().includes(q)) ||
           n.tags?.some((t) => t.toLowerCase().includes(q)) ||
           n.gpu_models?.some((g) => g.toLowerCase().includes(q)) ||
-          (typeof n.system_info?.cpu_name === "string" && n.system_info.cpu_name.toLowerCase().includes(q)),
+          (typeof (n.system_info as Record<string, unknown> | undefined)?.cpu_name === "string" &&
+            String((n.system_info as Record<string, unknown>).cpu_name).toLowerCase().includes(q)),
       );
     }
     if (statusFilter && statusFilter !== "ALL") {
@@ -318,10 +319,10 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                             <span className="font-bold text-xs text-foreground">Hardware Specifications</span>
                           </div>
                           <div className="space-y-1.5 w-full text-xs font-mono">
-                            {typeof item.system_info?.cpu_name === "string" && (
+                            {typeof (item.system_info as Record<string, unknown> | undefined)?.cpu_name === "string" && (
                               <div className="flex flex-col gap-0.5">
                                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-sans font-semibold">Processor</span>
-                                <span className="text-foreground text-xs leading-snug">{item.system_info.cpu_name}</span>
+                                <span className="text-foreground text-xs leading-snug">{String((item.system_info as Record<string, unknown>).cpu_name)}</span>
                               </div>
                             )}
                             <div className="flex items-center justify-between text-xs pt-0.5">
@@ -346,9 +347,9 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                               <span className="text-foreground font-medium text-xs truncate max-w-[170px]" title={item.gpu_models.join(", ")}>
                                 {item.gpu_models.join(", ")}
                               </span>
-                              {typeof item.system_info?.gpu_vram_mb === "number" && (
+                              {typeof (item.system_info as Record<string, unknown> | undefined)?.gpu_vram_mb === "number" && (
                                 <span className="text-[11px] font-mono text-muted-foreground shrink-0">
-                                  ({formatMemory(item.system_info.gpu_vram_mb)})
+                                  ({formatMemory((item.system_info as Record<string, unknown>).gpu_vram_mb as number)})
                                 </span>
                               )}
                             </div>
@@ -362,12 +363,12 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                               <span className="font-bold text-xs text-foreground">GPU Hardware & VRAM</span>
                             </div>
                             <div className="space-y-2 w-full text-xs font-mono">
-                              {Array.isArray(item.system_info?.gpus) && (item.system_info.gpus as Array<Record<string, unknown>>).length > 0 ? (
-                                (item.system_info.gpus as Array<Record<string, unknown>>).map((g, idx) => (
+                              {Array.isArray((item.system_info as Record<string, unknown> | undefined)?.gpus) && ((item.system_info as Record<string, unknown>).gpus as Array<Record<string, unknown>>).length > 0 ? (
+                                ((item.system_info as Record<string, unknown>).gpus as Array<Record<string, unknown>>).map((g, idx) => (
                                   <div key={idx} className="flex flex-col gap-1 bg-muted/40 p-2 rounded border border-border/40">
                                     <div className="flex items-center gap-1.5 text-foreground font-semibold">
                                       <span className="size-1.5 rounded-full bg-primary shrink-0" />
-                                      <span className="truncate">{String(g.name || item.gpu_models[idx] || "GPU")}</span>
+                                      <span className="truncate">{String(g.name || item.gpu_models?.[idx] || "GPU")}</span>
                                     </div>
                                     {typeof g.vram_mb === "number" && (
                                       <div className="flex items-center justify-between text-[11px] text-muted-foreground pl-3 font-sans">
@@ -403,8 +404,8 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                                 item.gpu_models.map((gpu, idx) => (
                                   <div key={idx} className="flex items-center justify-between gap-2 bg-muted/40 px-2 py-1 rounded border border-border/40">
                                     <span className="truncate">{gpu}</span>
-                                    {typeof item.system_info?.gpu_vram_mb === "number" && (
-                                      <span className="text-muted-foreground font-mono">{formatMemory(item.system_info.gpu_vram_mb)}</span>
+                                    {typeof (item.system_info as Record<string, unknown> | undefined)?.gpu_vram_mb === "number" && (
+                                      <span className="text-muted-foreground font-mono">{formatMemory((item.system_info as Record<string, unknown>).gpu_vram_mb as number)}</span>
                                     )}
                                   </div>
                                 ))
