@@ -5,25 +5,33 @@ import {
   AlertTriangle,
   BrainCircuit,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Cpu,
   HelpCircle,
   Layers,
   RefreshCw,
   Save,
   Server,
+  SlidersHorizontal,
   WifiOff,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/layout/PageHeader";
-import AgenticLogs from "@/components/dashboard/AgenticLogs";
+import { DispatchTracesTable } from "@/components/telemetry/DispatchTracesTable";
 import { ModelManager } from "@/components/dashboard/ModelManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -61,8 +69,6 @@ function loadSavedRules(): string {
   return window.localStorage.getItem(RULES_STORAGE_KEY) ?? DEFAULT_SYSTEM_PROMPT;
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-
 export default function AiSchedulerPage() {
   const { data: health, isLoading: isHealthLoading, mutate } = useSWR<AiHealthStatus>(
     "/api/v1/health",
@@ -72,15 +78,16 @@ export default function AiSchedulerPage() {
 
   const [rules, setRules] = useState<string>(loadSavedRules);
   const [savedRules, setSavedRules] = useState<string>(loadSavedRules);
-  const [isRulesExpanded, setIsRulesExpanded] = useState(false);
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
 
   // ── Rules persistence ──────────────────────────────────────────────────────
   const handleSaveRules = () => {
     window.localStorage.setItem(RULES_STORAGE_KEY, rules);
     setSavedRules(rules);
+    setIsRulesOpen(false);
     toast.success("Rules saved locally", {
       description:
-        "Rules are stored in your browser. To apply them to the running AI service, restart it with the updated prompts.py.",
+        "Rules are stored in your browser. To apply them cluster-wide, restart the AI Scheduler with the updated prompt.",
     });
   };
 
@@ -92,18 +99,105 @@ export default function AiSchedulerPage() {
   };
 
   const rulesChanged = rules !== savedRules;
-
   const isOnline = health?.status === "ok";
   const modelLoaded = health?.model_loaded === true;
 
   return (
     <div className="flex h-full flex-col bg-background font-sans text-foreground overflow-hidden">
       <PageHeader
-        title="AI Scheduler"
-        description="Monitor the local LLM service and manage dispatch tie-breaking rules."
+        title="AI Scheduler & Dispatches"
+        description="Monitor the local LLM service and review candidate task dispatch traces."
       >
         <div className="flex items-center gap-2">
+          {/* Dispatch Rules Dialog */}
+          <Dialog open={isRulesOpen} onOpenChange={setIsRulesOpen}>
+            <DialogTrigger render={<Button variant="outline" className="gap-2" />}>
+              <SlidersHorizontal size={14} />
+              <span>Dispatch Rules</span>
+              {rulesChanged && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] h-4 px-1.5 border-amber-500/40 text-amber-400 bg-amber-500/10 font-medium ml-0.5"
+                >
+                  Unsaved
+                </Badge>
+              )}
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col p-6 font-sans">
+              <DialogHeader className="border-b border-border/50 pb-4 shrink-0">
+                <div className="flex items-center gap-2">
+                  <BrainCircuit size={18} className="text-primary" />
+                  <DialogTitle className="text-lg font-black text-foreground">
+                    AI Dispatch Rules
+                  </DialogTitle>
+                </div>
+                <DialogDescription className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                  These rules form the system prompt sent to the LLM when evaluating candidate tasks for worker dispatch.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex-1 overflow-y-auto space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    System Prompt
+                  </label>
+                  <Textarea
+                    value={rules}
+                    onChange={(e) => setRules(e.target.value)}
+                    rows={12}
+                    className="font-mono text-xs bg-surface-deep border-border resize-none leading-relaxed p-3"
+                    placeholder="Enter AI evaluation instructions..."
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div className="text-[11px] text-muted-foreground leading-relaxed bg-muted/20 p-3 rounded-lg border border-border/40 space-y-1">
+                  <p className="font-semibold text-foreground">Note on Cluster Execution:</p>
+                  <p>
+                    Saved rules are stored in your browser. To permanently apply them to the backend AI service, update{" "}
+                    <code className="font-mono text-[10px] bg-muted/60 px-1 py-0.5 rounded">
+                      services/ai_scheduler/prompts.py
+                    </code>{" "}
+                    and restart the container.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter className="border-t border-border/50 pt-4 flex flex-row items-center justify-between gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetRules}
+                  disabled={rules === DEFAULT_SYSTEM_PROMPT}
+                  className="text-xs"
+                >
+                  Reset to Defaults
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsRulesOpen(false)}
+                    className="text-xs"
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSaveRules}
+                    disabled={!rulesChanged}
+                    className="text-xs gap-1.5"
+                  >
+                    <Save size={13} />
+                    Save Rules
+                  </Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <ModelManager onModelChanged={() => void mutate()} />
+
           <Button
             variant="outline"
             className="gap-2"
@@ -115,16 +209,16 @@ export default function AiSchedulerPage() {
         </div>
       </PageHeader>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
-        {/* ── Service Status Card ─────────────────────────────────────────── */}
-        <Card className="border-border bg-card/95 shadow-none">
-          <CardHeader className="border-b border-border/50">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2.5 text-base font-black">
-                <Server size={16} className="text-primary" />
-                Service Status
-              </CardTitle>
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* ── Service Status Card Matching Dashboard Standard ───────────── */}
+        <Card className="bg-card border-border p-0 gap-0 overflow-hidden font-sans">
+          <CardHeader className="p-3.5 pb-2.5 border-b border-border/50 flex flex-row items-center justify-between bg-muted/10">
+            <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Server size={16} className="text-primary" />
+              <span>Service Status</span>
+            </CardTitle>
 
+            <div className="flex items-center gap-2">
               {isHealthLoading ? (
                 <Badge variant="outline" className="gap-1.5 text-muted-foreground">
                   <RefreshCw size={10} className="animate-spin" />
@@ -132,18 +226,18 @@ export default function AiSchedulerPage() {
                 </Badge>
               ) : isOnline ? (
                 modelLoaded ? (
-                  <Badge variant="outline" className="gap-1.5 border-success/40 text-success bg-success/5">
+                  <Badge variant="outline" className="gap-1.5 border-success/40 text-success bg-success/5 font-mono text-[10px] h-5">
                     <StatusDot online={true} />
                     Online
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="gap-1.5 border-amber-500/40 text-amber-500 bg-amber-500/5">
+                  <Badge variant="outline" className="gap-1.5 border-amber-500/40 text-amber-500 bg-amber-500/5 font-mono text-[10px] h-5">
                     <StatusDot online={true} warning={true} />
                     Mock Mode
                   </Badge>
                 )
               ) : (
-                <Badge variant="outline" className="gap-1.5 border-destructive/40 text-destructive bg-destructive/5">
+                <Badge variant="outline" className="gap-1.5 border-destructive/40 text-destructive bg-destructive/5 font-mono text-[10px] h-5">
                   <WifiOff size={10} />
                   Unreachable
                 </Badge>
@@ -151,7 +245,7 @@ export default function AiSchedulerPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="space-y-4">
+          <CardContent className="p-4 space-y-4">
             {!isHealthLoading && !isOnline && (
               <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
                 <AlertTriangle size={16} className="text-destructive mt-0.5 shrink-0" />
@@ -225,91 +319,8 @@ export default function AiSchedulerPage() {
           </CardContent>
         </Card>
 
-        {/* ── Dispatch Log Feed ───────────────────────────────────────────── */}
-        <div className="h-80">
-          <AgenticLogs searchQuery="" />
-        </div>
-
-        {/* ── System Prompt / Rules Editor ───────────────────────────────── */}
-        <Card className="border-border bg-card/95 shadow-none">
-          <CardHeader className="border-b border-border/50">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <CardTitle className="text-base font-black flex items-center gap-2.5">
-                  <BrainCircuit size={16} className="text-primary" />
-                  Dispatch Rules
-                </CardTitle>
-                {rulesChanged && (
-                  <Badge
-                    variant="outline"
-                    className="text-xs h-5 px-2 border-amber-500/40 text-amber-500 bg-amber-500/5 font-medium"
-                  >
-                    Unsaved
-                  </Badge>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsRulesExpanded((v) => !v)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {isRulesExpanded ? (
-                  <>
-                    Collapse <ChevronUp size={13} />
-                  </>
-                ) : (
-                  <>
-                    Edit rules <ChevronDown size={13} />
-                  </>
-                )}
-              </button>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-3">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              These rules form the system prompt sent to the LLM when breaking dispatch ties. Edits are saved locally in
-              your browser. To permanently apply changes, copy the updated prompt into{" "}
-              <code className="font-mono text-xs bg-muted/60 px-1.5 py-0.5 rounded">
-                services/ai_scheduler/prompts.py
-              </code>{" "}
-              and restart the service.
-            </p>
-
-            {isRulesExpanded && (
-              <>
-                <Textarea
-                  value={rules}
-                  onChange={(e) => setRules(e.target.value)}
-                  rows={18}
-                  className="font-mono text-xs leading-relaxed resize-y bg-surface-deep border-input"
-                  spellCheck={false}
-                />
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleResetRules}
-                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-                  >
-                    Reset to defaults
-                  </button>
-                  <Button size="sm" className="gap-2" onClick={handleSaveRules} disabled={!rulesChanged}>
-                    <Save size={13} />
-                    Save Rules
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {!isRulesExpanded && (
-              <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
-                <p className="text-xs text-muted-foreground font-mono leading-relaxed line-clamp-3 opacity-70">
-                  {savedRules}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* ── Dispatch Traces Table ───────────────────────────────────────── */}
+        <DispatchTracesTable />
       </div>
     </div>
   );
