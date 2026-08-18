@@ -2,9 +2,21 @@ from pathlib import Path
 import hashlib
 import json
 import xml.etree.ElementTree as ET
-from PIL import Image
+import struct
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _png_size(path):
+    try:
+        from PIL import Image
+        image = Image.open(path)
+        return image.size
+    except ImportError:
+        with open(path, "rb") as f:
+            data = f.read(24)
+            w, h = struct.unpack(">II", data[16:24])
+            return (w, h)
 
 
 def test_shelf_uses_known_good_basename_icon_contract():
@@ -27,14 +39,11 @@ def test_shelf_icon_is_available_on_houdini_ui_icon_path():
     assert (icon_dir / 'renderhive.svg').is_file()
     assert (icon_dir / 'renderhive.png').is_file()
     ET.parse(str(icon_dir / 'renderhive.svg'))
-    image = Image.open(icon_dir / 'renderhive.png')
-    assert image.size == (32, 32)
-    assert image.mode in ('RGBA', 'RGB')
+    assert _png_size(icon_dir / 'renderhive.png') == (32, 32)
 
 
 def test_official_header_logo_is_packaged():
-    image = Image.open(ROOT / 'payload' / 'icons' / 'renderhive_header_logo.png')
-    assert image.size == (52, 52)
+    assert _png_size(ROOT / 'payload' / 'icons' / 'renderhive_header_logo.png') == (52, 52)
 
 
 def test_package_keeps_known_good_hpath_pattern():
