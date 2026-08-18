@@ -94,6 +94,7 @@ def run_process(
     heartbeat: Callable[[], None],
     log: Callable[[str], None],
     line_callback: Optional[Callable[[str], None]] = None,
+    event_callback: Optional[Callable[[str], None]] = None,
 ) -> ProcessResult:
     log_root = writable_log_root()
     safe_task_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(task_id or "task"))
@@ -113,6 +114,11 @@ def run_process(
     output_image_path = ""
     process = None
     try:
+        if event_callback is not None:
+            try:
+                event_callback("resolving_executable")
+            except Exception:
+                pass
         prepared_command = _resolve_executable(command, merged_env)
         if cwd and not os.path.isdir(cwd):
             raise FileNotFoundError("Working directory does not exist: {}".format(cwd))
@@ -122,6 +128,12 @@ def run_process(
             handle.write("Executable: {}\n".format(prepared_command[0]))
             handle.write("Working Directory: {}\n\n".format(cwd or ""))
             handle.flush()
+
+            if event_callback is not None:
+                try:
+                    event_callback("starting_process")
+                except Exception:
+                    pass
 
             process = subprocess.Popen(
                 prepared_command,
@@ -138,10 +150,21 @@ def run_process(
                 bufsize=1,
             )
 
+            if event_callback is not None:
+                try:
+                    event_callback("process_started")
+                except Exception:
+                    pass
+
             last_heartbeat = time.monotonic()
             while True:
                 if is_cancelled():
                     log("Cancellation requested. Stopping the DCC process...")
+                    if event_callback is not None:
+                        try:
+                            event_callback("stopping_process")
+                        except Exception:
+                            pass
                     _terminate_process_tree(process)
                     break
 
@@ -169,9 +192,19 @@ def run_process(
                     time.sleep(0.1)
 
             exit_code = int(process.wait())
+            if process.stdout is not None:
+                try:
+                    process.stdout.close()
+                except Exception:
+                    pass
     except Exception as error:
         if process is not None:
             _terminate_process_tree(process)
+            if process.stdout is not None:
+                try:
+                    process.stdout.close()
+                except Exception:
+                    pass
         with open(log_path, "a", encoding="utf-8", errors="replace") as handle:
             handle.write("\nWorker execution error: {}\n".format(error))
         return ProcessResult(exit_code=-1, log_path=log_path, error_tail=str(error))

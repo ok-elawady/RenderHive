@@ -1,0 +1,324 @@
+{
+  "api": {
+    "title": "RenderHive API",
+    "version": "0.2.0",
+    "description": "REST API for the RenderHive render farm management system."
+  },
+  "endpoint_checks": [
+    {
+      "endpoint": "connection_test",
+      "configured_path": "/api/jobs/?page=1",
+      "openapi_path": "/api/jobs/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "GET",
+        "POST"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "job_delete",
+      "configured_path": "/api/jobs/{job_id}/",
+      "openapi_path": "/api/jobs/{id}/",
+      "path_match": true,
+      "required_methods": [
+        "DELETE"
+      ],
+      "available_methods": [
+        "DELETE",
+        "GET",
+        "PATCH"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "job_layer_detail",
+      "configured_path": "/api/jobs/{job_id}/layers/{layer_id}/",
+      "openapi_path": "/api/jobs/{job_pk}/layers/{id}/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "GET"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "job_layer_task_detail",
+      "configured_path": "/api/jobs/{job_id}/layers/{layer_id}/tasks/{task_id}/",
+      "openapi_path": "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "GET"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "job_layer_tasks",
+      "configured_path": "/api/jobs/{job_id}/layers/{layer_id}/tasks/",
+      "openapi_path": "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "GET"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "job_layers",
+      "configured_path": "/api/jobs/{job_id}/layers/",
+      "openapi_path": "/api/jobs/{job_pk}/layers/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "GET"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "job_pause",
+      "configured_path": "/api/jobs/{job_id}/pause/",
+      "openapi_path": "/api/jobs/{id}/pause/",
+      "path_match": true,
+      "required_methods": [
+        "POST"
+      ],
+      "available_methods": [
+        "POST"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "job_resume",
+      "configured_path": "/api/jobs/{job_id}/resume/",
+      "openapi_path": "/api/jobs/{id}/resume/",
+      "path_match": true,
+      "required_methods": [
+        "POST"
+      ],
+      "available_methods": [
+        "POST"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "job_status",
+      "configured_path": "/api/jobs/{job_id}/",
+      "openapi_path": "/api/jobs/{id}/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "DELETE",
+        "GET",
+        "PATCH"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "job_update",
+      "configured_path": "/api/jobs/{job_id}/",
+      "openapi_path": "/api/jobs/{id}/",
+      "path_match": true,
+      "required_methods": [
+        "PATCH"
+      ],
+      "available_methods": [
+        "DELETE",
+        "GET",
+        "PATCH"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "jobs",
+      "configured_path": "/api/jobs/",
+      "openapi_path": "/api/jobs/",
+      "path_match": true,
+      "required_methods": [
+        "GET",
+        "POST"
+      ],
+      "available_methods": [
+        "GET",
+        "POST"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "pool_detail",
+      "configured_path": "/api/pools/{pool_id}/",
+      "openapi_path": "/api/pools/{id}/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "DELETE",
+        "GET",
+        "PATCH",
+        "PUT"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "pools",
+      "configured_path": "/api/pools/",
+      "openapi_path": "/api/pools/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "GET",
+        "POST"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "worker_detail",
+      "configured_path": "/api/workers/{worker_id}/",
+      "openapi_path": "/api/workers/{id}/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "GET"
+      ],
+      "method_match": true,
+      "ok": true
+    },
+    {
+      "endpoint": "workers",
+      "configured_path": "/api/workers/",
+      "openapi_path": "/api/workers/",
+      "path_match": true,
+      "required_methods": [
+        "GET"
+      ],
+      "available_methods": [
+        "GET"
+      ],
+      "method_match": true,
+      "ok": true
+    }
+  ],
+  "all_submitter_endpoints_valid": true,
+  "worker_endpoint_checks": [
+    {
+      "expected_path": "/api/tasks/dispatch/",
+      "openapi_path": "/api/tasks/dispatch/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/checkpoint/",
+      "openapi_path": "/api/tasks/{id}/checkpoint/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/fail/",
+      "openapi_path": "/api/tasks/{id}/fail/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/skip/",
+      "openapi_path": "/api/tasks/{id}/skip/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/start/",
+      "openapi_path": "/api/tasks/{id}/start/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/tasks/{id}/succeed/",
+      "openapi_path": "/api/tasks/{id}/succeed/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    },
+    {
+      "expected_path": "/api/workers/ping/",
+      "openapi_path": "/api/workers/ping/",
+      "required_method": "POST",
+      "available_methods": [
+        "POST"
+      ],
+      "ok": true
+    }
+  ],
+  "all_worker_endpoints_valid": true,
+  "payload": {
+    "built": true,
+    "schema_valid": true,
+    "pool_targeting": true,
+    "dependencies": true,
+    "pool_names_used_as_tags": false,
+    "error": ""
+  },
+  "contract_features": {
+    "job_pool_targeting": true,
+    "job_dependencies": true,
+    "layer_execution_mode": true,
+    "max_frames_per_worker": true
+  },
+  "security": {
+    "token_auth_present": true,
+    "x_session_token_present": true
+  },
+  "backend_gaps": [
+    {
+      "id": "job_create_response_reference",
+      "severity": "backend_recommended",
+      "message": "POST /api/jobs/ is documented as returning JobCreate, so the response has no id/state. The Maya plugin has a deterministic task_uid lookup fallback, but JobDetail is the cleaner production contract."
+    }
+  ]
+}

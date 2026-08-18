@@ -93,7 +93,7 @@ def production_health_report():
     return {
         "plugin_version": PLUGIN_VERSION,
         "api_contract_version": API_CONTRACT_VERSION,
-        "generated_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "ok": all(item.get("ok") for item in checks),
         "checks": checks,
     }

@@ -56,7 +56,8 @@ def test_houdini_job_matches_job_create_contract():
         chunk_size=2,
         pool_targeting={
             "strategy": "selected_only",
-            "effective_pool_ids": ["pool-id"],
+            "selected_pool_ids": ["11111111-1111-4111-8111-111111111111"],
+            "effective_pool_ids": ["11111111-1111-4111-8111-111111111111"],
             "effective_pool_names": ["Houdini"],
         },
     )
@@ -67,4 +68,6 @@ def test_houdini_job_matches_job_create_contract():
     assert payload["layers"][0]["chunk_size"] == 2
     assert payload["layers"][0]["scene_info"]["dcc"] == "houdini"
     assert "{frame}" in payload["layers"][0]["command"]
-    assert "Houdini" in payload["layers"][0]["tags"]
+    assert "dcc:houdini" in payload["layers"][0]["tags"]
+    assert payload["included_pools"] == ["11111111-1111-4111-8111-111111111111"]
+    assert payload["max_tasks_per_worker"] == 1

@@ -1,3 +1,9 @@
-"""Build hython and husk execution commands."""
+"""Backward-compatible command builder for worker handoff."""
 
-# Implementation is intentionally deferred to the matching development phase.
+from __future__ import absolute_import
+
+from renderhive_houdini.core.task_builder import build_worker_command
+
+
+def build(task, config):
+    return build_worker_command(task, config)

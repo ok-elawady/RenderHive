@@ -7,6 +7,8 @@ from renderhive_houdini.ui.qt_compat import (
     QtGui,
     QtWidgets,
     TEXT_SELECTABLE_BY_MOUSE,
+    ALIGN_CENTER,
+    Signal,
 )
 from renderhive_houdini.ui.theme import COLORS
 
@@ -142,4 +144,48 @@ class StatusChip(QtWidgets.QLabel):
     def __init__(self, text="", parent=None):
         super().__init__(str(text), parent)
         self.setObjectName("MetaChip")
-        self.setAlignment(QtCore.Qt.AlignCenter)
+        self.setAlignment(ALIGN_CENTER)
+
+
+class SegmentedChoice(QtWidgets.QFrame):
+    """Compact radio-style segmented selector matching the RenderHive submitter UX."""
+    currentTextChanged = Signal(str) if Signal is not None else None
+
+    def __init__(self, labels, parent=None):
+        super().__init__(parent)
+        self.setObjectName("SegmentedControl")
+        self._buttons = []
+        self._group = QtWidgets.QButtonGroup(self)
+        self._group.setExclusive(True)
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        values = [str(value) for value in labels or []]
+        for index, label in enumerate(values):
+            button = QtWidgets.QPushButton(label)
+            button.setCheckable(True)
+            button.setObjectName("SegmentButton")
+            button.setProperty("segment", "first" if index == 0 else "last" if index == len(values) - 1 else "middle")
+            self._group.addButton(button, index)
+            row.addWidget(button, 1)
+            self._buttons.append(button)
+            button.clicked.connect(self._emit_changed)
+        if self._buttons:
+            self._buttons[0].setChecked(True)
+
+    def _emit_changed(self, *args):
+        if self.currentTextChanged is not None:
+            self.currentTextChanged.emit(self.currentText())
+
+    def currentText(self):
+        button = self._group.checkedButton()
+        return str(button.text()) if button is not None else ""
+
+    def setCurrentText(self, text):
+        target = str(text or "")
+        for button in self._buttons:
+            if str(button.text()) == target:
+                button.setChecked(True)
+                self._emit_changed()
+                return True
+        return False

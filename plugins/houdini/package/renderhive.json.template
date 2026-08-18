@@ -12,7 +12,7 @@
       "method": "prepend"
     },
     {
-      "RENDERHIVE_HOUDINI_VERSION": "0.5.0"
+      "RENDERHIVE_HOUDINI_VERSION": "2.0.5"
     }
   ],
   "hpath": "$RENDERHIVE_HOUDINI_ROOT"

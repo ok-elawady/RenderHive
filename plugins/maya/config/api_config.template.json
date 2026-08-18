@@ -1,12 +1,20 @@
 {
+    "schema_version": 4,
     "enabled": true,
-    "base_url": "http://localhost:8000",
+    "base_url": "http://127.0.0.1:8000",
     "timeout_seconds": 15,
     "verify_ssl": true,
+    "network": {
+        "get_retry_attempts": 2,
+        "retry_backoff_seconds": 0.4,
+        "max_retry_delay_seconds": 5.0,
+        "max_response_bytes": 10485760,
+        "allow_cross_origin_pagination": false
+    },
     "auth": {
         "type": "token",
         "token": "",
-        "token_storage": "dpapi_or_environment"
+        "token_storage": "external"
     },
     "endpoints": {
         "connection_test": "/api/jobs/?page=1",
@@ -18,34 +26,23 @@
         "job_delete": "/api/jobs/{job_id}/",
         "job_layers": "/api/jobs/{job_id}/layers/",
         "job_layer_detail": "/api/jobs/{job_id}/layers/{layer_id}/",
-        "job_layer_frames": "/api/jobs/{job_id}/layers/{layer_id}/frames/",
-        "job_layer_frame_detail": "/api/jobs/{job_id}/layers/{layer_id}/frames/{frame_id}/",
+        "job_layer_tasks": "/api/jobs/{job_id}/layers/{layer_id}/tasks/",
+        "job_layer_task_detail": "/api/jobs/{job_id}/layers/{layer_id}/tasks/{task_id}/",
         "workers": "/api/workers/",
         "worker_detail": "/api/workers/{worker_id}/",
         "pools": "/api/pools/",
         "pool_detail": "/api/pools/{pool_id}/"
     },
     "contract": {
-        "version": "0.1.0",
+        "version": "0.2.0",
         "job_create_returns_id": false,
-        "layer_pool_ids_field": "",
-        "job_start_suspended_field": "",
-        "job_machine_limit_field": "",
-        "job_dependencies_field": ""
+        "job_pool_targeting": true,
+        "job_dependencies": true
     },
     "maya": {
         "render_executable": "Render.exe",
         "frame_token": "{frame}",
         "layer_name": "beauty",
-        "use_pool_as_tag": true,
         "submission_log_retention": 200
-    },
-    "schema_version": 3,
-    "network": {
-        "get_retry_attempts": 2,
-        "retry_backoff_seconds": 0.4,
-        "max_retry_delay_seconds": 5.0,
-        "max_response_bytes": 10485760,
-        "allow_cross_origin_pagination": false
     }
 }

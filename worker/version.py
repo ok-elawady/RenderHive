@@ -1,4 +1,4 @@
 """RenderHive Worker version information."""
 
-WORKER_VERSION = "1.2.2"
-WORKER_BUILD = "system-tray-import-fix"
+WORKER_VERSION = "1.4.1"
+WORKER_BUILD = "production-task-progress"

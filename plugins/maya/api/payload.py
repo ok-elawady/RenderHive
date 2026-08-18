@@ -6,6 +6,7 @@ import ntpath
 import os
 import platform
 import re
+import uuid
 
 from .contract import contract_capabilities
 
@@ -91,8 +92,15 @@ def build_maya_command(task, config):
         default="{frame}"
     ) or "{frame}"
 
-    renderer = _text(task.get("renderer"), default="arnold") or "arnold"
+    renderer = (_text(task.get("renderer"), default="arnold") or "arnold").lower()
+    if renderer != "arnold":
+        raise PayloadError(
+            "RenderHive Maya currently supports Arnold only; got renderer '{}'.".format(renderer)
+        )
     camera = _text(task.get("camera"))
+    render_layer = _text(
+        task.get("render_layer") or task.get("render_layer_name")
+    )
     project_path = _absolute_path(task.get("project_path"))
     output_path = _absolute_path(task.get("output_path"))
     scene_path = _absolute_path(task.get("scene_path"))
@@ -111,62 +119,174 @@ def build_maya_command(task, config):
         "-rd", _quote(output_path),
     ]
 
-    if renderer.lower() == "arnold":
-        image_name = _text(task.get("image_name"))
-        image_format = _text(task.get("image_format"), default="exr") or "exr"
-        padding = _integer(task.get("frame_padding"), 4, minimum=1)
+    # Render Setup layers are submitted as separate backend layers. The master
+    # layer intentionally omits -rl because that is Maya's native default
+    # render context; named Render Setup/legacy layers are selected explicitly.
+    if render_layer and render_layer not in (
+        "defaultRenderLayer",
+        "masterLayer",
+        "Master Layer",
+    ):
+        parts.extend(["-rl", _quote(render_layer)])
 
-        py_script = [
-            "import maya.cmds as cmds",
-            "cmds.loadPlugin('mtoa', quiet=True)",
-            "import mtoa.core",
-            "mtoa.core.createOptions()",
-        ]
+    image_name = _text(task.get("image_name"))
+    image_format = (_text(task.get("image_format"), default="exr") or "exr").lower()
+    if image_format == "jpg":
+        image_format = "jpeg"
+    padding = _integer(task.get("frame_padding"), 4, minimum=1)
 
-        if image_name:
-            py_script.append(
-                "cmds.setAttr('defaultRenderGlobals.imageFilePrefix', {}, type='string')".format(
-                    _python_literal(image_name)
-                )
-            )
-        if image_format:
-            py_script.append(
-                "cmds.setAttr('defaultArnoldDriver.aiTranslator', {}, type='string')".format(
-                    _python_literal(image_format)
-                )
-            )
+    py_script = [
+        "import maya.cmds as cmds",
+        "cmds.loadPlugin('mtoa', quiet=True)",
+        "cmds.setAttr('defaultRenderGlobals.currentRenderer', 'arnold', type='string')",
+        "import mtoa.core",
+        "mtoa.core.createOptions()",
+    ]
+
+    if image_name:
         py_script.append(
-            "cmds.setAttr('defaultRenderGlobals.extensionPadding', {})".format(
-                padding
+            "cmds.setAttr('defaultRenderGlobals.imageFilePrefix', {}, type='string')".format(
+                _python_literal(image_name)
             )
         )
+    if image_format:
         py_script.append(
-            "cmds.setAttr('defaultArnoldRenderOptions.abortOnLicenseFail', 0)"
+            "cmds.setAttr('defaultArnoldDriver.aiTranslator', {}, type='string')".format(
+                _python_literal(image_format)
+            )
         )
+    py_script.append(
+        "cmds.setAttr('defaultRenderGlobals.extensionPadding', {})".format(
+            padding
+        )
+    )
+    py_script.append(
+        "cmds.setAttr('defaultArnoldRenderOptions.abortOnLicenseFail', 0)"
+    )
 
-        encoded_script = base64.b64encode(
-            "; ".join(py_script).encode("utf-8")
-        ).decode("ascii")
-        runner = (
-            "import base64;exec(base64.b64decode('{}').decode('utf-8'))"
-        ).format(encoded_script)
+    encoded_script = base64.b64encode(
+        "; ".join(py_script).encode("utf-8")
+    ).decode("ascii")
+    runner = (
+        "import base64;exec(base64.b64decode('{}').decode('utf-8'))"
+    ).format(encoded_script)
 
-        parts.extend([
-            "-preRender",
-            _quote(_mel_python_command([runner])),
-            "-fnc",
-            "3",
-        ])
-    else:
-        parts.extend([
-            "-im", _quote(task.get("image_name")),
-            "-of", _text(task.get("image_format"), default="exr") or "exr",
-            "-pad", str(_integer(task.get("frame_padding"), 4, minimum=1)),
-            "-fnc", "3",
-        ])
+    parts.extend([
+        "-preRender",
+        _quote(_mel_python_command([runner])),
+        "-fnc",
+        "3",
+    ])
 
     parts.append(_quote(scene_path))
     return " ".join(parts)
+
+
+def _unique_uuid_strings(values, field_name):
+    result = []
+    for value in values or []:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        try:
+            text = str(uuid.UUID(text))
+        except Exception:
+            raise PayloadError(
+                "{} contains an invalid UUID: {}".format(field_name, text)
+            )
+        if text not in result:
+            result.append(text)
+    return result
+
+
+def _pool_submission_fields(task, config):
+    capabilities = contract_capabilities(config)
+    if not capabilities.get("job_pool_targeting", False):
+        return {}
+
+    farm = task.get("farm") or {}
+    strategy = str(
+        farm.get("pool_strategy", task.get("pool_strategy", "all"))
+        or "all"
+    ).strip().lower()
+
+    selected = _unique_uuid_strings(
+        task.get("selected_pool_ids")
+        or farm.get("selected_pool_ids")
+        or [],
+        "selected_pool_ids",
+    )
+    excluded = _unique_uuid_strings(
+        task.get("excluded_pool_ids")
+        or farm.get("excluded_pool_ids")
+        or [],
+        "excluded_pool_ids",
+    )
+
+    overlap = sorted(set(selected).intersection(excluded))
+    if overlap:
+        raise PayloadError(
+            "Pools cannot be both included and excluded: {}".format(
+                ", ".join(overlap)
+            )
+        )
+
+    if strategy == "selected":
+        if not selected:
+            raise PayloadError(
+                "Selected Pools Only requires at least one backend pool."
+            )
+        return {"included_pools": selected, "excluded_pools": []}
+
+    if strategy == "all_except":
+        return {"included_pools": [], "excluded_pools": excluded}
+
+    return {"included_pools": [], "excluded_pools": []}
+
+
+def _dependency_specs(task, config):
+    capabilities = contract_capabilities(config)
+    if not capabilities.get("job_dependencies", False):
+        return []
+
+    raw_values = task.get("job_dependencies") or []
+    result = []
+
+    for value in raw_values:
+        if isinstance(value, dict):
+            parent_job = str(value.get("parent_job") or "").strip()
+            dep_type = str(value.get("type") or "JOB_ON_JOB").strip() or "JOB_ON_JOB"
+            parent_layer = value.get("parent_layer")
+            dep_layer = value.get("dep_layer")
+        else:
+            parent_job = str(value or "").strip()
+            dep_type = "JOB_ON_JOB"
+            parent_layer = None
+            dep_layer = None
+
+        if not parent_job:
+            continue
+
+        try:
+            parent_job = str(uuid.UUID(parent_job))
+        except Exception:
+            raise PayloadError(
+                "Job dependency contains an invalid UUID: {}".format(parent_job)
+            )
+
+        item = {
+            "type": dep_type,
+            "parent_job": parent_job,
+        }
+        if parent_layer not in (None, ""):
+            item["parent_layer"] = _text(parent_layer, maximum=256)
+        if dep_layer not in (None, ""):
+            item["dep_layer"] = _text(dep_layer, maximum=256)
+
+        if item not in result:
+            result.append(item)
+
+    return result
 
 
 def _worker_targeting_info(task, config):
@@ -177,16 +297,12 @@ def _worker_targeting_info(task, config):
         or farm.get("effective_pool_ids")
         or []
     )
-    use_pool_as_tag = bool(
-        config.get("maya", {}).get("use_pool_as_tag", True)
-    )
-
-    if capabilities.get("layer_pool_ids_field"):
-        enforcement = "api_field"
-    elif use_pool_as_tag:
-        enforcement = "legacy_tags"
+    if capabilities.get("job_pool_targeting", False):
+        enforcement = "job_pool_fields"
+        api_field = "included_pools/excluded_pools"
     else:
         enforcement = "metadata_only"
+        api_field = ""
 
     return {
         "strategy": farm.get(
@@ -218,14 +334,9 @@ def _worker_targeting_info(task, config):
             "pool_workers",
             task.get("pool_workers", [])
         ),
-        "machine_limit": farm.get(
-            "machine_limit",
-            task.get("machine_limit", 0)
-        ),
         "enforcement": enforcement,
-        "api_field": capabilities.get("layer_pool_ids_field", ""),
+        "api_field": api_field,
     }
-
 
 def _scene_info(task, config):
     software_info = task.get("software_info") or {}
@@ -242,6 +353,10 @@ def _scene_info(task, config):
         "host_os": software_info.get("host_os", platform.system()),
         "renderer": task.get("renderer", ""),
         "camera": task.get("camera", ""),
+        "render_layer": task.get("render_layer", ""),
+        "render_layer_display_name": task.get("render_layer_display_name", ""),
+        "render_layer_source": task.get("render_layer_source", ""),
+        "render_layer_is_default": bool(task.get("render_layer_is_default", False)),
         "project_path": task.get("project_path", ""),
         "output_path": task.get("output_path", ""),
         "image_name": task.get("image_name", ""),
@@ -256,17 +371,21 @@ def _scene_info(task, config):
                 "mode",
                 task.get("submission_mode", "Shared Storage")
             ),
-            "start_suspended": bool(task.get("start_suspended", False)),
         },
         "worker_targeting": _worker_targeting_info(task, config),
         "resource_requirements": {
+            "minimum_cores": _integer(
+                task.get("minimum_cores"),
+                0,
+                minimum=0,
+            ),
             "minimum_ram_gb": _integer(
                 task.get("minimum_ram_gb"),
                 0,
                 minimum=0,
             ),
-            "minimum_vram_gb": _integer(
-                task.get("minimum_vram_gb"),
+            "minimum_gpus": _integer(
+                task.get("minimum_gpus"),
                 0,
                 minimum=0,
             ),
@@ -279,35 +398,164 @@ def _scene_info(task, config):
 
 def _apply_contract_extensions(payload, layer, task, config):
     capabilities = contract_capabilities(config)
-    farm = task.get("farm") or {}
 
-    pool_field = capabilities.get("layer_pool_ids_field")
-    if pool_field:
-        layer[pool_field] = list(
-            task.get("effective_pool_ids")
-            or farm.get("effective_pool_ids")
-            or []
+    # RenderHive API 0.2.0 owns pool targeting at the Job level. Pool names are
+    # no longer smuggled through Layer.tags, which could incorrectly require
+    # workers to carry tags that merely happen to match pool names.
+    payload.update(_pool_submission_fields(task, config))
+
+    if capabilities.get("job_dependencies", False):
+        payload["dependencies"] = _dependency_specs(task, config)
+
+
+def _safe_layer_segment(value):
+    text = _text(value, maximum=128, default="layer") or "layer"
+    text = re.sub(r'[<>:"/\\|?*]+', "_", text)
+    text = re.sub(r"\s+", "_", text).strip(" ._")
+    return text or "layer"
+
+
+def _layer_task_value(spec, task, key):
+    if isinstance(spec, dict) and spec.get(key) not in (None, ""):
+        return spec.get(key)
+    return task.get(key)
+
+
+def _build_layer_payload(
+    task,
+    spec,
+    config,
+    scene_path,
+    project_path,
+    output_path,
+    tags,
+    multi_layer=False,
+    legacy_backend_layer=False,
+):
+    spec = dict(spec or {})
+    maya_layer_name = "" if legacy_backend_layer else _text(
+        spec.get("name"),
+        maximum=256,
+    )
+    backend_layer_name = _text(
+        spec.get("name"),
+        maximum=256,
+        default=config.get("maya", {}).get("layer_name", "beauty"),
+    ) or "beauty"
+
+    layer_task = dict(task)
+    layer_task["scene_path"] = scene_path
+    layer_task["project_path"] = project_path
+    layer_task["output_path"] = _absolute_path(
+        _layer_task_value(spec, task, "output_path") or output_path
+    )
+    layer_task["render_layer"] = maya_layer_name
+    layer_task["render_layer_display_name"] = _text(
+        spec.get("display_name"),
+        maximum=256,
+        default=backend_layer_name,
+    )
+    layer_task["render_layer_source"] = _text(
+        spec.get("source"),
+        maximum=64,
+        default="maya",
+    )
+    layer_task["render_layer_is_default"] = bool(
+        spec.get("is_default", maya_layer_name == "defaultRenderLayer")
+    )
+
+    override_keys = (
+        "renderer",
+        "camera",
+        "frame_start",
+        "frame_end",
+        "frame_step",
+        "image_name",
+        "image_format",
+        "frame_padding",
+        "width",
+        "height",
+        "chunk_size",
+        "minimum_cores",
+        "minimum_ram_gb",
+        "minimum_gpus",
+        "retry_count",
+        "task_timeout_minutes",
+    )
+    for key in override_keys:
+        if spec.get(key) not in (None, ""):
+            layer_task[key] = spec.get(key)
+
+    # Explicit Maya layer selections always receive their own image namespace.
+    # This prevents collisions both inside a multi-layer Job and across separate
+    # submissions of individual layers. Legacy callers without render_layers
+    # retain the historical un-namespaced output behavior.
+    if not legacy_backend_layer and spec.get("image_name") in (None, ""):
+        base_name = _text(task.get("image_name"), default="render") or "render"
+        layer_task["image_name"] = "{}/{}".format(
+            _safe_layer_segment(backend_layer_name),
+            base_name,
         )
 
-    suspended_field = capabilities.get("job_start_suspended_field")
-    if suspended_field:
-        payload[suspended_field] = bool(
-            task.get("start_suspended", False)
+    min_ram_gb = _integer(
+        layer_task.get("minimum_ram_gb"),
+        0,
+        minimum=0,
+    )
+    timeout_minutes = _integer(
+        layer_task.get("task_timeout_minutes"),
+        0,
+        minimum=0,
+    )
+
+    env = {
+        "MAYA_PROJECT": project_path,
+        "RENDERHIVE_SUBMISSION_MODE": task.get(
+            "submission_mode",
+            "Shared Storage",
+        ),
+    }
+    if maya_layer_name:
+        env["RENDERHIVE_MAYA_RENDER_LAYER"] = maya_layer_name
+        env["RENDERHIVE_MAYA_RENDER_LAYER_SOURCE"] = layer_task.get(
+            "render_layer_source",
+            "maya",
         )
 
-    machine_limit_field = capabilities.get("job_machine_limit_field")
-    if machine_limit_field:
-        payload[machine_limit_field] = _integer(
-            task.get("machine_limit"),
+    return {
+        "name": backend_layer_name,
+        "layer_type": "RENDER",
+        "command": build_maya_command(layer_task, config),
+        "frame_range": build_frame_range(layer_task),
+        "chunk_size": _integer(
+            layer_task.get("chunk_size"),
+            1,
+            minimum=1,
+        ),
+        "min_cores": _integer(
+            layer_task.get("minimum_cores"),
             0,
             minimum=0,
-        )
-
-    dependencies_field = capabilities.get("job_dependencies_field")
-    if dependencies_field:
-        payload[dependencies_field] = list(
-            task.get("job_dependencies") or []
-        )
+        ),
+        "min_memory_mb": min_ram_gb * 1024,
+        "min_gpus": _integer(
+            layer_task.get("minimum_gpus"),
+            0,
+            minimum=0,
+        ),
+        "tags": list(tags),
+        "scene_path": scene_path,
+        "scene_info": _scene_info(layer_task, config),
+        "env": env,
+        "max_retries": _integer(
+            layer_task.get("retry_count"),
+            2,
+            minimum=0,
+        ),
+        "timeout_seconds": (
+            timeout_minutes * 60 if timeout_minutes else None
+        ),
+    }
 
 
 def build_job_request(task, config):
@@ -349,79 +597,73 @@ def build_job_request(task, config):
     if not output_path:
         raise PayloadError("Output path is required by the RenderHive API.")
 
-    frame_range = build_frame_range(task)
-
     log_directory = os.path.join(output_path, "_renderhive_logs")
+    windows_style_path = bool(
+        re.match(r"^[A-Za-z]:[\\/]", log_directory)
+        or log_directory.startswith(("\\\\", "//"))
+    )
     try:
-        if not os.path.isdir(log_directory):
+        # Contract tests may run on Linux/macOS using Windows production paths.
+        # Never materialize a literal ``C:\...`` directory in the source tree.
+        if (os.name == "nt" or not windows_style_path) and not os.path.isdir(log_directory):
             os.makedirs(log_directory)
     except Exception:
         # Shared storage may be mounted only on workers. The API requires the
         # absolute path, but local creation is not mandatory for submission.
         pass
 
-    farm = task.get("farm") or {}
-    effective_pool_names = list(
-        task.get("effective_pool_names")
-        or farm.get("effective_pool_names")
-        or []
-    )
     tags = []
-    if bool(config.get("maya", {}).get("use_pool_as_tag", True)):
-        for pool_name in effective_pool_names:
-            clean_name = _text(pool_name, maximum=64)
-            if clean_name and clean_name not in tags:
-                tags.append(clean_name)
+    for value in task.get("worker_tags") or task.get("tags") or []:
+        clean_value = _text(value, maximum=64)
+        if clean_value and clean_value not in tags:
+            tags.append(clean_value)
 
-    min_ram_gb = _integer(
-        task.get("minimum_ram_gb"),
-        0,
-        minimum=0,
-    )
-    min_vram_gb = _integer(
-        task.get("minimum_vram_gb"),
-        0,
-        minimum=0,
-    )
-    timeout_minutes = _integer(
-        task.get("task_timeout_minutes"),
-        0,
-        minimum=0,
-    )
+    render_layer_specs = task.get("render_layers")
+    legacy_backend_layer = not isinstance(render_layer_specs, list)
+    if legacy_backend_layer:
+        render_layer_specs = [{
+            "name": _text(
+                config.get("maya", {}).get("layer_name"),
+                maximum=256,
+                default="beauty",
+            ) or "beauty",
+        }]
+    elif not render_layer_specs:
+        raise PayloadError("At least one Maya render layer must be selected.")
 
-    layer_name = _text(
-        config.get("maya", {}).get("layer_name"),
-        maximum=256,
-        default="beauty",
-    ) or "beauty"
+    clean_specs = []
+    seen_names = set()
+    for raw_spec in render_layer_specs:
+        if isinstance(raw_spec, dict):
+            spec = dict(raw_spec)
+        else:
+            spec = {"name": str(raw_spec or "")}
+        name = _text(spec.get("name"), maximum=256)
+        if not name:
+            raise PayloadError("A selected Maya render layer has no name.")
+        if name in seen_names:
+            raise PayloadError(
+                "Maya render layer is selected more than once: {}".format(name)
+            )
+        seen_names.add(name)
+        spec["name"] = name
+        clean_specs.append(spec)
 
-    task_for_command = dict(task)
-    task_for_command["scene_path"] = scene_path
-    task_for_command["project_path"] = project_path
-    task_for_command["output_path"] = output_path
-
-    layer = {
-        "name": layer_name,
-        "layer_type": "RENDER",
-        "command": build_maya_command(task_for_command, config),
-        "frame_range": frame_range,
-        "chunk_size": _integer(task.get("chunk_size"), 1, minimum=1),
-        "min_cores": _integer(task.get("minimum_cores"), 0, minimum=0),
-        "min_memory_mb": min_ram_gb * 1024,
-        "min_gpus": 1 if min_vram_gb > 0 else 0,
-        "tags": tags,
-        "scene_path": scene_path,
-        "scene_info": _scene_info(task_for_command, config),
-        "env": {
-            "MAYA_PROJECT": project_path,
-            "RENDERHIVE_SUBMISSION_MODE": task.get(
-                "submission_mode",
-                "Shared Storage"
-            ),
-        },
-        "max_retries": _integer(task.get("retry_count"), 2, minimum=0),
-        "timeout_seconds": timeout_minutes * 60 if timeout_minutes else None,
-    }
+    multi_layer = len(clean_specs) > 1
+    layers = [
+        _build_layer_payload(
+            task=task,
+            spec=spec,
+            config=config,
+            scene_path=scene_path,
+            project_path=project_path,
+            output_path=output_path,
+            tags=tags,
+            multi_layer=multi_layer,
+            legacy_backend_layer=legacy_backend_layer,
+        )
+        for spec in clean_specs
+    ]
 
     payload = {
         "visible_name": visible_name,
@@ -440,10 +682,10 @@ def build_job_request(task, config):
             1,
             minimum=0,
         ),
-        "layers": [layer],
+        "layers": layers,
     }
 
-    _apply_contract_extensions(payload, layer, task, config)
+    _apply_contract_extensions(payload, layers[0], task, config)
     validate_job_request(payload)
     return payload
 
@@ -466,10 +708,21 @@ def validate_job_request(payload):
     if not isinstance(layers, list) or not layers:
         errors.append("JobCreate.layers must contain at least one layer.")
     else:
+        layer_names = set()
         for index, layer in enumerate(layers):
             if not isinstance(layer, dict):
                 errors.append("Layer {} must be a dictionary.".format(index))
                 continue
+
+            layer_name = str(layer.get("name") or "").strip()
+            if layer_name and layer_name in layer_names:
+                errors.append(
+                    "Layer name must be unique within a Job: {}".format(
+                        layer_name
+                    )
+                )
+            elif layer_name:
+                layer_names.add(layer_name)
 
             for field in ("name", "command", "frame_range"):
                 if not layer.get(field):
@@ -483,6 +736,26 @@ def validate_job_request(payload):
             if int(layer.get("chunk_size", 0)) < 0:
                 errors.append(
                     "Layer {} chunk_size cannot be negative.".format(index)
+                )
+
+    included = set(payload.get("included_pools") or [])
+    excluded = set(payload.get("excluded_pools") or [])
+    overlap = sorted(included.intersection(excluded))
+    if overlap:
+        errors.append(
+            "Pools cannot be both included and excluded: {}".format(
+                ", ".join(overlap)
+            )
+        )
+
+    dependencies = payload.get("dependencies") or []
+    if not isinstance(dependencies, list):
+        errors.append("JobCreate.dependencies must be a list.")
+    else:
+        for index, dependency in enumerate(dependencies):
+            if not isinstance(dependency, dict) or not dependency.get("parent_job"):
+                errors.append(
+                    "Dependency {} must include parent_job.".format(index)
                 )
 
     if errors:

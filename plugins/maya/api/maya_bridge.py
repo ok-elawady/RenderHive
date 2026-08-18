@@ -8,7 +8,6 @@ import os
 from .client import RenderHiveApiClient
 from .config import (
     admin_mode_enabled,
-    get_config_path,
     get_config_source,
     get_credential_info,
     get_managed_config_path,
@@ -18,7 +17,6 @@ from .config import (
 from .contract import contract_capabilities
 from .errors import (
     ApiConfigurationError,
-    ApiResponseError,
 )
 from .payload import build_job_request
 from core.diagnostics import create_support_bundle, production_health_report
@@ -150,6 +148,10 @@ def get_worker_targeting_snapshot():
 
 
 def get_api_jobs():
+    config = load_config()
+    if not config.get("enabled", False):
+        return []
+    _validate_auth_config(config)
     return _client().list_all_jobs()
 
 
@@ -262,9 +264,9 @@ def _write_submission_log(
     )
 
     payload = {
-        "submitted_at": datetime.datetime.utcnow().replace(
+        "submitted_at": datetime.datetime.now(datetime.timezone.utc).replace(
             microsecond=0
-        ).isoformat() + "Z",
+        ).isoformat().replace("+00:00", "Z"),
         "plugin_version": PLUGIN_VERSION,
         "success": error is None,
         "local_task": _sanitize_log_value(local_task),
@@ -349,25 +351,6 @@ def submit_job_to_api(task):
             or response.get("uid")
         ) if isinstance(response, dict) else None
 
-        capabilities = contract_capabilities(config)
-        start_field = capabilities.get("job_start_suspended_field")
-
-        if task.get("start_suspended") and not start_field:
-            if job_id:
-                paused = _client().pause_job(job_id)
-                if isinstance(response, dict):
-                    response = dict(response)
-                    response["pause_response"] = paused
-                    response["is_paused"] = True
-            elif isinstance(response, dict):
-                response = dict(response)
-                warnings = list(response.get("_renderhive_warnings") or [])
-                warnings.append(
-                    "The job was submitted, but it could not be paused because "
-                    "the API did not return a job reference."
-                )
-                response["_renderhive_warnings"] = warnings
-
         log_path = _write_submission_log(
             task,
             api_request,
@@ -433,12 +416,16 @@ def get_api_job_layer(job_id, layer_id):
     return _client().get_job_layer(job_id, layer_id)
 
 
-def get_api_layer_frames(job_id, layer_id):
-    return _client().list_layer_frames(job_id, layer_id)
+def get_api_layer_tasks(job_id, layer_id):
+    return _client().list_layer_tasks(job_id, layer_id)
 
 
-def get_api_layer_frame(job_id, layer_id, frame_id):
-    return _client().get_layer_frame(job_id, layer_id, frame_id)
+def get_api_layer_task(job_id, layer_id, task_id):
+    return _client().get_layer_task(job_id, layer_id, task_id)
+
+
+
+
 
 
 def install(maya_api):
@@ -469,8 +456,8 @@ def install(maya_api):
     maya_api.delete_api_job = delete_api_job
     maya_api.get_api_job_layers = get_api_job_layers
     maya_api.get_api_job_layer = get_api_job_layer
-    maya_api.get_api_layer_frames = get_api_layer_frames
-    maya_api.get_api_layer_frame = get_api_layer_frame
+    maya_api.get_api_layer_tasks = get_api_layer_tasks
+    maya_api.get_api_layer_task = get_api_layer_task
     maya_api.get_submission_log_folder = get_submission_log_folder
     maya_api.get_runtime_log_folder = get_runtime_log_folder
     maya_api.create_diagnostics_bundle = create_diagnostics_bundle

@@ -1,16 +1,22 @@
 {
   "plugin": {
     "name": "RenderHive Houdini",
-    "version": "0.5.0"
+    "version": "2.0.5",
+    "release_stage": "production"
   },
   "backend": {
-    "managed_config": "C:/ProgramData/RenderHive/config/api.json"
+    "api_contract": "0.2.0",
+    "managed_config": "C:/ProgramData/RenderHive/config/api.json",
+    "artist_editable": false
   },
   "render": {
     "default_chunk_size": 1,
-    "supported_execution_modes": [
-      "hython",
-      "husk"
-    ]
+    "default_retry_count": 2,
+    "supported_execution_modes": ["hython", "husk"],
+    "multi_render_sources": true
+  },
+  "compatibility": {
+    "minimum_houdini": "19.5",
+    "qt_bindings": ["PySide2", "PySide6"]
   }
 }

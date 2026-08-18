@@ -3,7 +3,6 @@ from __future__ import absolute_import
 import base64
 import ctypes
 import os
-import sys
 
 try:
     from ctypes import wintypes

@@ -43,6 +43,7 @@ def build_stylesheet():
         "combo_down": _qss_asset("combo_down.png"),
         "spin_up": _qss_asset("spin_up.png"),
         "spin_down": _qss_asset("spin_down.png"),
+        "check_mark": _qss_asset("check_mark.png"),
     })
     return r"""
     QWidget {
@@ -128,7 +129,15 @@ def build_stylesheet():
     }
 
     QLabel#SecondaryText {
+        background-color: transparent;
         color: %(secondary)s;
+        border: none;
+    }
+
+    QWidget#InlineFieldContainer,
+    QFrame#RenderLayerSelector {
+        background-color: transparent;
+        border: none;
     }
 
     QLabel#MutedText {
@@ -459,6 +468,40 @@ def build_stylesheet():
         color: %(text)s;
     }
 
+    /* Inline artist-facing selectors should read as part of their card, not as
+       black terminal/log surfaces. */
+    QTreeWidget#RenderLayerTree,
+    QTreeWidget#JobDependencyTree {
+        background-color: %(surface2)s;
+        alternate-background-color: %(surface)s;
+        color: %(secondary)s;
+        border: 1px solid %(divider)s;
+    }
+
+    QTreeWidget#RenderLayerTree::item,
+    QTreeWidget#JobDependencyTree::item {
+        background-color: transparent;
+        border-bottom: 1px solid %(divider)s;
+    }
+
+    QTreeWidget#RenderLayerTree::item:hover,
+    QTreeWidget#JobDependencyTree::item:hover {
+        background-color: %(surface3)s;
+    }
+
+    QTreeWidget#RenderLayerTree::item:selected,
+    QTreeWidget#JobDependencyTree::item:selected {
+        background-color: #24193D;
+        color: %(text)s;
+    }
+
+    QTreeWidget#RenderLayerTree QHeaderView::section,
+    QTreeWidget#JobDependencyTree QHeaderView::section {
+        background-color: %(surface3)s;
+        color: %(secondary)s;
+        border-bottom: 1px solid %(border)s;
+    }
+
     QHeaderView::section {
         background-color: %(surface2)s;
         color: %(secondary)s;
@@ -550,16 +593,47 @@ def build_stylesheet():
     }
 
     QCheckBox::indicator {
-        width: 16px;
-        height: 16px;
-        border-radius: 4px;
+        width: 15px;
+        height: 15px;
+        border-radius: 3px;
         border: 1px solid %(border)s;
         background-color: #161B24;
     }
 
-    QCheckBox::indicator:checked {
-        background-color: %(primary)s;
+    QCheckBox::indicator:hover {
         border-color: %(light)s;
+    }
+
+    QCheckBox::indicator:checked {
+        background-color: %(active)s;
+        border-color: %(light)s;
+        image: url("%(check_mark)s");
+    }
+
+    /* Maya's native item-view checkbox glyph can render as a noisy green/black
+       platform icon.  Paint every tree checkbox with the RenderHive indicator
+       so Render Layers, Job Dependencies and targeting lists stay consistent. */
+    QTreeWidget::indicator {
+        width: 15px;
+        height: 15px;
+        border-radius: 3px;
+        border: 1px solid %(border)s;
+        background-color: #161B24;
+    }
+
+    QTreeWidget::indicator:hover {
+        border-color: %(light)s;
+    }
+
+    QTreeWidget::indicator:checked {
+        background-color: %(active)s;
+        border-color: %(light)s;
+        image: url("%(check_mark)s");
+    }
+
+    QTreeWidget::indicator:disabled {
+        background-color: %(surface2)s;
+        border-color: %(divider)s;
     }
 
     QDialog#TaskPreviewDialog {

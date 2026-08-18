@@ -14,6 +14,8 @@ class BridgeExportTests(unittest.TestCase):
         maya_bridge.install(api)
         self.assertTrue(callable(api.api_admin_mode_enabled))
         self.assertTrue(callable(api.get_api_config_source))
+        self.assertTrue(callable(api.get_api_layer_tasks))
+        self.assertTrue(callable(api.get_api_layer_task))
 
 
 if __name__ == "__main__":
