@@ -4,11 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   Bot,
-  Cpu,
+  ChevronRight,
   LayoutDashboard,
   ListOrdered,
   LogOut,
+  Server,
   Settings,
   UsersRound,
 } from "lucide-react";
@@ -23,47 +25,26 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-
-import type { SidebarItem } from "@/types/dashboard";
-
-const dashboardItem: SidebarItem = {
-  icon: <LayoutDashboard size={18} />,
-  label: "Dashboard",
-  href: "/",
-};
-
-const queueItem: SidebarItem = {
-  icon: <ListOrdered size={18} />,
-  label: "Job Queue",
-  href: "/jobs",
-};
-
-const usersItem: SidebarItem = {
-  icon: <UsersRound size={18} />,
-  label: "User Management",
-  href: "/users",
-};
-
-const remainingSidebarItems: SidebarItem[] = [
-  { icon: <Cpu size={18} />, label: "Node Pool", href: "/nodes" },
-  { icon: <Bot size={18} />, label: "AI Rules", href: "/logs" },
-  { icon: <Settings size={18} />, label: "Settings", href: "/settings" },
-];
 
 export default function AppSidebar() {
   const pathname = usePathname();
   const { logout, user } = useAuth();
+
+  const isWorkersActive = pathname.startsWith("/nodes") || pathname.startsWith("/pools");
+
   const displayName = user?.displayName ?? "RenderHive User";
   const role = user?.role ?? "Authenticated";
   const initials = user?.initials ?? "RH";
-  const sidebarItems: SidebarItem[] = [
-    dashboardItem,
-    queueItem,
-    ...(user?.isSuperuser ? [usersItem] : []),
-    ...remainingSidebarItems,
-  ];
 
   return (
     <Sidebar className="border-r-0">
@@ -88,7 +69,7 @@ export default function AppSidebar() {
                 <span className="font-black tracking-wider bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
                   Render<span className="text-primary">Hive</span>
                 </span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                   RENDER MANAGEMENT
                 </span>
               </div>
@@ -101,25 +82,117 @@ export default function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel>Application</SidebarGroupLabel>
           <SidebarMenu>
-            {sidebarItems.map((item) => {
-              const isActive =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href);
+            {/* Dashboard */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname === "/"}
+                render={<Link href="/" />}
+                tooltip="Dashboard"
+              >
+                <LayoutDashboard size={18} />
+                <span>Dashboard</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
 
-              return (
-                <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton
-                    isActive={isActive}
-                    render={<Link href={item.href} />}
-                    tooltip={item.label}
-                  >
-                    {item.icon}
-                    <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              );
-            })}
+            {/* Job Queue */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith("/jobs")}
+                render={<Link href="/jobs" />}
+                tooltip="Job Queue"
+              >
+                <ListOrdered size={18} />
+                <span>Job Queue</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            {/* Workers Collapsible (Expanded by default) */}
+            <Collapsible
+              defaultOpen={true}
+              className="group/collapsible"
+            >
+              <SidebarMenuItem>
+                <CollapsibleTrigger
+                  render={
+                    <SidebarMenuButton tooltip="Workers">
+                      <Server size={18} />
+                      <span>Workers</span>
+                      <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-open/collapsible:rotate-90" />
+                    </SidebarMenuButton>
+                  }
+                />
+                <CollapsibleContent>
+                  <SidebarMenuSub>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        isActive={pathname.startsWith("/nodes")}
+                        render={<Link href="/nodes" />}
+                      >
+                        <span>Nodes</span>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        isActive={pathname.startsWith("/pools")}
+                        render={<Link href="/pools" />}
+                      >
+                        <span>Pools</span>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                  </SidebarMenuSub>
+                </CollapsibleContent>
+              </SidebarMenuItem>
+            </Collapsible>
+
+            {/* Telemetry & Observability */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith("/telemetry")}
+                render={<Link href="/telemetry" />}
+                tooltip="Telemetry & Observability"
+              >
+                <Activity size={18} />
+                <span>Telemetry</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            {/* AI Scheduler */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith("/ai")}
+                render={<Link href="/ai" />}
+                tooltip="AI Scheduler"
+              >
+                <Bot size={18} />
+                <span>AI Scheduler</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+
+            {/* Superuser: User Management */}
+            {user?.isSuperuser && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname.startsWith("/users")}
+                  render={<Link href="/users" />}
+                  tooltip="User Management"
+                >
+                  <UsersRound size={18} />
+                  <span>User Management</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+
+            {/* Settings */}
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                isActive={pathname.startsWith("/settings")}
+                render={<Link href="/settings" />}
+                tooltip="Settings"
+              >
+                <Settings size={18} />
+                <span>Settings</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
@@ -132,14 +205,14 @@ export default function AppSidebar() {
               render={<Link href="/settings" className="cursor-pointer" />}
               tooltip="Account Settings"
             >
-              <Avatar className="size-8 rounded-lg">
-                <AvatarFallback className="rounded-lg bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white">
+              <Avatar className="size-8 rounded-full">
+                <AvatarFallback className="rounded-full bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white">
                   {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="font-semibold text-foreground text-sm">{displayName}</span>
-                <span className="text-[10px] text-primary font-mono">{role}</span>
+                <span className="text-xs text-primary font-mono">{role}</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

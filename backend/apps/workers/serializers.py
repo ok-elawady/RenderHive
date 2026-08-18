@@ -32,6 +32,8 @@ class WorkerNodeSummarySerializer(serializers.ModelSerializer):
 
 
 class WorkerPoolSerializer(serializers.ModelSerializer):
+    """Slim pool representation used in list responses and nested inside worker detail."""
+
     worker_count = serializers.IntegerField(read_only=True, default=0)
     online_worker_count = serializers.IntegerField(read_only=True, default=0)
     rendering_worker_count = serializers.IntegerField(read_only=True, default=0)
@@ -59,6 +61,13 @@ class WorkerPoolSerializer(serializers.ModelSerializer):
 
 
 class WorkerPoolDetailSerializer(WorkerPoolSerializer):
+    """Full pool representation for retrieve and the /workers/ action.
+
+    Extends the slim serializer with the full worker list (using
+    WorkerNodeSummarySerializer instead of a slug). The viewset prefetches
+    ``workers`` only for these actions to avoid N+1 queries on list views.
+    """
+
     workers = WorkerNodeSummarySerializer(many=True, read_only=True)
 
     class Meta(WorkerPoolSerializer.Meta):

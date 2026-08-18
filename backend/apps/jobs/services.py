@@ -292,23 +292,26 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
     # Track created layers by name for dependency resolution below
     created_layers: dict[str, Layer] = {}
 
+    # Extract execution dependency metadata up-front so layer_data dicts stay
+    # clean for Layer.objects.create() — no model fields are added or removed.
+    layer_dep_specs = [
+        {
+            "execution_mode": ld.pop("execution_mode", "IMMEDIATE"),
+            "depends_on_layer": ld.pop("depends_on_layer", None),
+            "dependency_type": ld.pop("dependency_type", None),
+        }
+        for ld in layers_data
+    ]
+
     for layer_data in layers_data:
         frame_range = layer_data["frame_range"]
         chunk_size = layer_data.get("chunk_size", 1)
         max_retries = layer_data.get("max_retries", 3)
-        
-        execution_mode = layer_data.pop("execution_mode", "IMMEDIATE")
-        depends_on_layer = layer_data.pop("depends_on_layer", None)
-        dependency_type = layer_data.pop("dependency_type", None)
 
         frame_starts = expand_frame_range(frame_range, chunk_size)
 
         layer = Layer.objects.create(job=job, **layer_data)
-        
-        layer_data["execution_mode"] = execution_mode
-        layer_data["depends_on_layer"] = depends_on_layer
-        layer_data["dependency_type"] = dependency_type
-        
+
         created_layers[layer.name] = layer
 
         # Bulk-create Task rows for efficiency.
@@ -346,32 +349,32 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
         )
 
     # ── Process Internal Layer Dependencies ───────────────────────────────────
-    for layer_data in layers_data:
-        execution_mode = layer_data.get("execution_mode", "IMMEDIATE")
+    for layer_data, dep_spec in zip(layers_data, layer_dep_specs):
+        execution_mode = dep_spec["execution_mode"]
         if execution_mode == "IMMEDIATE":
             continue
-            
+
         dep_layer_name = layer_data["name"]
         dep_layer = created_layers.get(dep_layer_name)
-        
+
         parent_layers_to_link = []
-        
+
         if execution_mode == "LAST":
             parent_layers_to_link = [
-                l for name, l in created_layers.items() if name != dep_layer_name
+                layer for name, layer in created_layers.items() if name != dep_layer_name
             ]
             dependency_type = DependencyType.LAYER_ON_LAYER
-            
+
         elif execution_mode == "WAIT_LAYER":
-            parent_name = layer_data.get("depends_on_layer")
+            parent_name = dep_spec["depends_on_layer"]
             if not parent_name:
                 continue
             parent_layer = created_layers.get(parent_name)
             if not parent_layer:
                 raise ValueError(f"Layer '{parent_name}' not found on this job.")
-            
+
             parent_layers_to_link = [parent_layer]
-            dependency_type = layer_data.get("dependency_type") or DependencyType.LAYER_ON_LAYER
+            dependency_type = dep_spec["dependency_type"] or DependencyType.LAYER_ON_LAYER
 
         for parent_layer in parent_layers_to_link:
             if dep_layer.pk == parent_layer.pk:
@@ -511,19 +514,12 @@ def create_job_with_layers(validated_data: dict, submitted_by=None):
             )
             
             if blocked_task_count > 0:
-                layers_to_update = [d_layer] if d_layer else created_layers.values()
-                for l in layers_to_update:
-                    l_blocked = task_qs.filter(layer=l, state=TaskState.WAITING).count() 
-                    # wait, this l_blocked should be the tasks that WERE ready.
-                    # Since we already updated them, it's hard to count.
-                    # We can assume all tasks in this layer were READY before this block? NO.
-                    pass
-                    
-                # To be completely safe and avoid negative counters, recalculate counters from Tasks
-                for l in created_layers.values():
-                    rt = Task.objects.filter(layer=l, state=TaskState.READY).count()
-                    wt = Task.objects.filter(layer=l, state=TaskState.WAITING).count()
-                    Layer.objects.filter(pk=l.pk).update(
+                # Recalculate counters from Tasks to avoid negative values; safe because
+                # this is inside a single atomic transaction.
+                for created_layer in created_layers.values():
+                    rt = Task.objects.filter(layer=created_layer, state=TaskState.READY).count()
+                    wt = Task.objects.filter(layer=created_layer, state=TaskState.WAITING).count()
+                    Layer.objects.filter(pk=created_layer.pk).update(
                         ready_tasks=rt,
                         waiting_tasks=wt,
                         depend_tasks=wt

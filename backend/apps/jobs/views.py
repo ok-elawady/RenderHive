@@ -11,10 +11,12 @@ ViewSets follow the serializer split pattern:
 import re
 
 import django_filters
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -27,17 +29,18 @@ from .permissions import IsFarmAgent, IsJobOwnerOrStaff
 from .serializers import (
     DependencyCreateSerializer,
     DependencyReadSerializer,
-    TaskDetailSerializer,
-    TaskFailSerializer,
-    TaskListSerializer,
-    TaskStartSerializer,
-    TaskSucceedSerializer,
     JobCreateSerializer,
     JobDetailSerializer,
     JobListSerializer,
     JobPatchSerializer,
     LayerDetailSerializer,
     LayerListSerializer,
+    RecentDispatchLogSerializer,
+    TaskDetailSerializer,
+    TaskFailSerializer,
+    TaskListSerializer,
+    TaskStartSerializer,
+    TaskSucceedSerializer,
 )
 
 # ── Filters ───────────────────────────────────────────────────────────────────
@@ -83,7 +86,12 @@ class DependencyFilter(django_filters.FilterSet):
 
     class Meta:
         model = Dependency
-        fields = ["type", "is_satisfied", "dep_job", "parent_job", "dep_layer", "parent_layer", "dep_task", "parent_task"]
+        fields = [
+            "type", "is_satisfied",
+            "dep_job", "parent_job",
+            "dep_layer", "parent_layer",
+            "dep_task", "parent_task",
+        ]
 
 
 
@@ -180,6 +188,21 @@ class JobViewSet(viewsets.ModelViewSet):
         job.is_paused = True
         job.state = JobState.PAUSED
         job.save(update_fields=["is_paused", "state", "updated_at"])
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event
+
+        actor = request.user.username if request.user and request.user.is_authenticated else "system"
+        job_display = job.visible_name or job.name
+        record_event(
+            event_type="JOB_PAUSED",
+            message=f"Job '{job_display}' was paused.",
+            actor_username=actor,
+            target_type="job",
+            target_id=str(job.id),
+            target_name=job_display,
+            severity=EventSeverity.INFO,
+        )
         return Response({"status": "paused", "is_paused": True})
 
     @action(detail=True, methods=["post"])
@@ -209,6 +232,21 @@ class JobViewSet(viewsets.ModelViewSet):
             job.state = JobState.PENDING
 
         job.save(update_fields=["is_paused", "state", "updated_at"])
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event
+
+        actor = request.user.username if request.user and request.user.is_authenticated else "system"
+        job_display = job.visible_name or job.name
+        record_event(
+            event_type="JOB_RESUMED",
+            message=f"Job '{job_display}' was resumed.",
+            actor_username=actor,
+            target_type="job",
+            target_id=str(job.id),
+            target_name=job_display,
+            severity=EventSeverity.INFO,
+        )
         return Response({"status": "resumed", "is_paused": False})
 
 
@@ -375,6 +413,26 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             task.cores_used = data["cores_used"]
         # stopped_at is set by the task_pre_save signal on SUCCEEDED/SKIPPED transitions.
         task.save()
+
+        # Telemetry: Record execution log for this completed attempt
+        from apps.telemetry.services import record_task_log
+
+        duration = (
+            (task.stopped_at - task.started_at).total_seconds()
+            if task.stopped_at and task.started_at
+            else data.get("duration_seconds", 0.0)
+        )
+        record_task_log(
+            task=task,
+            worker_hostname=task.worker_name or "unknown",
+            exit_status=0,
+            log_output=data.get("log_output", ""),
+            error_tail=data.get("error_tail", ""),
+            duration_seconds=duration,
+            peak_memory_mb=task.max_memory_used_mb,
+            output_image_path=data.get("output_image_path", ""),
+            attempt_number=task.retries + 1,
+        )
         return Response({"status": "succeeded"})
 
     @action(detail=True, methods=["post"], serializer_class=TaskFailSerializer)
@@ -404,14 +462,49 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
-        task.exit_status = serializer.validated_data["exit_status"]
+        task.exit_status = data["exit_status"]
         task.retries += 1
+
+        duration = (
+            (timezone.now() - task.started_at).total_seconds()
+            if task.started_at
+            else data.get("duration_seconds", 0.0)
+        )
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event, record_task_log
+
+        # Record telemetry log for this attempt
+        record_task_log(
+            task=task,
+            worker_hostname=task.worker_name or "unknown",
+            exit_status=task.exit_status,
+            log_output=data.get("log_output", ""),
+            error_tail=data.get("error_tail", ""),
+            duration_seconds=duration,
+            peak_memory_mb=task.max_memory_used_mb,
+            output_image_path=data.get("output_image_path", ""),
+            attempt_number=task.retries,
+        )
 
         if task.retries >= task.max_retries:
             task.state = TaskState.FAILED
             task.stopped_at = timezone.now()
             task.save()
+            record_event(
+                event_type="TASK_FAILED",
+                message=(
+                    f"Task '{task.name}' failed permanently after {task.retries} attempts "
+                    f"(exit code {task.exit_status})."
+                ),
+                actor_username=task.worker_name or "system",
+                target_type="task",
+                target_id=str(task.id),
+                target_name=task.name,
+                severity=EventSeverity.WARNING,
+            )
             return Response({"status": "failed"})
         else:
             # Task will be re-dispatched; stopped_at is intentionally not set
@@ -452,6 +545,20 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             )
         task.state = TaskState.SKIPPED
         task.save()
+
+        from apps.telemetry.models import EventSeverity
+        from apps.telemetry.services import record_event
+
+        actor = request.user.username if request.user and request.user.is_authenticated else "system"
+        record_event(
+            event_type="TASK_SKIPPED",
+            message=f"Task '{task.name}' was skipped by supervisor {actor}.",
+            actor_username=actor,
+            target_type="task",
+            target_id=str(task.id),
+            target_name=task.name,
+            severity=EventSeverity.INFO,
+        )
         return Response({"status": "skipped"})
 
     @action(detail=True, methods=["post"])
@@ -487,17 +594,24 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
 
 
 class TaskDispatchView(generics.GenericAPIView):
-    """Atomically find, lock, and dispatch a READY task to a worker."""
+    """Atomically find, lock, and dispatch a READY task to a worker.
+
+    Scoring and AI evaluation happen OUTSIDE the DB transaction to avoid
+    holding DB connections open during slow network I/O (LLM call). Only
+    the final claim step (select_for_update + save) runs inside an atomic
+    block, targeting just the single winning task.
+    """
 
     permission_classes = [IsFarmAgent]
     serializer_class = TaskStartSerializer
 
-    @transaction.atomic
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         worker_name = serializer.validated_data["worker_name"]
 
+        from apps.jobs.scoring.ai_client import AIScoreAdjuster
+        from apps.jobs.scoring.base import BaseScorer
         from apps.workers.models import WorkerNode, WorkerStatus
 
         worker = (
@@ -536,56 +650,121 @@ class TaskDispatchView(generics.GenericAPIView):
             .values("pk")
         )
 
-        candidates = (
-            Task.objects.select_for_update(skip_locked=True)
-            .select_related("layer", "job")
+        # Build an unordered, unlocked queryset — we do NOT lock the full batch.
+        # select_related ensures BaseScorer can access task.job and task.layer
+        # without additional queries.
+        candidates_qs = (
+            Task.objects.select_related("layer", "job")
             .filter(state=TaskState.READY, job_id__in=allowed_jobs)
         )
 
-        # Resource filtering happens in SQL. DCC/version/execution compatibility
-        # is evaluated from the worker's structured heartbeat data below.
+        # Resource filtering in SQL — hard constraints only.
+        # DCC / version / execution compatibility is checked in Python below.
         if worker is not None:
-            candidates = candidates.filter(
+            candidates_qs = candidates_qs.filter(
                 layer__min_cores__lte=max(int(worker.cores or 1), 1),
                 layer__min_memory_mb__lte=max(int(worker.memory_mb or 1), 1),
                 layer__min_gpus__lte=len(worker.gpu_models or []),
             )
 
-        candidates = candidates.order_by("job__priority", "dispatch_order")
+        # Fetch the top 200 candidates for scoring, ordered deterministically.
+        candidates_list = list(
+            candidates_qs.order_by("-job__priority", "dispatch_order")[:200]
+        )
 
-        task = None
-        for candidate in candidates.iterator(chunk_size=100):
-            compatible, _reason = worker_supports_layer(worker, candidate.layer)
-            if compatible:
-                task = candidate
-                break
-
-        if task is None:
+        if not candidates_list:
             return Response(
                 {"detail": "No compatible tasks available."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        task.state = TaskState.RUNNING
-        task.worker_name = worker_name
-        task.started_at = timezone.now()
-        task.save(
-            update_fields=[
-                "state",
-                "worker_name",
-                "started_at",
-                "updated_at",
-            ]
-        )
+        # ── Phase 1: Deterministic Base Scoring (no DB lock held) ────────────
+        scored_tasks = BaseScorer().score(worker, candidates_list)
 
-        if worker is not None:
-            WorkerNode.objects.filter(pk=worker.pk).update(
-                status=WorkerStatus.RENDERING,
-                last_ping=timezone.now(),
+        # DCC / version / execution capability check in Python.
+        supported_tasks = [
+            ts for ts in scored_tasks
+            if worker_supports_layer(worker, ts.task.layer)[0]
+        ]
+
+        if not supported_tasks:
+            return Response(
+                {"detail": "No compatible tasks available after capability filtering."},
+                status=status.HTTP_404_NOT_FOUND,
             )
+
+        # ── Phase 2: AI Tie-Breaker (outside transaction — may make HTTP call) ─
+        top_score = supported_tasks[0].base_score
+        # Use a RELATIVE threshold (10% of the top score) rather than an absolute
+        # value. An absolute threshold of 0.05 would incorrectly invoke the AI for
+        # every dispatch on farms where all jobs share the same priority, because all
+        # base scores cluster tightly around the same value regardless of absolute
+        # magnitude. The relative threshold correctly captures genuine ties.
+        tie_threshold = max(top_score * 0.10, 0.005)  # floor of 0.005 handles near-zero scores
+        competitive_tasks = [
+            ts for ts in supported_tasks if (top_score - ts.base_score) <= tie_threshold
+        ]
+
+        if len(competitive_tasks) > 1 and getattr(settings, "SCHEDULER_AI_ENABLED", True):
+            capabilities_snapshot = request.data.get("capabilities_snapshot")
+            adjusted = AIScoreAdjuster(worker).adjust(competitive_tasks, capabilities_snapshot)
+            best = adjusted[0]
+        else:
+            best = competitive_tasks[0]
+
+        winner_id = best.task.id
+        final_score_breakdown = best.score_breakdown
+
+        # ── Phase 3: Atomic claim — lock ONLY the winning task row ──────────
+        with transaction.atomic():
+            task = (
+                Task.objects.select_for_update(skip_locked=True)
+                .filter(pk=winner_id, state=TaskState.READY)
+                .first()
+            )
+            if task is None:
+                # Another worker claimed this task between scoring and claiming.
+                return Response(
+                    {"detail": "Task was claimed concurrently. Retry dispatch."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            task.state = TaskState.RUNNING
+            task.worker_name = worker_name
+            task.started_at = timezone.now()
+            task.last_score_breakdown = final_score_breakdown
+            task.save(
+                update_fields=[
+                    "state",
+                    "worker_name",
+                    "started_at",
+                    "updated_at",
+                    "last_score_breakdown",
+                ]
+            )
+
+            if worker is not None:
+                WorkerNode.objects.filter(pk=worker.pk).update(
+                    status=WorkerStatus.RENDERING,
+                    last_ping=timezone.now(),
+                )
 
         layer = task.layer
         job = task.job
+
+        # Telemetry: Record historical dispatch trace for observability
+        from apps.telemetry.services import record_dispatch_trace
+
+        record_dispatch_trace(
+            task=task,
+            job=job,
+            worker_hostname=worker_name,
+            candidate_count=len(supported_tasks),
+            ai_invoked="ai_adjustment" in (final_score_breakdown or {}),
+            ai_latency_ms=getattr(best, "ai_latency_ms", None),
+            ai_reason=str(final_score_breakdown.get("ai_reason", "")),
+            score_breakdown=final_score_breakdown,
+        )
         scene_info = layer.scene_info if isinstance(layer.scene_info, dict) else {}
         execution = scene_info.get("execution")
         if not isinstance(execution, dict):
@@ -593,6 +772,9 @@ class TaskDispatchView(generics.GenericAPIView):
         env = layer.env if isinstance(layer.env, dict) else {}
         requirements = extract_layer_requirements(layer)
 
+        # Extract the frame step from the range string if it is uniform across all
+        # segments. Mixed-step ranges (e.g. "1-50x2,51-100x5") fall back to 1 so
+        # the worker processes every frame in the chunk independently.
         frame_step = 1
         step_matches = {
             int(value)
@@ -600,7 +782,7 @@ class TaskDispatchView(generics.GenericAPIView):
             if int(value) > 0
         }
         if len(step_matches) == 1:
-            frame_step = step_matches.pop()
+            frame_step = next(iter(step_matches))
 
         dcc = requirements["dcc"]
         dcc_version = requirements["dcc_version"]
@@ -793,3 +975,78 @@ class DependencyViewSet(
         if not (self.request.user.is_staff or self.request.user.is_superuser):
             raise PermissionDenied("Only staff or superusers can delete dependencies.")
         instance.delete()  # pre_delete signal repairs counters
+
+
+# ── Recent Dispatches View ────────────────────────────────────────────────────
+
+
+@extend_schema(
+    summary="Get recent task dispatches",
+    description="Return the most recently dispatched tasks with their AI score breakdowns.",
+    parameters=[
+        OpenApiParameter(
+            name="limit",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="Number of tasks to return (default 30, max 100).",
+            default=30,
+        )
+    ],
+    responses={200: RecentDispatchLogSerializer(many=True)},
+)
+class RecentDispatchesView(generics.GenericAPIView):
+    """Return the most recently dispatched tasks with their AI score breakdowns."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = RecentDispatchLogSerializer
+
+    def get(self, request, *args, **kwargs):
+        """Return recently dispatched tasks with their score breakdowns.
+
+        Args:
+            request: The HTTP request.
+
+        Returns:
+            A list of recently dispatched task summaries.
+        """
+        try:
+            limit = min(int(request.query_params.get("limit", 30)), 100)
+        except (ValueError, TypeError):
+            limit = 30
+
+        tasks = (
+            Task.objects.select_related("job", "layer")
+            .exclude(last_score_breakdown__isnull=True)
+            .exclude(worker_name__isnull=True)
+            .order_by("-started_at")[:limit]
+        )
+
+        results = []
+        for task in tasks:
+            breakdown = task.last_score_breakdown or {}
+            results.append({
+                "id": str(task.id),
+                "name": task.name,
+                "worker_name": task.worker_name,
+                "started_at": task.started_at.isoformat() if task.started_at else None,
+                "state": task.state,
+                "job_id": str(task.job_id),
+                "job_name": task.job.visible_name or task.job.name,
+                "job_priority": task.job.priority,
+                "layer_name": task.layer.name,
+                "last_score_breakdown": breakdown,
+                # Convenience top-level fields derived from the breakdown
+                "ai_was_invoked": "ai_adjustment" in breakdown,
+                "ai_reason": breakdown.get("ai_reason", ""),
+                "final_score": (
+                    breakdown.get("job_priority", 0)
+                    + breakdown.get("resource_fit", 0)
+                    + breakdown.get("failure_penalty", 0)
+                    + breakdown.get("dispatch_order", 0)
+                    + breakdown.get("_floor_clamp", 0)
+                    + breakdown.get("ai_adjustment", 0)
+                ),
+            })
+
+        return Response(results)
+

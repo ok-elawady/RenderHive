@@ -31,7 +31,7 @@ export function PageHeader({ title, description, backTo, onBack, children }: Pag
     <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4">
       <div className="flex items-center gap-4">
         {showBackButton && (
-          <Button variant="ghost" size="icon" onClick={handleBack} className="shrink-0">
+          <Button variant="ghost" size="icon" onClick={handleBack} aria-label="Go back" className="shrink-0">
             <ArrowLeft size={18} />
           </Button>
         )}

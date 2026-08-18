@@ -218,6 +218,8 @@ class TaskDetailSerializer(TaskListSerializer):
         cores_used: CPU cores reserved at dispatch time.
         checkpoint_count: Number of resume checkpoints saved.
         dispatch_order: Dispatch priority within the layer.
+        last_score_breakdown: JSON breakdown of the dispatch scoring factors,
+            including the AI adjustment delta and reason if the AI was invoked.
     """
 
     class Meta(TaskListSerializer.Meta):
@@ -226,6 +228,7 @@ class TaskDetailSerializer(TaskListSerializer):
             "cores_used",
             "checkpoint_count",
             "dispatch_order",
+            "last_score_breakdown",
         ]
         read_only_fields = fields
 
@@ -578,7 +581,12 @@ class JobCreateSerializer(serializers.ModelSerializer):
                 submitted_by=submitted_by,
             )
         except ValueError as exc:
-            raise serializers.ValidationError({"dependencies": str(exc)}) from exc
+            msg = str(exc)
+            # Pool targeting errors originate from scene_info inside layers; route them
+            # there so API consumers see a meaningful field name. Dependency cycle errors
+            # keep the "dependencies" key.
+            key = "dependencies" if "cycle" in msg.lower() or "dependency" in msg.lower() else "layers"
+            raise serializers.ValidationError({key: msg}) from exc
 
 
 class JobPatchSerializer(serializers.ModelSerializer):
@@ -647,6 +655,10 @@ class TaskSucceedSerializer(serializers.Serializer):
         min_value=1,
         help_text="Actual CPU cores reserved by the Worker at dispatch time.",
     )
+    log_output = serializers.CharField(required=False, allow_blank=True, default="")
+    error_tail = serializers.CharField(required=False, allow_blank=True, default="")
+    duration_seconds = serializers.FloatField(required=False, default=0.0)
+    output_image_path = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class TaskFailSerializer(serializers.Serializer):
@@ -657,3 +669,27 @@ class TaskFailSerializer(serializers.Serializer):
     """
 
     exit_status = serializers.IntegerField(help_text="Non-zero process exit code from the render process.")
+    log_output = serializers.CharField(required=False, allow_blank=True, default="")
+    error_tail = serializers.CharField(required=False, allow_blank=True, default="")
+    duration_seconds = serializers.FloatField(required=False, default=0.0)
+    output_image_path = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class RecentDispatchLogSerializer(serializers.Serializer):
+    """Serializer for recent dispatch summaries with AI scoring breakdown."""
+
+    id = serializers.UUIDField(help_text="Task UUID.")
+    name = serializers.CharField(help_text="Task display name.")
+    worker_name = serializers.CharField(allow_null=True, help_text="Worker hostname.")
+    started_at = serializers.DateTimeField(allow_null=True, help_text="Dispatch timestamp.")
+    state = serializers.CharField(help_text="Task state.")
+    job_id = serializers.UUIDField(help_text="Job UUID.")
+    job_name = serializers.CharField(help_text="Job name.")
+    job_priority = serializers.IntegerField(help_text="Job priority.")
+    layer_name = serializers.CharField(help_text="Layer name.")
+    last_score_breakdown = serializers.DictField(help_text="Scoring breakdown dictionary.")
+    ai_was_invoked = serializers.BooleanField(help_text="Whether AI adjustment was applied.")
+    ai_reason = serializers.CharField(allow_blank=True, help_text="AI decision rationale.")
+    final_score = serializers.FloatField(help_text="Final composite priority score.")
+
+

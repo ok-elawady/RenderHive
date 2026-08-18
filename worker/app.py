@@ -174,6 +174,7 @@ class WorkerThread(QThread):
         self.current_task_id = ""
         self.current_task_ui: Dict[str, Any] = {}
         self.session = requests.Session()
+        self._last_system_info: Dict[str, Any] = {}
         self.started_monotonic = time.monotonic()
         self.last_worker_profile_fetch = 0.0
         self.poll_interval = max(2, min(30, int(self.profile.get("poll_interval", 5) or 5)))
@@ -402,17 +403,17 @@ class WorkerThread(QThread):
         self._progress_tracker.on_line(line)
         self._emit_progress_snapshot(task.task_id)
 
-    def run_task(self, raw_task: Dict[str, object]) -> int:
+    def run_task(self, raw_task: Dict[str, object]) -> Tuple[int, str, str, float, str]:
         try:
             task = normalize_task(raw_task)
             adapter = self.adapter_factory.for_task(task)
             plan = adapter.build_plan(task)
         except (AdapterError, ValueError) as error:
             self.log_signal.emit("Task preparation failed: {}".format(error))
-            return -2
+            return -2, "", str(error), 0.0, ""
         except Exception as error:
             self.log_signal.emit("Unexpected task preparation error: {}".format(error))
-            return -3
+            return -3, "", str(error), 0.0, ""
 
         task_ui = build_task_ui_payload(raw_task, task)
         detail = self.fetch_job_detail(safe_text(task_ui.get("job_id")))
@@ -470,6 +471,43 @@ class WorkerThread(QThread):
             line_callback=lambda line: self._process_output_line(task, line),
             event_callback=lambda event: self._process_event(task, event),
         )
+
+        arnold_gpu_failed = False
+        scene_info = task.raw.get("scene_info") or task.raw.get("layer", {}).get("scene_info") or {}
+        is_arnold = task.renderer.lower() == "arnold" if task.renderer else (scene_info.get("renderer", "").lower() == "arnold")
+        
+        if result.exit_code == 0 and is_arnold:
+            try:
+                with open(result.log_path, "r", encoding="utf-8", errors="replace") as log_r:
+                    log_contents = log_r.read()
+                gpu_failure_patterns = [
+                    "Unable to load Optix library",
+                    "GPU rendering is not available",
+                    "Failed to initialize GPU",
+                ]
+                if any(p in log_contents for p in gpu_failure_patterns) and not result.output_image_path:
+                    arnold_gpu_failed = True
+            except Exception:
+                pass
+
+        if arnold_gpu_failed:
+            self.log_signal.emit(f"Task {task.task_id}: Arnold GPU/OptiX failed. Auto-retrying with CPU rendering...")
+            task.raw["force_cpu"] = True
+            try:
+                plan = adapter.build_plan(task)
+                result = run_process(
+                    command=plan.command,
+                    task_id=task.task_id + "_cpu_retry",
+                    env=plan.env,
+                    cwd=plan.cwd,
+                    is_cancelled=lambda: (not self.is_running) or self.cancel_current_requested,
+                    heartbeat=self.send_heartbeat,
+                    log=self.log_signal.emit,
+                    line_callback=lambda line: self._process_output_line(task, line),
+                    event_callback=lambda event: self._process_event(task, event),
+                )
+            except Exception as error:
+                self.log_signal.emit(f"Task retry preparation failed: {error}")
         duration = max(0.0, time.monotonic() - started)
         cancelled = self.cancel_current_requested
         final_progress = (
@@ -521,7 +559,7 @@ class WorkerThread(QThread):
                 message += "\n  Output: {}".format(result.error_tail)
             message += "\n  Log: {}".format(display_log)
             self.log_signal.emit(message)
-        return result.exit_code
+        return result.exit_code, display_log, result.error_tail, duration, result.output_image_path
 
     def report_status(self, task_id: str, exit_status: int) -> None:
         try:
@@ -592,8 +630,15 @@ class WorkerThread(QThread):
                     self.status_signal.emit("RENDERING")
                     self.scheduler_signal.emit("RUNNING TASK")
                     self.log_signal.emit("Received task {}.".format(task_id))
-                    exit_status = self.run_task(task)
-                    self.report_status(str(task_id), exit_status)
+                    exit_status, log_path, error_tail, duration, out_img = self.run_task(task)
+                    self.report_status(
+                        str(task_id),
+                        exit_status,
+                        log_path=log_path,
+                        error_tail=error_tail,
+                        duration_seconds=duration,
+                        output_image_path=out_img,
+                    )
                     if self.pause_after_current:
                         self.dispatch_paused = True
                         self.scheduler_signal.emit("PAUSED")

@@ -11,8 +11,6 @@ import {
   CheckCircle2,
   Clock,
   Trash2,
-  Link2,
-  XCircle,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -20,14 +18,15 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  API_BASE_URL,
   formatApiError,
   getLayer,
+  getLayerTasks,
   skipTask,
   getJobDependencies,
   deleteDependency,
@@ -37,15 +36,9 @@ import {
   type LayerDetail,
 } from "@/services/api";
 import { DependencyFlow } from "@/components/dashboard/DependencyFlow";
+import TaskLogViewerDialog from "@/components/jobs/TaskLogViewerDialog";
+import { Terminal } from "lucide-react";
 
-type PaginatedTaskResponse = {
-  count?: number;
-  next?: string | null;
-  previous?: string | null;
-  results: TaskList[];
-};
-
-const TASK_FETCH_LIMIT = 200;
 
 const taskStates: Array<TaskStateFilter | "ALL"> = [
   "ALL",
@@ -56,63 +49,6 @@ const taskStates: Array<TaskStateFilter | "ALL"> = [
   "SKIPPED",
   "WAITING",
 ];
-
-function isTaskListArray(value: unknown): value is TaskList[] {
-  return Array.isArray(value);
-}
-
-function isPaginatedTaskResponse(value: unknown): value is PaginatedTaskResponse {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "results" in value &&
-    Array.isArray((value as PaginatedTaskResponse).results)
-  );
-}
-
-function getApiHeaders(): HeadersInit {
-  const token = process.env.NEXT_PUBLIC_RENDERHIVE_AUTH_TOKEN;
-
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Token ${token}` } : {}),
-  };
-}
-
-async function fetchLayerTasksWithLimit(jobId: string, layerId: string): Promise<TaskList[]> {
-  const query = new URLSearchParams({
-    limit: String(TASK_FETCH_LIMIT),
-    page_size: String(TASK_FETCH_LIMIT),
-  });
-  let nextUrl: string | null = `${API_BASE_URL}/api/jobs/${jobId}/layers/${layerId}/tasks/?${query.toString()}`;
-  const allTasks: TaskList[] = [];
-
-  while (nextUrl) {
-    const response = await fetch(nextUrl, {
-      headers: getApiHeaders(),
-      cache: "no-store",
-    });
-    const payload: unknown = await response.json();
-
-    if (!response.ok) {
-      throw new Error(JSON.stringify(payload));
-    }
-
-    if (isPaginatedTaskResponse(payload)) {
-      allTasks.push(...payload.results);
-      nextUrl = payload.next ?? null;
-      continue;
-    }
-
-    if (isTaskListArray(payload)) {
-      allTasks.push(...payload);
-    }
-
-    nextUrl = null;
-  }
-
-  return allTasks;
-}
 
 function getTaskClasses(state: TaskList["state"]): string {
   if (state === "RUNNING") {
@@ -133,13 +69,6 @@ function getTaskClasses(state: TaskList["state"]): string {
   return "border-input bg-input/20 text-muted-foreground";
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function shortenUuid(uuid: string | null | undefined): string {
-  if (!uuid) return "—";
-  return uuid.slice(0, 8) + "…";
-}
-
 export default function LayerInspectorPage() {
   const params = useParams<{ jobId: string; layerId: string }>();
   const [layer, setLayer] = useState<LayerDetail | null>(null);
@@ -147,9 +76,11 @@ export default function LayerInspectorPage() {
   const [stateFilter, setStateFilter] = useState<TaskStateFilter | "ALL">("ALL");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [skippingTaskId, setSkippingTaskId] = useState<string | null>(null);
+  const [selectedTaskForLog, setSelectedTaskForLog] = useState<{ id: string; name: string } | null>(null);
 
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [isDeletingDependency, setIsDeletingDependency] = useState<string | null>(null);
+  const [blockerToDelete, setBlockerToDelete] = useState<Dependency | null>(null);
 
   const blockers = useMemo(() => {
     return dependencies.filter((dep) => dep.dep_layer === layer?.id);
@@ -162,13 +93,21 @@ export default function LayerInspectorPage() {
     return blockers.slice((blockersPage - 1) * BLOCKERS_PAGE_SIZE, blockersPage * BLOCKERS_PAGE_SIZE);
   }, [blockers, blockersPage]);
 
-  const visibleTasks = useMemo(
-    () => (stateFilter === "ALL" ? tasks : tasks.filter((task) => task.state === stateFilter)),
-    [tasks, stateFilter],
-  );
+  const visibleTasks = useMemo(() => {
+    const filtered = stateFilter === "ALL" ? tasks : tasks.filter((task) => task.state === stateFilter);
+    return [...filtered].sort((a, b) => {
+      if (a.frame_start !== b.frame_start) {
+        return a.frame_start - b.frame_start;
+      }
+      if (a.frame_end !== b.frame_end) {
+        return a.frame_end - b.frame_end;
+      }
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+    });
+  }, [tasks, stateFilter]);
 
   const refreshTasks = useCallback(async (): Promise<void> => {
-    const taskData = await fetchLayerTasksWithLimit(params.jobId, params.layerId);
+    const taskData = await getLayerTasks(params.jobId, params.layerId);
     setTasks(taskData);
   }, [params.jobId, params.layerId]);
 
@@ -177,7 +116,7 @@ export default function LayerInspectorPage() {
     try {
       const [layerData, taskData, depsData] = await Promise.all([
         getLayer(params.jobId, params.layerId),
-        fetchLayerTasksWithLimit(params.jobId, params.layerId),
+        getLayerTasks(params.jobId, params.layerId),
         getJobDependencies(params.jobId),
       ]);
       setLayer(layerData);
@@ -235,7 +174,7 @@ export default function LayerInspectorPage() {
     <div className="flex h-full flex-col bg-background font-sans text-foreground">
       <PageHeader
         title={layer?.name ?? "Layer Inspector"}
-        description={layer ? `${layer.layer_type} / ${layer.frame_range} / ${layer.command}` : "Fetching tasks..."}
+        description={layer ? `${layer.layer_type} • Frames ${layer.frame_range}` : "Fetching tasks..."}
         backTo={`/jobs/${params.jobId}`}
       >
         <Button variant="outline" onClick={() => void loadLayer()} className="gap-2">
@@ -257,7 +196,7 @@ export default function LayerInspectorPage() {
               </CardHeader>
               <CardContent className="p-4 grid grid-cols-2 gap-y-5 gap-x-6 text-sm">
                 <div>
-                  <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1.5">
+                  <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-1.5">
                     Command
                   </div>
                   <div className="font-medium break-all whitespace-pre-wrap leading-relaxed">
@@ -265,23 +204,23 @@ export default function LayerInspectorPage() {
                   </div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1.5">
+                  <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-1.5">
                     Layer Type
                   </div>
                   <div className="font-medium">
-                    <Badge variant="secondary" className="rounded-sm px-1.5 py-0 text-xs font-normal">
+                    <Badge variant="secondary" className="rounded-sm px-2 py-0.5 text-xs font-normal">
                       {layer?.layer_type ?? "—"}
                     </Badge>
                   </div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1.5">
+                  <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-1.5">
                     Chunk Size
                   </div>
                   <div className="font-medium">{layer?.chunk_size ?? "—"} frames</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1.5">
+                  <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-1.5">
                     Min Hardware
                   </div>
                   <div className="font-medium">
@@ -350,8 +289,9 @@ export default function LayerInspectorPage() {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => void handleDeleteBlocker(blocker.id)}
+                              onClick={() => setBlockerToDelete(blocker)}
                               disabled={isDeletingDependency === blocker.id}
+                              aria-label="Remove blocker"
                               className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             >
                               <Trash2 size={14} />
@@ -373,6 +313,7 @@ export default function LayerInspectorPage() {
                       className="h-7 w-7 p-0"
                       disabled={blockersPage === 1}
                       onClick={() => setBlockersPage((p) => Math.max(1, p - 1))}
+                      aria-label="Previous blockers page"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
@@ -382,6 +323,7 @@ export default function LayerInspectorPage() {
                       className="h-7 w-7 p-0"
                       disabled={blockersPage * BLOCKERS_PAGE_SIZE >= blockers.length}
                       onClick={() => setBlockersPage((p) => p + 1)}
+                      aria-label="Next blockers page"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
@@ -393,7 +335,6 @@ export default function LayerInspectorPage() {
 
           <Card className="border-border p-0 gap-0">
             <Tabs
-              variant="line"
               value={stateFilter}
               onValueChange={(value) => setStateFilter(value as TaskStateFilter | "ALL")}
             >
@@ -412,7 +353,7 @@ export default function LayerInspectorPage() {
                       {count > 0 && (
                         <Badge
                           variant="secondary"
-                          className="px-1.5 py-0 text-[10px] rounded-full h-4 min-w-4 justify-center font-normal"
+                          className="px-2 py-0.5 text-xs rounded-full h-5 min-w-5 justify-center font-medium"
                         >
                           {count}
                         </Badge>
@@ -435,8 +376,17 @@ export default function LayerInspectorPage() {
                       {visibleTasks.map((task) => (
                         <div
                           key={task.id}
-                          title={`${task.name} / ${task.state}`}
-                          className={`group relative aspect-square overflow-hidden rounded-md border text-[10px] font-bold transition-all hover:scale-[1.03] ${getTaskClasses(task.state)}`}
+                          title={`${task.name} / ${task.state} (Click to inspect log)`}
+                          aria-label={`Task ${task.name}: ${task.state}, frames ${task.frame_start} to ${task.frame_end}`}
+                          tabIndex={0}
+                          onClick={() => setSelectedTaskForLog({ id: task.id, name: task.name })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedTaskForLog({ id: task.id, name: task.name });
+                            }
+                          }}
+                          className={`group relative aspect-square overflow-hidden rounded-md border text-xs font-semibold cursor-pointer transition-all hover:scale-[1.05] hover:ring-2 hover:ring-primary/60 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${getTaskClasses(task.state)}`}
                         >
                           <span className="absolute inset-0 flex items-center justify-center">
                             {task.frame_start + (task.frame_start !== task.frame_end ? "-" + task.frame_end : "")}
@@ -444,7 +394,8 @@ export default function LayerInspectorPage() {
                           {task.state === "FAILED" && (
                             <button
                               type="button"
-                              className="absolute inset-x-1 bottom-1 hidden rounded bg-destructive/95 px-1 py-0.5 text-[8px] font-bold text-destructive-foreground shadow-sm transition-all hover:bg-destructive group-hover:block uppercase tracking-wider"
+                              aria-label={`Skip failed task ${task.name}`}
+                              className="absolute inset-x-1 bottom-1 hidden rounded bg-destructive/95 px-1 py-0.5 text-[10px] font-bold text-destructive-foreground shadow-sm transition-all hover:bg-destructive group-hover:block uppercase tracking-wider z-10"
                               disabled={skippingTaskId === task.id}
                               onClick={(event) => {
                                 event.preventDefault();
@@ -460,7 +411,7 @@ export default function LayerInspectorPage() {
                     </div>
                   )}
 
-                  <div className="mt-5 flex flex-wrap gap-4 text-[11px] font-medium text-muted-foreground">
+                  <div className="mt-5 flex flex-wrap gap-4 text-xs font-medium text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <i className="size-2.5 rounded-sm bg-muted/50 border border-border" /> READY
                     </span>
@@ -478,11 +429,15 @@ export default function LayerInspectorPage() {
                     </span>
                   </div>
 
-                  <div className="mt-4 rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-                    <SkipForward size={12} className="mr-1.5 inline text-primary/70" />
-                    Hover over a failed task and click{" "}
-                    <span className="font-semibold text-foreground/70 uppercase">Skip</span> to bypass it and allow the
-                    job to continue.
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    <div>
+                      <Terminal size={12} className="mr-1.5 inline text-primary/70" />
+                      Click any task to view execution stdout/stderr logs and diagnostics.
+                    </div>
+                    <div>
+                      <SkipForward size={12} className="mr-1.5 inline text-destructive/70" />
+                      Hover failed tasks to <span className="font-semibold text-foreground/70 uppercase">Skip</span>.
+                    </div>
                   </div>
                 </TabsContent>
               </CardContent>
@@ -490,6 +445,33 @@ export default function LayerInspectorPage() {
           </Card>
         </div>
       </div>
+
+      <TaskLogViewerDialog
+        taskId={selectedTaskForLog?.id || null}
+        taskName={selectedTaskForLog?.name}
+        isOpen={Boolean(selectedTaskForLog)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedTaskForLog(null);
+        }}
+      />
+
+      {/* Blocker Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        open={!!blockerToDelete}
+        onOpenChange={(open) => !open && setBlockerToDelete(null)}
+        variant="destructive"
+        title="Remove Blocker Dependency"
+        description="Are you sure you want to remove this dependency blocker? This will allow blocked tasks to proceed immediately. This action cannot be undone."
+        confirmText="Remove Blocker"
+        isLoading={Boolean(blockerToDelete && isDeletingDependency === blockerToDelete.id)}
+        onConfirm={async () => {
+          if (blockerToDelete) {
+            await handleDeleteBlocker(blockerToDelete.id);
+            setBlockerToDelete(null);
+          }
+        }}
+      />
     </div>
   );
 }
+

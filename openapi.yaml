@@ -1,9 +1,220 @@
 openapi: 3.0.3
 info:
   title: RenderHive API
-  version: 0.1.0
+  version: 0.2.0
   description: REST API for the RenderHive render farm management system.
 paths:
+  /api/dependencies/:
+    get:
+      operationId: dependencies_list
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: query
+        name: dep_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_task
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: is_satisfied
+        schema:
+          type: boolean
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - in: query
+        name: parent_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_task
+        schema:
+          type: string
+          format: uuid
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - JOB_ON_JOB
+          - LAYER_ON_LAYER
+          - TASK_ON_TASK
+        description: |-
+          * `JOB_ON_JOB` - Job on Job
+          * `LAYER_ON_LAYER` - Layer on Layer
+          * `TASK_ON_TASK` - Task on Task
+      tags:
+      - dependencies
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDependencyReadList'
+          description: ''
+    post:
+      operationId: dependencies_create
+      description: |-
+        Create a dependency and return the full read representation.
+
+        Validates with DependencyCreateSerializer (which runs cycle detection),
+        saves the instance, then serializes the response with DependencyReadSerializer
+        so the caller receives all fields including is_satisfied and timestamps.
+
+        Returns:
+            ``201 Created`` with the full dependency representation.
+      tags:
+      - dependencies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyCreate'
+          description: ''
+  /api/dependencies/{id}/:
+    get:
+      operationId: dependencies_retrieve
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      tags:
+      - dependencies
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyRead'
+          description: ''
+    delete:
+      operationId: dependencies_destroy
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      tags:
+      - dependencies
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/jobs/:
     get:
       operationId: jobs_list
@@ -116,6 +327,238 @@ paths:
               schema:
                 $ref: '#/components/schemas/JobCreate'
           description: ''
+  /api/jobs/{job_pk}/dependencies/:
+    get:
+      operationId: jobs_dependencies_list
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: query
+        name: dep_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: dep_task
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: is_satisfied
+        schema:
+          type: boolean
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - in: query
+        name: parent_job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_layer
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: parent_task
+        schema:
+          type: string
+          format: uuid
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: type
+        schema:
+          type: string
+          enum:
+          - JOB_ON_JOB
+          - LAYER_ON_LAYER
+          - TASK_ON_TASK
+        description: |-
+          * `JOB_ON_JOB` - Job on Job
+          * `LAYER_ON_LAYER` - Layer on Layer
+          * `TASK_ON_TASK` - Task on Task
+      tags:
+      - jobs
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDependencyReadList'
+          description: ''
+    post:
+      operationId: jobs_dependencies_create
+      description: |-
+        Create a dependency and return the full read representation.
+
+        Validates with DependencyCreateSerializer (which runs cycle detection),
+        saves the instance, then serializes the response with DependencyReadSerializer
+        so the caller receives all fields including is_satisfied and timestamps.
+
+        Returns:
+            ``201 Created`` with the full dependency representation.
+      parameters:
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      tags:
+      - jobs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DependencyCreate'
+        required: true
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyCreate'
+          description: ''
+  /api/jobs/{job_pk}/dependencies/{id}/:
+    get:
+      operationId: jobs_dependencies_retrieve
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      tags:
+      - jobs
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DependencyRead'
+          description: ''
+    delete:
+      operationId: jobs_dependencies_destroy
+      description: |-
+        ViewSet for listing, retrieving, creating, and deleting dependencies.
+
+        Endpoints:
+            ``GET    /api/dependencies/``       — list all deps, supports filtering.
+            ``POST   /api/dependencies/``       — create a new dependency.
+            ``GET    /api/dependencies/{id}/``  — retrieve a single dependency.
+            ``DELETE /api/dependencies/{id}/``  — delete a dependency.
+
+            Read-only nested list under jobs:
+            ``GET    /api/jobs/{job_pk}/dependencies/``
+
+        All actions require authentication. Delete is restricted to staff and
+        superusers to prevent accidental removal of live dependency edges.
+
+        The pre_delete signal on Dependency automatically repairs ``depend_count``
+        and ``depend_tasks`` counters when a dependency is destroyed.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dependency.
+        required: true
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+        required: true
+      tags:
+      - jobs
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/jobs/{job_pk}/layers/:
     get:
       operationId: jobs_layers_list
@@ -919,7 +1362,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkerPool'
+                $ref: '#/components/schemas/WorkerPoolDetail'
           description: ''
     put:
       operationId: pools_update
@@ -1012,6 +1455,35 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/pools/{id}/workers/:
+    get:
+      operationId: pools_workers_retrieve
+      description: |-
+        Return workers assigned to this pool.
+
+        This explicit endpoint is convenient for DCC submitters while the normal
+        pool detail endpoint also embeds the same worker list.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this worker pool.
+        required: true
+      tags:
+      - pools
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerPool'
+          description: ''
   /api/tasks/:
     get:
       operationId: tasks_list
@@ -1359,7 +1831,13 @@ paths:
   /api/tasks/dispatch/:
     post:
       operationId: tasks_dispatch_create
-      description: Atomically find, lock, and dispatch a READY task to a worker.
+      description: |-
+        Atomically find, lock, and dispatch a READY task to a worker.
+
+        Scoring and AI evaluation happen OUTSIDE the DB transaction to avoid
+        holding DB connections open during slow network I/O (LLM call). Only
+        the final claim step (select_for_update + save) runs inside an atomic
+        block, targeting just the single winning task.
       tags:
       - tasks
       requestBody:
@@ -1384,6 +1862,493 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TaskStart'
+          description: ''
+  /api/tasks/recent-dispatches/:
+    get:
+      operationId: tasks_recent_dispatches_list
+      description: Return the most recently dispatched tasks with their AI score breakdowns.
+      summary: Get recent task dispatches
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          default: 30
+        description: Number of tasks to return (default 30, max 100).
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - tasks
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRecentDispatchLogList'
+          description: ''
+  /api/telemetry/cluster/history/:
+    get:
+      operationId: telemetry_cluster_history_retrieve
+      description: Returns time-bucketed historical hardware metrics (CPU, VRAM, active
+        tasks) across the render farm.
+      summary: Get cluster telemetry history
+      parameters:
+      - in: query
+        name: range
+        schema:
+          type: string
+          enum:
+          - 1h
+          - 24h
+          - 7d
+          default: 1h
+        description: 'Time range for aggregation: 1h (default), 24h, or 7d.'
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterTelemetryHistoryResponse'
+          description: ''
+  /api/telemetry/dispatches/:
+    get:
+      operationId: telemetry_dispatches_list
+      description: ViewSet for inspecting scheduler dispatch evaluations and AI reasoning.
+      parameters:
+      - in: query
+        name: ai_invoked
+        schema:
+          type: boolean
+      - in: query
+        name: job
+        schema:
+          type: string
+          format: uuid
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: worker_hostname
+        schema:
+          type: string
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDispatchTraceList'
+          description: ''
+  /api/telemetry/dispatches/{id}/:
+    get:
+      operationId: telemetry_dispatches_retrieve
+      description: ViewSet for inspecting scheduler dispatch evaluations and AI reasoning.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this dispatch trace.
+        required: true
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DispatchTrace'
+          description: ''
+  /api/telemetry/events/:
+    get:
+      operationId: telemetry_events_list
+      description: ViewSet for querying and recording farm audit and lifecycle events.
+      parameters:
+      - in: query
+        name: actor_username
+        schema:
+          type: string
+      - in: query
+        name: event_type
+        schema:
+          type: string
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: severity
+        schema:
+          type: string
+          enum:
+          - CRITICAL
+          - ERROR
+          - INFO
+          - WARNING
+        description: |-
+          * `INFO` - Info
+          * `WARNING` - Warning
+          * `ERROR` - Error
+          * `CRITICAL` - Critical
+      - in: query
+        name: target_id
+        schema:
+          type: string
+      - in: query
+        name: target_type
+        schema:
+          type: string
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedFarmEventList'
+          description: ''
+    post:
+      operationId: telemetry_events_create
+      description: ViewSet for querying and recording farm audit and lifecycle events.
+      tags:
+      - telemetry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FarmEvent'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FarmEvent'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FarmEvent'
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FarmEvent'
+          description: ''
+  /api/telemetry/jobs/{job_pk}/logs/:
+    get:
+      operationId: telemetry_jobs_logs_list
+      description: ViewSet for querying and submitting task execution logs.
+      parameters:
+      - in: path
+        name: job_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTaskLogListList'
+          description: ''
+  /api/telemetry/logs/:
+    get:
+      operationId: telemetry_logs_list
+      description: ViewSet for querying and submitting task execution logs.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTaskLogListList'
+          description: ''
+    post:
+      operationId: telemetry_logs_create
+      description: Upload an execution log for a specific task attempt.
+      tags:
+      - telemetry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskLogIngest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskLogIngest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskLogIngest'
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskLogIngest'
+          description: ''
+  /api/telemetry/logs/{id}/:
+    get:
+      operationId: telemetry_logs_retrieve
+      description: ViewSet for querying and submitting task execution logs.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this task execution log.
+        required: true
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskLogDetail'
+          description: ''
+  /api/telemetry/logs/latest/:
+    get:
+      operationId: telemetry_logs_latest_retrieve
+      description: Return the most recent log attempt for a task with full output.
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskLogDetail'
+          description: ''
+  /api/telemetry/tasks/{task_pk}/logs/:
+    get:
+      operationId: telemetry_tasks_logs_list
+      description: ViewSet for querying and submitting task execution logs.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: path
+        name: task_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTaskLogListList'
+          description: ''
+    post:
+      operationId: telemetry_tasks_logs_create
+      description: Upload an execution log for a specific task attempt.
+      parameters:
+      - in: path
+        name: task_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - telemetry
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskLogIngest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TaskLogIngest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskLogIngest'
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskLogIngest'
+          description: ''
+  /api/telemetry/tasks/{task_pk}/logs/latest/:
+    get:
+      operationId: telemetry_tasks_logs_latest_retrieve
+      description: Return the most recent log attempt for a task with full output.
+      parameters:
+      - in: path
+        name: task_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - telemetry
+      security:
+      - cookieAuth: []
+      - tokenAuth: []
+      - XSessionTokenAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskLogDetail'
           description: ''
   /api/users/:
     get:
@@ -1682,7 +2647,7 @@ paths:
   /api/workers/ping/:
     post:
       operationId: workers_ping_create
-      description: Register or update a worker's heartbeat.
+      description: Register or update a worker heartbeat and its DCC capabilities.
       tags:
       - workers
       requestBody:
@@ -1720,6 +2685,340 @@ components:
         * `Superuser` - Superuser
         * `Staff` - Staff
         * `Client` - Client
+    ClusterTelemetryHistoryResponse:
+      type: object
+      description: Aggregated historical timeseries response for the cluster.
+      properties:
+        range:
+          type: string
+          description: 'Query range: 1h, 24h, or 7d.'
+        cpu_load:
+          type: number
+          format: double
+          description: Current latest CPU load percentage.
+        vram_usage:
+          type: number
+          format: double
+          description: Current latest GPU VRAM utilization percentage.
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TelemetryPoint'
+          description: Time-bucketed aggregation data points.
+      required:
+      - cpu_load
+      - points
+      - range
+      - vram_usage
+    DependencyCreate:
+      type: object
+      description: |-
+        Write-only serializer for creating a new Dependency.
+
+        Validates that the dependency type matches the provided FKs, that no
+        self-dependency is introduced, and that adding the edge would not form
+        a cycle in the dependency graph.
+
+        Attributes:
+            type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+            dep_job: The blocked Job.
+            dep_layer: The blocked Layer (required for LAYER_ON_LAYER).
+            dep_task: The blocked Task (required for TASK_ON_TASK).
+            parent_job: The blocking Job.
+            parent_layer: The blocking Layer (required for LAYER_ON_LAYER).
+            parent_task: The blocking Task (required for TASK_ON_TASK).
+      properties:
+        type:
+          $ref: '#/components/schemas/TypeEnum'
+        dep_job:
+          type: string
+          format: uuid
+          title: Blocked job
+          description: The job that is WAITING. It cannot start until the blocking
+            (parent) entity completes.
+        dep_layer:
+          type: string
+          format: uuid
+          nullable: true
+          title: Blocked layer
+          description: The specific layer that is WAITING (required for LAYER_ON_LAYER
+            dependencies).
+        dep_task:
+          type: string
+          format: uuid
+          nullable: true
+          title: Blocked task
+          description: The specific task that is WAITING (required for TASK_ON_TASK
+            dependencies).
+        parent_job:
+          type: string
+          format: uuid
+          title: Blocking job
+          description: The job that must complete FIRST before the blocked entity
+            is released.
+        parent_layer:
+          type: string
+          format: uuid
+          nullable: true
+          title: Blocking layer
+          description: The specific layer that must complete FIRST (required for LAYER_ON_LAYER
+            dependencies).
+        parent_task:
+          type: string
+          format: uuid
+          nullable: true
+          title: Blocking task
+          description: The specific task that must complete FIRST (required for TASK_ON_TASK
+            dependencies).
+      required:
+      - dep_job
+      - parent_job
+      - type
+    DependencyRead:
+      type: object
+      description: |-
+        Full read-only representation of a Dependency.
+
+        Attributes:
+            id: UUID primary key.
+            type: Dependency kind (TASK_ON_TASK, LAYER_ON_LAYER, JOB_ON_JOB).
+            dep_job: The blocked Job UUID.
+            dep_layer: The blocked Layer UUID (if applicable).
+            dep_task: The blocked Task UUID (if applicable).
+            parent_job: The blocking Job UUID.
+            parent_layer: The blocking Layer UUID (if applicable).
+            parent_task: The blocking Task UUID (if applicable).
+            is_satisfied: True once the blocking entity has completed.
+            created_at: Creation timestamp.
+            satisfied_at: Satisfaction timestamp.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TypeEnum'
+          readOnly: true
+        dep_job:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Blocked job
+          description: The job that is WAITING. It cannot start until the blocking
+            (parent) entity completes.
+        dep_job_name:
+          type: string
+          readOnly: true
+        dep_layer:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocked layer
+          description: The specific layer that is WAITING (required for LAYER_ON_LAYER
+            dependencies).
+        dep_layer_name:
+          type: string
+          readOnly: true
+        dep_task:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocked task
+          description: The specific task that is WAITING (required for TASK_ON_TASK
+            dependencies).
+        dep_task_name:
+          type: string
+          readOnly: true
+        parent_job:
+          type: string
+          format: uuid
+          readOnly: true
+          title: Blocking job
+          description: The job that must complete FIRST before the blocked entity
+            is released.
+        parent_job_name:
+          type: string
+          readOnly: true
+        parent_layer:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocking layer
+          description: The specific layer that must complete FIRST (required for LAYER_ON_LAYER
+            dependencies).
+        parent_layer_name:
+          type: string
+          readOnly: true
+        parent_task:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+          title: Blocking task
+          description: The specific task that must complete FIRST (required for TASK_ON_TASK
+            dependencies).
+        parent_task_name:
+          type: string
+          readOnly: true
+        is_satisfied:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        satisfied_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - dep_job
+      - dep_job_name
+      - dep_layer
+      - dep_layer_name
+      - dep_task
+      - dep_task_name
+      - id
+      - is_satisfied
+      - parent_job
+      - parent_job_name
+      - parent_layer
+      - parent_layer_name
+      - parent_task
+      - parent_task_name
+      - satisfied_at
+      - type
+    DependencyTypeEnum:
+      enum:
+      - TASK_ON_TASK
+      - LAYER_ON_LAYER
+      type: string
+      description: |-
+        * `TASK_ON_TASK` - TASK_ON_TASK
+        * `LAYER_ON_LAYER` - LAYER_ON_LAYER
+    DispatchTrace:
+      type: object
+      description: Read serializer for scheduler and AI dispatch traces.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        task:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        task_name:
+          type: string
+          readOnly: true
+          default: Deleted Task
+        job:
+          type: string
+          format: uuid
+          readOnly: true
+        job_name:
+          type: string
+          readOnly: true
+        job_visible_name:
+          type: string
+          readOnly: true
+        worker_hostname:
+          type: string
+          readOnly: true
+        candidate_count:
+          type: integer
+          readOnly: true
+        ai_invoked:
+          type: boolean
+          readOnly: true
+        ai_latency_ms:
+          type: number
+          format: double
+          readOnly: true
+          nullable: true
+        ai_reason:
+          type: string
+          readOnly: true
+        score_breakdown:
+          readOnly: true
+        dispatched_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - ai_invoked
+      - ai_latency_ms
+      - ai_reason
+      - candidate_count
+      - dispatched_at
+      - id
+      - job
+      - job_name
+      - job_visible_name
+      - score_breakdown
+      - task
+      - task_name
+      - worker_hostname
+    ExecutionModeEnum:
+      enum:
+      - IMMEDIATE
+      - LAST
+      - WAIT_LAYER
+      type: string
+      description: |-
+        * `IMMEDIATE` - IMMEDIATE
+        * `LAST` - LAST
+        * `WAIT_LAYER` - WAIT_LAYER
+    FarmEvent:
+      type: object
+      description: Serializer for audit trail and farm lifecycle events.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        event_type:
+          type: string
+          readOnly: true
+        severity:
+          allOf:
+          - $ref: '#/components/schemas/SeverityEnum'
+          readOnly: true
+        actor_username:
+          type: string
+          readOnly: true
+        target_type:
+          type: string
+          readOnly: true
+        target_id:
+          type: string
+          readOnly: true
+        message:
+          type: string
+          readOnly: true
+        payload:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - actor_username
+      - created_at
+      - event_type
+      - id
+      - message
+      - payload
+      - severity
+      - target_id
+      - target_type
     JobCreate:
       type: object
       description: |-
@@ -1768,6 +3067,10 @@ components:
           description: Limits how many tasks from this job a single machine can run
             at once. Used to prevent a single job from monopolizing nodes with high
             core counts.
+        max_frames_per_worker:
+          type: integer
+          minimum: 0
+          writeOnly: true
         included_pools:
           type: array
           items:
@@ -1786,11 +3089,46 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LayerCreate'
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobDependencySpec'
+          description: Optional list of JOB_ON_JOB external dependencies.
       required:
       - layers
       - log_directory
       - project
       - user
+    JobDependencySpec:
+      type: object
+      description: |-
+        Nested serializer for declaring JOB_ON_JOB deps at job submission.
+
+        Attributes:
+            parent_job: The UUID of the job that must finish first.
+            parent_layer: The name of the layer that must finish first (optional).
+            dep_layer: The name of the layer that is blocked (optional).
+      properties:
+        type:
+          type: string
+          default: JOB_ON_JOB
+        parent_job:
+          type: string
+          format: uuid
+          description: UUID of the job that must complete first (the blocker).
+        parent_layer:
+          type: string
+          nullable: true
+          description: Optional name of the specific layer in the parent job that
+            must complete.
+          maxLength: 256
+        dep_layer:
+          type: string
+          nullable: true
+          description: Optional name of the specific layer in this job that is blocked.
+          maxLength: 256
+      required:
+      - parent_job
     JobDetail:
       type: object
       description: |-
@@ -2122,7 +3460,26 @@ components:
             env: Environment variable overrides.
             max_retries: Per-task retry ceiling.
             timeout_seconds: Task execution timeout.
+            execution_mode: Dependency logic mode.
+            depends_on_layer: The layer name to wait for (if WAIT_LAYER).
+            dependency_type: The dependency mapping type (if WAIT_LAYER).
       properties:
+        execution_mode:
+          allOf:
+          - $ref: '#/components/schemas/ExecutionModeEnum'
+          writeOnly: true
+          default: IMMEDIATE
+        depends_on_layer:
+          type: string
+          writeOnly: true
+          nullable: true
+          maxLength: 256
+        dependency_type:
+          writeOnly: true
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/DependencyTypeEnum'
+          - $ref: '#/components/schemas/NullEnum'
         name:
           type: string
           maxLength: 256
@@ -2400,6 +3757,78 @@ components:
         * `RENDER` - Render
         * `UTIL` - Utility
         * `POST` - Post
+    NullEnum:
+      enum:
+      - null
+    PaginatedDependencyReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyRead'
+    PaginatedDispatchTraceList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DispatchTrace'
+    PaginatedFarmEventList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/FarmEvent'
     PaginatedJobListList:
       type: object
       required:
@@ -2446,6 +3875,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LayerList'
+    PaginatedRecentDispatchLogList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecentDispatchLog'
     PaginatedTaskListList:
       type: object
       required:
@@ -2469,6 +3921,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TaskList'
+    PaginatedTaskLogListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskLogList'
     PaginatedWorkerNodeList:
       type: object
       required:
@@ -2581,6 +4056,8 @@ components:
           $ref: '#/components/schemas/AccessLevelEnum'
     PatchedWorkerPool:
       type: object
+      description: Slim pool representation used in list responses and nested inside
+        worker detail.
       properties:
         id:
           type: string
@@ -2591,6 +4068,18 @@ components:
           maxLength: 128
         description:
           type: string
+        worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        online_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        rendering_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
         created_at:
           type: string
           format: date-time
@@ -2599,6 +4088,82 @@ components:
           type: string
           format: date-time
           readOnly: true
+    RecentDispatchLog:
+      type: object
+      description: Serializer for recent dispatch summaries with AI scoring breakdown.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Task UUID.
+        name:
+          type: string
+          description: Task display name.
+        worker_name:
+          type: string
+          nullable: true
+          description: Worker hostname.
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Dispatch timestamp.
+        state:
+          type: string
+          description: Task state.
+        job_id:
+          type: string
+          format: uuid
+          description: Job UUID.
+        job_name:
+          type: string
+          description: Job name.
+        job_priority:
+          type: integer
+          description: Job priority.
+        layer_name:
+          type: string
+          description: Layer name.
+        last_score_breakdown:
+          type: object
+          additionalProperties: {}
+          description: Scoring breakdown dictionary.
+        ai_was_invoked:
+          type: boolean
+          description: Whether AI adjustment was applied.
+        ai_reason:
+          type: string
+          description: AI decision rationale.
+        final_score:
+          type: number
+          format: double
+          description: Final composite priority score.
+      required:
+      - ai_reason
+      - ai_was_invoked
+      - final_score
+      - id
+      - job_id
+      - job_name
+      - job_priority
+      - last_score_breakdown
+      - layer_name
+      - name
+      - started_at
+      - state
+      - worker_name
+    SeverityEnum:
+      enum:
+      - INFO
+      - WARNING
+      - ERROR
+      - CRITICAL
+      type: string
+      description: |-
+        * `INFO` - Info
+        * `WARNING` - Warning
+        * `ERROR` - Error
+        * `CRITICAL` - Critical
     State1dfEnum:
       enum:
       - PENDING
@@ -2653,6 +4218,8 @@ components:
             cores_used: CPU cores reserved at dispatch time.
             checkpoint_count: Number of resume checkpoints saved.
             dispatch_order: Dispatch priority within the layer.
+            last_score_breakdown: JSON breakdown of the dispatch scoring factors,
+                including the AI adjustment delta and reason if the AI was invoked.
       properties:
         id:
           type: string
@@ -2716,6 +4283,11 @@ components:
           readOnly: true
           description: Scheduler priority within the layer. Lower numbers are dispatched
             first.
+        last_score_breakdown:
+          readOnly: true
+          nullable: true
+          description: Observability field containing the breakdown of the dispatch
+            score and AI adjustments.
       required:
       - checkpoint_count
       - cores_used
@@ -2725,6 +4297,7 @@ components:
       - frame_end
       - frame_start
       - id
+      - last_score_breakdown
       - max_memory_used_mb
       - name
       - retries
@@ -2743,6 +4316,19 @@ components:
         exit_status:
           type: integer
           description: Non-zero process exit code from the render process.
+        log_output:
+          type: string
+          default: ''
+        error_tail:
+          type: string
+          default: ''
+        duration_seconds:
+          type: number
+          format: double
+          default: 0.0
+        output_image_path:
+          type: string
+          default: ''
       required:
       - exit_status
     TaskList:
@@ -2819,6 +4405,173 @@ components:
       - state
       - stopped_at
       - worker_name
+    TaskLogDetail:
+      type: object
+      description: Full detail serializer for inspecting a specific task log with
+        complete stdout/stderr.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        task:
+          type: string
+          format: uuid
+          readOnly: true
+          description: The task this log belongs to.
+        task_name:
+          type: string
+          readOnly: true
+        job:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Denormalized Job foreign key for fast cascading and filtering.
+        job_name:
+          type: string
+          readOnly: true
+        attempt_number:
+          type: integer
+          readOnly: true
+        worker_hostname:
+          type: string
+          readOnly: true
+        exit_status:
+          type: integer
+          readOnly: true
+        duration_seconds:
+          type: number
+          format: double
+          readOnly: true
+        peak_memory_mb:
+          type: integer
+          readOnly: true
+        output_image_path:
+          type: string
+          readOnly: true
+        error_tail:
+          type: string
+          readOnly: true
+          description: Fast-access failure excerpt.
+        log_output:
+          type: string
+          readOnly: true
+          description: Full stdout/stderr text, TOAST-compressed.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - attempt_number
+      - created_at
+      - duration_seconds
+      - error_tail
+      - exit_status
+      - id
+      - job
+      - job_name
+      - log_output
+      - output_image_path
+      - peak_memory_mb
+      - task
+      - task_name
+      - worker_hostname
+    TaskLogIngest:
+      type: object
+      description: Write serializer for uploading task execution logs from worker
+        nodes.
+      properties:
+        exit_status:
+          type: integer
+          default: 0
+        log_output:
+          type: string
+          default: ''
+        error_tail:
+          type: string
+          default: ''
+        duration_seconds:
+          type: number
+          format: double
+          default: 0.0
+        peak_memory_mb:
+          type: integer
+          default: 0
+        output_image_path:
+          type: string
+          default: ''
+        worker_hostname:
+          type: string
+          default: ''
+        attempt_number:
+          type: integer
+          nullable: true
+    TaskLogList:
+      type: object
+      description: Slim serializer for listing task execution logs without the heavy
+        log body.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        task:
+          type: string
+          format: uuid
+          readOnly: true
+          description: The task this log belongs to.
+        task_name:
+          type: string
+          readOnly: true
+        job:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Denormalized Job foreign key for fast cascading and filtering.
+        job_name:
+          type: string
+          readOnly: true
+        attempt_number:
+          type: integer
+          readOnly: true
+        worker_hostname:
+          type: string
+          readOnly: true
+        exit_status:
+          type: integer
+          readOnly: true
+        duration_seconds:
+          type: number
+          format: double
+          readOnly: true
+        peak_memory_mb:
+          type: integer
+          readOnly: true
+        output_image_path:
+          type: string
+          readOnly: true
+        error_tail:
+          type: string
+          readOnly: true
+          description: Fast-access failure excerpt.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - attempt_number
+      - created_at
+      - duration_seconds
+      - error_tail
+      - exit_status
+      - id
+      - job
+      - job_name
+      - output_image_path
+      - peak_memory_mb
+      - task
+      - task_name
+      - worker_hostname
     TaskStart:
       type: object
       description: |-
@@ -2857,6 +4610,47 @@ components:
           minimum: 1
           nullable: true
           description: Actual CPU cores reserved by the Worker at dispatch time.
+        log_output:
+          type: string
+          default: ''
+        error_tail:
+          type: string
+          default: ''
+        duration_seconds:
+          type: number
+          format: double
+          default: 0.0
+        output_image_path:
+          type: string
+          default: ''
+    TelemetryPoint:
+      type: object
+      description: Single time-bucket hardware metric aggregation point.
+      properties:
+        x:
+          type: integer
+          description: Normalized x position percentage (0-100).
+        cpu:
+          type: number
+          format: double
+          description: Average CPU cluster load percentage.
+        vram:
+          type: number
+          format: double
+          description: Average GPU VRAM utilization percentage.
+        active_tasks:
+          type: integer
+          description: Peak concurrent active rendering tasks.
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO timestamp of the bucket end.
+      required:
+      - active_tasks
+      - cpu
+      - timestamp
+      - vram
+      - x
     TitleRoleEnum:
       enum:
       - Technical Director
@@ -2873,6 +4667,16 @@ components:
         * `FX Artist` - FX Artist
         * `Lighting Lead` - Lighting Lead
         * `Render User` - Render User
+    TypeEnum:
+      enum:
+      - JOB_ON_JOB
+      - LAYER_ON_LAYER
+      - TASK_ON_TASK
+      type: string
+      description: |-
+        * `JOB_ON_JOB` - Job on Job
+        * `LAYER_ON_LAYER` - Layer on Layer
+        * `TASK_ON_TASK` - Task on Task
     User:
       type: object
       properties:
@@ -3040,6 +4844,9 @@ components:
           items:
             type: string
             maxLength: 128
+        capabilities:
+          type: string
+          readOnly: true
         system_info:
           description: Transient and live utilization metrics.
         last_ping:
@@ -3051,13 +4858,74 @@ components:
           format: date-time
           readOnly: true
       required:
+      - capabilities
       - created_at
       - hostname
       - id
       - last_ping
       - pools
+    WorkerNodeSummary:
+      type: object
+      description: Compact worker representation used inside pool detail responses.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        hostname:
+          type: string
+          readOnly: true
+        ip_address:
+          type: string
+          readOnly: true
+          nullable: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/StatusEnum'
+          readOnly: true
+        tags:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+          readOnly: true
+        cores:
+          type: integer
+          readOnly: true
+        memory_mb:
+          type: integer
+          readOnly: true
+        gpu_models:
+          type: array
+          items:
+            type: string
+            maxLength: 128
+          readOnly: true
+        capabilities:
+          type: string
+          readOnly: true
+        system_info:
+          readOnly: true
+          description: Transient and live utilization metrics.
+        last_ping:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - capabilities
+      - cores
+      - gpu_models
+      - hostname
+      - id
+      - ip_address
+      - last_ping
+      - memory_mb
+      - status
+      - system_info
+      - tags
     WorkerPool:
       type: object
+      description: Slim pool representation used in list responses and nested inside
+        worker detail.
       properties:
         id:
           type: string
@@ -3068,6 +4936,18 @@ components:
           maxLength: 128
         description:
           type: string
+        worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        online_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        rendering_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
         created_at:
           type: string
           format: date-time
@@ -3080,7 +4960,62 @@ components:
       - created_at
       - id
       - name
+      - online_worker_count
+      - rendering_worker_count
       - updated_at
+      - worker_count
+    WorkerPoolDetail:
+      type: object
+      description: |-
+        Full pool representation for retrieve and the /workers/ action.
+
+        Extends the slim serializer with the full worker list (using
+        WorkerNodeSummarySerializer instead of a slug). The viewset prefetches
+        ``workers`` only for these actions to avoid N+1 queries on list views.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 128
+        description:
+          type: string
+        worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        online_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        rendering_worker_count:
+          type: integer
+          readOnly: true
+          default: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        workers:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkerNodeSummary'
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - online_worker_count
+      - rendering_worker_count
+      - updated_at
+      - worker_count
+      - workers
   securitySchemes:
     XSessionTokenAuth:
       type: apiKey

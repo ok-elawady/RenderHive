@@ -9,19 +9,17 @@ import {
   Plus,
   Trash2,
   XCircle,
-  ChevronDown,
-  ChevronUp,
   ChevronLeft,
   ChevronRight,
   LayoutList,
-  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Card, CardContent, CardHeader, CardTitle, CardAction } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import { JobSelector, LayerSelector, TaskSelector } from "@/components/common/Selectors";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DependencyFlow } from "@/components/dashboard/DependencyFlow";
@@ -33,7 +31,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -234,57 +231,7 @@ function AddDependencyDialog({ open, onOpenChange, jobId, onCreated }: AddDepend
   );
 }
 
-// ── Delete Confirmation Dialog ─────────────────────────────────────────────────
 
-interface DeleteConfirmDialogProps {
-  dep: Dependency | null;
-  onClose: () => void;
-  onDeleted: () => void;
-}
-
-function DeleteConfirmDialog({ dep, onClose, onDeleted }: DeleteConfirmDialogProps) {
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const handleDelete = async () => {
-    if (!dep) return;
-    setIsDeleting(true);
-    try {
-      await deleteDependency(dep.id);
-      toast.success("Dependency removed.");
-      onDeleted();
-      onClose();
-    } catch (err) {
-      toast.error(formatApiError(err));
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  return (
-    <Dialog open={!!dep} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-destructive">
-            <XCircle className="size-4" />
-            Remove Dependency
-          </DialogTitle>
-          <DialogDescription>
-            This will immediately allow the blocked tasks to be re-evaluated. This action cannot be undone.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isDeleting}>
-            Cancel
-          </Button>
-          <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-            {isDeleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-            Remove
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // ── Main Panel ────────────────────────────────────────────────────────────────
 
@@ -300,6 +247,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
   const [isLoading, setIsLoading] = useState(true);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Dependency | null>(null);
+  const [isDeletingDependency, setIsDeletingDependency] = useState(false);
 
   const [inboundPage, setInboundPage] = useState(1);
   const [outboundPage, setOutboundPage] = useState(1);
@@ -329,6 +277,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
   }, [jobId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDeps();
   }, [loadDeps]);
 
@@ -340,7 +289,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
 
   return (
     <Card className="border-border overflow-hidden p-0 gap-0">
-      <Tabs variant="line" defaultValue="inbound" className="flex flex-col">
+      <Tabs defaultValue="inbound" className="flex flex-col">
         <CardHeader className="p-4 pb-3 mb-0 border-b border-border/50">
           <CardTitle className="flex items-center justify-between text-sm font-bold w-full">
             <div className="flex items-center gap-2">
@@ -395,7 +344,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
               </div>
             ) : (
               <Table containerRef={inboundRef} containerClassName="max-h-[400px] overflow-y-auto">
-                <TableHeader className="sticky top-0 z-10 shadow-sm bg-muted/30">
+                <TableHeader className="sticky top-0 z-10 border-b border-border/50 bg-muted/30">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="pl-6 font-semibold text-xs w-[35%]">Depends On</TableHead>
                     <TableHead className="font-semibold text-center text-xs">Type</TableHead>
@@ -437,6 +386,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                                 id={`delete-dep-${dep.id}`}
                                 size="icon"
                                 variant="ghost"
+                                aria-label="Delete dependency"
                                 className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                 onClick={() => setPendingDelete(dep)}
                               >
@@ -462,6 +412,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                   className="h-7 w-7 p-0"
                   disabled={inboundPage === 1}
                   onClick={() => setInboundPage((p) => Math.max(1, p - 1))}
+                  aria-label="Previous inbound page"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -471,6 +422,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                   className="h-7 w-7 p-0"
                   disabled={inboundPage * PAGE_SIZE >= inbound.length}
                   onClick={() => setInboundPage((p) => p + 1)}
+                  aria-label="Next inbound page"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -481,7 +433,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
           {/* Outbound: what is waiting on this job */}
           <TabsContent value="outbound" className="m-0 border-none p-0 outline-none flex flex-col">
             <Table containerRef={outboundRef} containerClassName="max-h-[250px] overflow-y-auto">
-              <TableHeader className="sticky top-0 z-10 shadow-sm bg-card">
+              <TableHeader className="sticky top-0 z-10 border-b border-border/50 bg-card">
                 <TableRow className="hover:bg-transparent bg-muted/30">
                   <TableHead className="pl-6 font-semibold text-xs w-[35%]">Blocks</TableHead>
                   <TableHead className="font-semibold text-center text-xs">Type</TableHead>
@@ -531,6 +483,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                   className="h-7 w-7 p-0"
                   disabled={outboundPage === 1}
                   onClick={() => setOutboundPage((p) => Math.max(1, p - 1))}
+                  aria-label="Previous outbound page"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -540,6 +493,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
                   className="h-7 w-7 p-0"
                   disabled={outboundPage * PAGE_SIZE >= outbound.length}
                   onClick={() => setOutboundPage((p) => p + 1)}
+                  aria-label="Next outbound page"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -551,7 +505,29 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
 
       {/* Dialogs */}
       <AddDependencyDialog open={isAddOpen} onOpenChange={setIsAddOpen} jobId={jobId} onCreated={loadDeps} />
-      <DeleteConfirmDialog dep={pendingDelete} onClose={() => setPendingDelete(null)} onDeleted={loadDeps} />
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        variant="destructive"
+        title="Remove Dependency"
+        description="This will immediately allow the blocked tasks to be re-evaluated. This action cannot be undone."
+        confirmText="Remove Dependency"
+        isLoading={isDeletingDependency}
+        onConfirm={async () => {
+          if (!pendingDelete) return;
+          setIsDeletingDependency(true);
+          try {
+            await deleteDependency(pendingDelete.id);
+            toast.success("Dependency removed.");
+            await loadDeps();
+            setPendingDelete(null);
+          } catch (err) {
+            toast.error(formatApiError(err));
+          } finally {
+            setIsDeletingDependency(false);
+          }
+        }}
+      />
     </Card>
   );
 }

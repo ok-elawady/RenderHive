@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "django_filters",
     "drf_spectacular",
+    "django_celery_beat",
     "allauth",
     "allauth.account",
     "allauth.headless",
@@ -61,7 +62,9 @@ INSTALLED_APPS = [
     "apps.users.apps.UsersConfig",
     "apps.jobs.apps.JobsConfig",
     "apps.workers.apps.WorkersConfig",
+    "apps.telemetry.apps.TelemetryConfig",
 ]
+
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -229,3 +232,100 @@ ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_EMAIL_REQUIRED = False
 ACCOUNT_LOGIN_METHODS = {"username"}
 ACCOUNT_SIGNUP_FIELDS = ["username*", "password1*", "password2*"]
+
+# ---------------------------------------------------------------------------
+# AI Scheduler
+# ---------------------------------------------------------------------------
+# SCHEDULER_AI_ENABLED  — Set to False to bypass the LLM tie-breaker entirely
+#                         and fall back to pure deterministic scoring.
+# SCHEDULER_AI_URL      — Full URL to the ai_scheduler FastAPI service.
+#                         In Docker this resolves to http://ai_scheduler:8001.
+# SCHEDULER_AI_TIMEOUT  — Seconds to wait for an AI response before falling
+#                         back to base scores. LLM inference is slow; 5s is
+#                         a reasonable default for lightweight local models.
+# ---------------------------------------------------------------------------
+SCHEDULER_AI_ENABLED = env.bool("SCHEDULER_AI_ENABLED", default=True)
+SCHEDULER_AI_URL = env(
+    "SCHEDULER_AI_URL",
+    default="http://ai_scheduler:8001/api/v1/rank-tasks",
+)
+SCHEDULER_AI_TIMEOUT = env.float("SCHEDULER_AI_TIMEOUT", default=5.0)
+
+# ---------------------------------------------------------------------------
+# Logging Configuration
+# ---------------------------------------------------------------------------
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+        "apps": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Celery & Background Task Configuration
+# ---------------------------------------------------------------------------
+CELERY_BROKER_URL = env(
+    "CELERY_BROKER_URL",
+    default=env("REDIS_URL", default="redis://127.0.0.1:6379/1"),
+)
+CELERY_RESULT_BACKEND = env(
+    "CELERY_RESULT_BACKEND",
+    default=env("REDIS_URL", default="redis://127.0.0.1:6379/1"),
+)
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+
+try:
+    from celery.schedules import crontab  # noqa: E402
+
+    CELERY_BEAT_SCHEDULE = {
+        "reap-stale-workers-and-tasks": {
+            "task": "apps.workers.tasks.reap_stale_workers_and_tasks",
+            "schedule": env.float("WORKER_REAP_INTERVAL_SECONDS", default=15.0),
+        },
+        "snapshot-worker-metrics": {
+            "task": "apps.telemetry.tasks.snapshot_online_worker_metrics",
+            "schedule": env.float("TELEMETRY_SNAPSHOT_INTERVAL_SECONDS", default=30.0),
+        },
+        "prune-old-telemetry-daily": {
+            "task": "apps.telemetry.tasks.prune_old_telemetry",
+            "schedule": crontab(hour=0, minute=0),
+        },
+    }
+except ImportError:
+    CELERY_BEAT_SCHEDULE = {}
+
+
+# ---------------------------------------------------------------------------
+# Telemetry & Worker Health Thresholds
+# ---------------------------------------------------------------------------
+TELEMETRY_WORKER_METRIC_INTERVAL_SECONDS = env.int("TELEMETRY_WORKER_METRIC_INTERVAL_SECONDS", default=60)
+TELEMETRY_RETENTION_DAYS = env.int("TELEMETRY_RETENTION_DAYS", default=30)
+WORKER_STALE_THRESHOLD_SECONDS = env.int("WORKER_STALE_THRESHOLD_SECONDS", default=30)
+
