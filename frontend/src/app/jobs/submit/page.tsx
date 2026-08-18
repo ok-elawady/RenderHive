@@ -16,6 +16,7 @@ import {
   Cpu,
   Fingerprint,
   Terminal,
+  Film,
 } from "lucide-react";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,7 +30,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { LayerCommandBuilder } from "@/components/jobs/LayerCommandBuilder";
 import { createJob, formatApiError, getDefaultRenderCommand } from "@/services/api";
 import type { components } from "@/types/schema";
 
@@ -62,14 +64,19 @@ StyledSelect.displayName = "StyledSelect";
 
 const layerSchema = z.object({
   id: z.string(),
-  name: z.string().min(1, "Layer name is required"),
+  name: z.string().trim().min(1, "Pass / Layer name is required"),
   layerType: z.enum(["RENDER", "UTIL", "POST"]),
-  engine: z.string(),
-  command: z.string().min(1, "Command is required"),
-  frameRange: z.string().regex(/^[\d\s\-,x]+$/, "Invalid format (e.g. '1-100')"),
-  chunkSize: z.coerce.number().min(1).default(1),
-  minCores: z.coerce.number().min(1).default(1),
-  minMemoryMb: z.coerce.number().min(512).default(4096),
+  engine: z.string().min(1, "DCC application environment is required"),
+  scenePath: z.string().trim().min(1, "Scene / Script file path is required"),
+  renderer: z.string().optional(),
+  renderNode: z.string().optional(),
+  camera: z.string().optional(),
+  outputPath: z.string().optional(),
+  command: z.string().trim().min(1, "Task command template is required"),
+  frameRange: z.string().trim().regex(/^[\d\s\-,x]+$/, "Frame range is required (e.g. '1-100' or '1001-1120')"),
+  chunkSize: z.coerce.number().min(1, "Frames per task must be at least 1").default(1),
+  minCores: z.coerce.number().min(1, "Reserved CPU cores must be at least 1").default(1),
+  minMemoryMb: z.coerce.number().min(512, "Reserved RAM must be at least 512 MB").default(4096),
   minGpus: z.coerce.number().min(0).default(0),
   maxRetries: z.coerce.number().min(0).default(3),
   dependsOnLayer: z.string().optional(),
@@ -79,21 +86,25 @@ const layerSchema = z.object({
 
 const dependencySchema = z.object({
   type: z.enum(["JOB_ON_JOB", "LAYER_ON_LAYER"]),
-  parentJob: z.string().min(1, "Blocking Job ID is required"),
+  parentJob: z.string().min(1, "Upstream parent job is required"),
   parentLayer: z.string().optional(),
   depLayer: z.string().optional(),
 });
 
 const jobFormSchema = z
   .object({
-    visibleName: z.string().regex(/^[a-zA-Z0-9_]+_v[0-9]+$/, "Must end with _v and version (e.g. _v1)"),
-    project: z.string().min(1, "Project is required"),
-    department: z.string().min(1, "Department is required"),
-    user: z.string().min(1, "User is required"),
-    priority: z.coerce.number().min(1).max(100),
-    logDirectory: z.string().min(1, "Log directory is required"),
-    maxTasksPerWorker: z.coerce.number().min(0),
-    layers: z.array(layerSchema).min(1, "At least one layer is required"),
+    visibleName: z
+      .string()
+      .trim()
+      .min(1, "Job / Shot name is required")
+      .regex(/^[a-zA-Z0-9_.-]+$/, "Job name may only contain letters, numbers, underscores, hyphens, and dots"),
+    project: z.string().trim().min(1, "Show / Project is required"),
+    department: z.string().trim().min(1, "Department is required"),
+    user: z.string().trim().min(1, "Artist / Submitter is required"),
+    priority: z.coerce.number().min(1, "Priority must be between 1 and 100").max(100, "Priority must be between 1 and 100"),
+    logDirectory: z.string().trim().min(1, "Farm log directory is required"),
+    maxTasksPerWorker: z.coerce.number().min(0).default(0),
+    layers: z.array(layerSchema).min(1, "At least one render layer is required"),
     dependencies: z.array(dependencySchema).optional(),
   })
   .superRefine((data, ctx) => {
@@ -101,7 +112,6 @@ const jobFormSchema = z
     const graph = new Map<string, string>();
     for (const layer of data.layers) {
       if (layer.executionMode === "WAIT_LAYER" && layer.dependsOnLayer) {
-        // Find the actual name of the dependent layer. If they used "Layer 1", we just track it directly.
         graph.set(layer.name || `Layer ${data.layers.indexOf(layer) + 1}`, layer.dependsOnLayer);
       }
     }
@@ -148,15 +158,20 @@ const jobFormSchema = z
 
 type JobFormValues = z.infer<typeof jobFormSchema>;
 
-const departmentOptions = ["lighting", "fx", "comp", "td"];
+const departmentOptions = ["lighting", "fx", "comp", "td", "layout", "assets"];
 
 function createLayerDraft(index: number) {
   return {
     id: `layer-${Date.now()}-${index}`,
     name: index === 0 ? "beauty" : `layer_${index + 1}`,
     layerType: "RENDER" as const,
-    engine: "Houdini (Mantra/Karma)",
-    command: getDefaultRenderCommand("Houdini (Mantra/Karma)", "1", "100"),
+    engine: "Houdini (Karma/Mantra)",
+    scenePath: "",
+    renderer: "Karma XPU",
+    renderNode: "/stage/usdrender_rop1",
+    camera: "",
+    outputPath: "",
+    command: "",
     frameRange: "1-100",
     chunkSize: 1,
     minCores: 1,
@@ -204,34 +219,6 @@ export default function SubmitJobPage() {
     control: form.control,
   });
 
-  // Watch for engine/frameRange changes to auto-update command
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/incompatible-library
-    const subscription = form.watch((value, { name, type }) => {
-      if (type === "change" && name?.startsWith("layers.")) {
-        const parts = name.split(".");
-        const index = parseInt(parts[1], 10);
-        const fieldName = parts[2];
-
-        if (fieldName === "engine" || fieldName === "frameRange") {
-          const currentLayer = value.layers?.[index];
-          if (!currentLayer) return;
-
-          const rangeParts = (currentLayer.frameRange || "").split("-");
-          const startFrame = rangeParts[0]?.trim() || "1";
-          const endFrame = rangeParts[1]?.trim() || startFrame;
-
-          form.setValue(
-            `layers.${index}.command`,
-            getDefaultRenderCommand(currentLayer.engine || "", startFrame, endFrame),
-            { shouldValidate: true },
-          );
-        }
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, [form]);
-
   const addLayer = () => {
     append(createLayerDraft(fields.length));
     setSelectedLayerIndex(fields.length);
@@ -252,28 +239,66 @@ export default function SubmitJobPage() {
       visible_name: data.visibleName.trim(),
       project: data.project.trim(),
       department: data.department.trim(),
-      user: data.user.trim() || "System",
+      user: data.user.trim(),
       priority: data.priority,
       log_directory: data.logDirectory.trim(),
       max_tasks_per_worker: data.maxTasksPerWorker,
-      layers: data.layers.map((layer) => ({
-        name: layer.name.trim(),
-        layer_type: layer.layerType as LayerType,
-        command: layer.command.trim(),
-        frame_range: layer.frameRange.trim(),
-        chunk_size: layer.chunkSize,
-        min_cores: layer.minCores,
-        min_memory_mb: layer.minMemoryMb,
-        min_gpus: layer.minGpus,
-        max_retries: layer.maxRetries,
-        execution_mode: layer.executionMode,
-        depends_on_layer: layer.dependsOnLayer?.trim() || null,
-        dependency_type: layer.dependencyType || null,
-        tags: [],
-        scene_path: "",
-        scene_info: {},
-        env: {},
-      })),
+      layers: data.layers.map((layer) => {
+        const engineLower = (layer.engine || "").toLowerCase();
+        let dcc = "generic";
+        if (
+          engineLower.includes("houdini") ||
+          engineLower.includes("karma") ||
+          engineLower.includes("mantra") ||
+          engineLower.includes("husk")
+        ) {
+          dcc = "houdini";
+        } else if (engineLower.includes("maya")) {
+          dcc = "maya";
+        } else if (engineLower.includes("blender") || engineLower.includes("cycles")) {
+          dcc = "blender";
+        } else if (engineLower.includes("nuke")) {
+          dcc = "nuke";
+        } else if (engineLower.includes("unreal") || engineLower.includes("mrq")) {
+          dcc = "unreal";
+        }
+
+        const sceneInfo: Record<string, unknown> = {
+          dcc,
+          renderer: layer.renderer || "",
+          render_node: layer.renderNode || "",
+          camera: layer.camera || "",
+          output_path: layer.outputPath || "",
+        };
+
+        if (dcc === "houdini" && engineLower.includes("husk")) {
+          sceneInfo.execution = { mode: "husk" };
+        }
+
+        const tags: string[] = [];
+        if (dcc && dcc !== "generic") {
+          tags.push(`dcc:${dcc}`);
+        }
+
+        return {
+          name: layer.name.trim(),
+          layer_type: layer.layerType as LayerType,
+          command: layer.command.trim(),
+          frame_range: layer.frameRange.trim(),
+          chunk_size: layer.chunkSize,
+          min_cores: layer.minCores,
+          min_memory_mb: layer.minMemoryMb,
+          min_gpus: layer.minGpus,
+          max_retries: layer.maxRetries,
+          execution_mode: layer.executionMode,
+          depends_on_layer: layer.dependsOnLayer?.trim() || null,
+          dependency_type: layer.dependencyType || null,
+          tags,
+          scene_path: (layer.scenePath || "").trim(),
+          scene_info: sceneInfo,
+          env: {},
+        };
+      }),
       dependencies:
         data.dependencies?.map((dep) => ({
           type: "JOB_ON_JOB",
@@ -300,18 +325,47 @@ export default function SubmitJobPage() {
   };
 
   const onInvalid = (errors: FieldErrors<JobFormValues>) => {
+    // If there are top-level job setting errors
+    if (errors.visibleName?.message) {
+      toast.error("Job Settings Incomplete", { description: errors.visibleName.message });
+      return;
+    }
+    if (errors.project?.message) {
+      toast.error("Job Settings Incomplete", { description: errors.project.message });
+      return;
+    }
+    if (errors.department?.message) {
+      toast.error("Job Settings Incomplete", { description: errors.department.message });
+      return;
+    }
+    if (errors.user?.message) {
+      toast.error("Job Settings Incomplete", { description: errors.user.message });
+      return;
+    }
+    if (errors.logDirectory?.message) {
+      toast.error("Job Settings Incomplete", { description: errors.logDirectory.message });
+      return;
+    }
+
     // If there are layer errors, jump to the first invalid layer tab automatically
     if (errors.layers && Array.isArray(errors.layers)) {
       const firstErrorIndex = errors.layers.findIndex((l) => l !== undefined);
       if (firstErrorIndex !== -1) {
         setSelectedLayerIndex(firstErrorIndex);
-        toast.error("Layer Validation Error", {
-          description: `Please fix the errors highlighted in Layer ${firstErrorIndex + 1}.`,
+        const layerErr = errors.layers[firstErrorIndex] as Record<string, { message?: string }> | undefined;
+        const msg =
+          layerErr?.scenePath?.message ||
+          layerErr?.name?.message ||
+          layerErr?.command?.message ||
+          layerErr?.frameRange?.message ||
+          `Please fix the errors highlighted in Layer ${firstErrorIndex + 1}.`;
+        toast.error(`Layer ${firstErrorIndex + 1} Error`, {
+          description: msg,
         });
         return;
       }
     }
-    toast.error("Form Validation Error", { description: "Please fix the highlighted fields." });
+    toast.error("Form Validation Error", { description: "Please fill in all required fields." });
   };
 
   const currentLayerErrors = form.formState.errors.layers?.[selectedLayerIndex];
@@ -348,9 +402,9 @@ export default function SubmitJobPage() {
                     name="visibleName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Job ID / Scene Name</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Job / Shot Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="LIGHT_v11" {...field} />
+                          <Input placeholder="sq010_sh020_lighting_v001" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -362,9 +416,9 @@ export default function SubmitJobPage() {
                     name="project"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Project</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Show / Project</FormLabel>
                         <FormControl>
-                          <Input placeholder="test" {...field} />
+                          <Input placeholder="DUNE_PART_THREE" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -376,12 +430,12 @@ export default function SubmitJobPage() {
                     name="department"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Department</FormLabel>
-                        <FormControl>
-                          <div className="relative">
+                        <FormLabel className="text-xs font-semibold">Department / Discipline</FormLabel>
+                        <div className="relative">
+                          <FormControl>
                             <select
                               {...field}
-                              className="flex h-9 w-full appearance-none rounded-lg border border-transparent bg-input/50 pl-3 pr-8 py-2 text-sm outline-none transition-all hover:bg-input/80 hover:border-border/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                              className="flex h-9 w-full appearance-none rounded-lg border border-transparent bg-input/50 pl-3 pr-8 py-2 text-sm outline-none transition-all hover:bg-input/80 hover:border-border/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
                             >
                               <option value="" disabled>
                                 Select
@@ -392,9 +446,9 @@ export default function SubmitJobPage() {
                                 </option>
                               ))}
                             </select>
-                            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-                          </div>
-                        </FormControl>
+                          </FormControl>
+                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -405,9 +459,9 @@ export default function SubmitJobPage() {
                     name="user"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>User</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Artist / Submitter</FormLabel>
                         <FormControl>
-                          <Input placeholder="John Doe" {...field} />
+                          <Input placeholder="jdoe" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -421,7 +475,7 @@ export default function SubmitJobPage() {
                     name="logDirectory"
                     render={({ field }) => (
                       <FormItem className="md:col-span-1">
-                        <FormLabel>Log Directory</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Farm Log Directory</FormLabel>
                         <FormControl>
                           <Input className="font-mono text-xs" {...field} />
                         </FormControl>
@@ -435,7 +489,7 @@ export default function SubmitJobPage() {
                     name="priority"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Priority (1-100)</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Dispatch Priority (1-100)</FormLabel>
                         <FormControl>
                           <Input type="number" {...field} />
                         </FormControl>
@@ -449,7 +503,7 @@ export default function SubmitJobPage() {
                     name="maxTasksPerWorker"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Max Tasks/Worker</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Max Concurrent Tasks / Worker</FormLabel>
                         <FormControl>
                           <Input type="number" title="0 means unlimited" {...field} />
                         </FormControl>
@@ -470,15 +524,15 @@ export default function SubmitJobPage() {
                       <div>
                         <CardTitle className="text-base flex items-center gap-2">
                           <Link2 className="size-4 text-primary" />
-                          Dependencies
+                          Job Graph Dependencies
                         </CardTitle>
-                        <CardDescription>Optionally block this job until other jobs finish.</CardDescription>
+                        <CardDescription>Block execution until upstream parent jobs or passes finish.</CardDescription>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-6">
                       {depFields.length === 0 ? (
                         <div className="text-center py-6 text-sm text-muted-foreground">
-                          No dependencies configured. Job will be eligible to run immediately.
+                          No upstream blockers configured. Job will dispatch immediately.
                         </div>
                       ) : (
                         <div className="space-y-4">
@@ -505,7 +559,7 @@ export default function SubmitJobPage() {
                                     name={`dependencies.${index}.parentJob`}
                                     render={({ field }) => (
                                       <FormItem>
-                                        <FormLabel>Blocking Job</FormLabel>
+                                        <FormLabel className="text-xs font-semibold">Upstream Parent Job</FormLabel>
                                         <FormControl>
                                           <JobSelector value={field.value} onChange={field.onChange} />
                                         </FormControl>
@@ -519,7 +573,7 @@ export default function SubmitJobPage() {
                                     name={`dependencies.${index}.parentLayer`}
                                     render={({ field }) => (
                                       <FormItem>
-                                        <FormLabel>Blocking Layer (Optional)</FormLabel>
+                                        <FormLabel className="text-xs font-semibold">Upstream Parent Layer</FormLabel>
                                         <FormControl>
                                           <LayerSelector
                                             jobId={form.watch(`dependencies.${index}.parentJob`)}
@@ -538,7 +592,7 @@ export default function SubmitJobPage() {
                                     name={`dependencies.${index}.depLayer`}
                                     render={({ field }) => (
                                       <FormItem>
-                                        <FormLabel>Block This Local Layer (Optional)</FormLabel>
+                                        <FormLabel className="text-xs font-semibold">Dependent Target Layer</FormLabel>
                                         <FormControl>
                                           <StyledSelect {...field}>
                                             <option value="">Block Entire Job</option>
@@ -565,7 +619,7 @@ export default function SubmitJobPage() {
                         onClick={() => appendDep({ type: "JOB_ON_JOB", parentJob: "", parentLayer: "", depLayer: "" })}
                         className="w-full mt-4 h-[40px] border-dashed border-border text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted/50"
                       >
-                        <Plus size={14} className="mr-2" /> Add Dependency
+                        <Plus size={14} className="mr-2" /> Add Dependency Blocker
                       </Button>
                     </CardContent>
                   </Card>
@@ -578,9 +632,9 @@ export default function SubmitJobPage() {
                     <div className="space-y-1.5">
                       <CardTitle className="text-base flex items-center gap-2">
                         <Settings2 size={16} className="text-primary" />
-                        Render Layers
+                        Render Passes / Layers
                       </CardTitle>
-                      <CardDescription>Execution groups containing specific render settings.</CardDescription>
+                      <CardDescription>Execution passes and task dispatch parameters.</CardDescription>
                     </div>
                   </CardHeader>
 
@@ -633,7 +687,7 @@ export default function SubmitJobPage() {
                         onClick={addLayer}
                         className="w-full mt-2 h-[40px] border-dashed border-border text-muted-foreground hover:text-foreground bg-transparent hover:bg-muted/50"
                       >
-                        <Plus size={14} className="mr-2" /> Add Layer
+                        <Plus size={14} className="mr-2" /> Add Render Layer
                       </Button>
                     </div>
 
@@ -655,15 +709,15 @@ export default function SubmitJobPage() {
                         {/* SECTION 1: Identity */}
                         <div className="space-y-5">
                           <h4 className="text-sm font-bold flex items-center gap-2 text-foreground">
-                            <Fingerprint size={16} className="text-primary" /> Layer Identity
+                            <Fingerprint size={16} className="text-primary" /> Pass / Layer Identity
                           </h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <FormField
                               control={form.control}
                               name={`layers.${selectedLayerIndex}.name`}
                               render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Layer Name</FormLabel>
+                                <FormItem className="space-y-1.5">
+                                  <FormLabel className="text-xs font-semibold">Pass / Layer Name</FormLabel>
                                   <FormControl>
                                     <Input placeholder="beauty" {...field} />
                                   </FormControl>
@@ -676,13 +730,13 @@ export default function SubmitJobPage() {
                               control={form.control}
                               name={`layers.${selectedLayerIndex}.layerType`}
                               render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Layer Type</FormLabel>
+                                <FormItem className="space-y-1.5">
+                                  <FormLabel className="text-xs font-semibold">Task Stage / Type</FormLabel>
                                   <FormControl>
                                     <StyledSelect {...field}>
-                                      <option value="RENDER">RENDER</option>
-                                      <option value="UTIL">UTIL</option>
-                                      <option value="POST">POST</option>
+                                      <option value="RENDER">RENDER (3D/2D Render)</option>
+                                      <option value="UTIL">UTIL (Pre-process / Cache)</option>
+                                      <option value="POST">POST (Comp / Review)</option>
                                     </StyledSelect>
                                   </FormControl>
                                   <FormMessage />
@@ -692,69 +746,43 @@ export default function SubmitJobPage() {
                           </div>
                         </div>
 
-                        {/* SECTION 2: Command & Environment */}
-                        <div className="pt-8 border-t border-border/50 space-y-5">
+                        {/* SECTION 2: Command & Scene Setup */}
+                        <div className="pt-8 border-t border-border/50 space-y-6">
                           <h4 className="text-sm font-bold flex items-center gap-2 text-foreground">
-                            <Terminal size={16} className="text-primary" /> Command & Environment
+                            <Terminal size={16} className="text-primary" /> Render Setup & Execution Command
                           </h4>
 
-                          <FormField
-                            control={form.control}
-                            name={`layers.${selectedLayerIndex}.engine`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Engine Environment</FormLabel>
-                                <FormControl>
-                                  <StyledSelect {...field}>
-                                    <option value="Houdini (Mantra/Karma)">Houdini (Mantra/Karma)</option>
-                                    <option value="Maya (Arnold/V-Ray)">Maya (Arnold/V-Ray)</option>
-                                    <option value="Unreal Engine 5 (MRQ)">Unreal Engine 5 (MRQ)</option>
-                                    <option value="Blender (Cycles)">Blender (Cycles)</option>
-                                  </StyledSelect>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
+                          <LayerCommandBuilder form={form} layerIndex={selectedLayerIndex} />
+                        </div>
 
-                          <FormField
-                            control={form.control}
-                            name={`layers.${selectedLayerIndex}.command`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel className="flex justify-between">
-                                  Execution Command
-                                  <span className="font-normal text-muted-foreground/60 text-[10px]">
-                                    Auto-generates
-                                  </span>
-                                </FormLabel>
-                                <FormControl>
-                                  <Textarea rows={3} className="font-mono text-[13px] bg-surface-deep" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
+                        {/* SECTION 3: Frame Range & Sequencing */}
+                        <div className="pt-8 border-t border-border/50 space-y-5">
+                          <h4 className="text-sm font-bold flex items-center gap-2 text-foreground">
+                            <Film size={16} className="text-primary" /> Frame Range & Sequencing
+                          </h4>
 
                           <FormField
                             control={form.control}
                             name={`layers.${selectedLayerIndex}.frameRange`}
                             render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Frame Range</FormLabel>
+                              <FormItem className="space-y-1.5">
+                                <FormLabel className="text-xs font-semibold">Frame Range</FormLabel>
                                 <FormControl>
-                                  <Input placeholder="1-100" className="font-mono" {...field} />
+                                  <Input placeholder="1001-1120 or 1-100" className="font-mono text-xs bg-surface-deep" {...field} />
                                 </FormControl>
+                                <FormDescription className="text-[11px] text-muted-foreground leading-snug">
+                                  Specify frames to dispatch (e.g. <code className="font-mono text-[10px] text-foreground/80">1-100</code>, <code className="font-mono text-[10px] text-foreground/80">1001-1120</code>, or step <code className="font-mono text-[10px] text-foreground/80">1-100x2</code>).
+                                </FormDescription>
                                 <FormMessage />
                               </FormItem>
                             )}
                           />
                         </div>
 
-                        {/* SECTION 3: Resource Requirements */}
+                        {/* SECTION 4: Resource Requirements */}
                         <div className="pt-8 border-t border-border/50 space-y-5">
                           <h4 className="text-sm font-bold flex items-center gap-2 text-foreground">
-                            <Cpu size={16} className="text-primary" /> Resource Requirements
+                            <Cpu size={16} className="text-primary" /> Compute & Resource Requirements
                           </h4>
 
                           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -762,8 +790,8 @@ export default function SubmitJobPage() {
                               control={form.control}
                               name={`layers.${selectedLayerIndex}.chunkSize`}
                               render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Task Chunk Size</FormLabel>
+                                <FormItem className="space-y-1.5">
+                                  <FormLabel className="text-xs font-semibold">Frames per Task / Chunk Size</FormLabel>
                                   <FormControl>
                                     <Input type="number" {...field} />
                                   </FormControl>
@@ -775,8 +803,8 @@ export default function SubmitJobPage() {
                               control={form.control}
                               name={`layers.${selectedLayerIndex}.minCores`}
                               render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Min Cores</FormLabel>
+                                <FormItem className="space-y-1.5">
+                                  <FormLabel className="text-xs font-semibold">Reserved CPU Cores</FormLabel>
                                   <FormControl>
                                     <Input type="number" {...field} />
                                   </FormControl>
@@ -788,8 +816,8 @@ export default function SubmitJobPage() {
                               control={form.control}
                               name={`layers.${selectedLayerIndex}.minMemoryMb`}
                               render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Min Memory (MB)</FormLabel>
+                                <FormItem className="space-y-1.5">
+                                  <FormLabel className="text-xs font-semibold">Reserved RAM (MB)</FormLabel>
                                   <FormControl>
                                     <Input type="number" {...field} />
                                   </FormControl>
@@ -801,8 +829,8 @@ export default function SubmitJobPage() {
                               control={form.control}
                               name={`layers.${selectedLayerIndex}.minGpus`}
                               render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Min GPUs</FormLabel>
+                                <FormItem className="space-y-1.5">
+                                  <FormLabel className="text-xs font-semibold">Required GPUs</FormLabel>
                                   <FormControl>
                                     <Input type="number" {...field} />
                                   </FormControl>
@@ -814,8 +842,8 @@ export default function SubmitJobPage() {
                               control={form.control}
                               name={`layers.${selectedLayerIndex}.maxRetries`}
                               render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Max Retries</FormLabel>
+                                <FormItem className="space-y-1.5">
+                                  <FormLabel className="text-xs font-semibold">Max Error Retries</FormLabel>
                                   <FormControl>
                                     <Input type="number" {...field} />
                                   </FormControl>
@@ -826,11 +854,11 @@ export default function SubmitJobPage() {
                           </div>
                         </div>
 
-                        {/* SECTION 4: Internal Dependency Block */}
+                        {/* SECTION 5: Internal Dependency Block */}
                         <div className="pt-8 border-t border-border/50 space-y-5">
                           <h4 className="text-sm font-bold flex items-center gap-2 text-foreground">
                             <Settings2 size={16} className="text-primary" />
-                            Layer Execution Flow
+                            Dispatch Mode / Flow
                           </h4>
 
                           <FormField
