@@ -561,10 +561,38 @@ class WorkerThread(QThread):
             self.log_signal.emit(message)
         return result.exit_code, display_log, result.error_tail, duration, result.output_image_path
 
-    def report_status(self, task_id: str, exit_status: int) -> None:
+    def report_status(
+        self,
+        task_id: str,
+        exit_status: int,
+        log_path: str = "",
+        error_tail: str = "",
+        duration_seconds: float = 0.0,
+        output_image_path: str = "",
+    ) -> None:
         try:
             endpoint = "succeed" if exit_status == 0 else "fail"
-            payload: Dict[str, Any] = {"exit_status": int(exit_status)}
+            log_text = ""
+            if log_path and os.path.isfile(log_path):
+                try:
+                    file_size = os.path.getsize(log_path)
+                    max_read_bytes = 2 * 1024 * 1024  # 2 MB ceiling
+                    with open(log_path, "rb") as handle:
+                        if file_size > max_read_bytes:
+                            handle.seek(file_size - max_read_bytes)
+                        log_bytes = handle.read()
+                    log_text = log_bytes.decode("utf-8", errors="replace")
+                except Exception:
+                    pass
+
+            payload: Dict[str, Any] = {
+                "exit_status": int(exit_status),
+                "worker_hostname": HOSTNAME,
+                "log_output": log_text,
+                "error_tail": error_tail or "",
+                "duration_seconds": duration_seconds,
+                "output_image_path": output_image_path or "",
+            }
             if endpoint == "succeed":
                 payload.update({"max_memory_used_mb": 0})
             response = self.session.post(
@@ -619,6 +647,7 @@ class WorkerThread(QThread):
                         "worker_name": HOSTNAME,
                         "tags": build_capability_tags(self.discovered),
                         "capabilities": build_capabilities(self.discovered),
+                        "capabilities_snapshot": self._last_system_info,
                     },
                     headers=self.get_headers(),
                     timeout=15,

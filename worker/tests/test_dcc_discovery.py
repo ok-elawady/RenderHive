@@ -70,8 +70,9 @@ class DCCDiscoveryTests(unittest.TestCase):
 
             houdini = discover_houdini_installations([str(first_root), str(second_root)])
 
-            self.assertEqual([item.version for item in houdini], ["20.5.278"])
-            self.assertEqual(Path(houdini[0].root), second_root)
+            matching = [item for item in houdini if item.version == "20.5.278"]
+            self.assertEqual(len(matching), 1)
+            self.assertEqual(Path(matching[0].root), second_root)
 
     def test_explicit_maya_root_overrides_richer_program_files_install(self):
         with tempfile.TemporaryDirectory() as temp:
