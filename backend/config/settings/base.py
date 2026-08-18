@@ -309,6 +309,10 @@ try:
             "task": "apps.workers.tasks.reap_stale_workers_and_tasks",
             "schedule": env.float("WORKER_REAP_INTERVAL_SECONDS", default=15.0),
         },
+        "reconcile-queue-state": {
+            "task": "apps.jobs.tasks.reconcile_queue_state",
+            "schedule": env.float("QUEUE_RECONCILE_INTERVAL_SECONDS", default=60.0),
+        },
         "snapshot-worker-metrics": {
             "task": "apps.telemetry.tasks.snapshot_online_worker_metrics",
             "schedule": env.float("TELEMETRY_SNAPSHOT_INTERVAL_SECONDS", default=30.0),
