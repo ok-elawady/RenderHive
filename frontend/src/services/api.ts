@@ -567,7 +567,10 @@ export async function getLayerTasks(
     {
       params: {
         path: { job_pk: jobId, layer_pk: layerId },
-        query: state ? { state } : undefined,
+        query: {
+          ...(state ? { state } : {}),
+          page_size: 5000,
+        } as any,
       },
     },
   );
@@ -576,7 +579,7 @@ export async function getLayerTasks(
     throw new Error(JSON.stringify(error));
   }
 
-  return data?.results || [];
+  return (Array.isArray(data) ? data : data?.results || []) as TaskList[];
 }
 
 export async function skipTask(taskId: string): Promise<TaskDetail> {
@@ -589,6 +592,56 @@ export async function skipTask(taskId: string): Promise<TaskDetail> {
   }
 
   return data;
+}
+
+export async function retryTask(taskId: string): Promise<{ status: string; previous_state?: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}/retry/`, {
+    method: "POST",
+    headers: getApiHeaders(),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail || errorBody.message || `Request failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function requeueFailedJobTasks(
+  jobId: string
+): Promise<{ requeued_count: number; status: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/requeue_failed/`, {
+    method: "POST",
+    headers: getApiHeaders(),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail || errorBody.message || `Request failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function requeueFailedLayerTasks(
+  jobId: string,
+  layerId: string
+): Promise<{ requeued_count: number; status: string }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/jobs/${jobId}/layers/${layerId}/requeue_failed/`,
+    {
+      method: "POST",
+      headers: getApiHeaders(),
+    }
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail || errorBody.message || `Request failed with status ${response.status}`);
+  }
+
+  return response.json();
 }
 
 export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
@@ -1265,6 +1318,45 @@ export async function fetchDispatchTraces(
 
   const data = await response.json();
   return (Array.isArray(data) ? data : data.results || []) as DispatchTrace[];
+}
+
+export async function fetchTaskExecutionLogs(
+  taskId: string
+): Promise<TaskLogList[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/tasks/${taskId}/logs/`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (response.status === 404) {
+    return [];
+  }
+
+  if (!response.ok) {
+    throw new Error(`fetchTaskExecutionLogs: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (Array.isArray(data) ? data : data.results || []) as TaskLogList[];
+}
+
+export async function fetchTaskExecutionLogById(
+  logId: string
+): Promise<TaskLogDetail | null> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/logs/${logId}/`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`fetchTaskExecutionLogById: ${response.status}`);
+  }
+
+  return response.json() as Promise<TaskLogDetail>;
 }
 
 export async function fetchTaskExecutionLogLatest(

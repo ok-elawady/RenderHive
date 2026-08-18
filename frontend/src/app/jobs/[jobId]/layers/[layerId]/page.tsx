@@ -4,7 +4,6 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   RefreshCw,
-  SkipForward,
   Settings2,
   LayoutList,
   LayoutGrid,
@@ -27,7 +26,7 @@ import {
   formatApiError,
   getLayer,
   getLayerTasks,
-  skipTask,
+  requeueFailedLayerTasks,
   getJobDependencies,
   deleteDependency,
   type Dependency,
@@ -51,14 +50,14 @@ const taskStates: Array<TaskStateFilter | "ALL"> = [
 ];
 
 function getTaskClasses(state: TaskList["state"]): string {
+  if (state === "FAILED") {
+    return "border-destructive/60 bg-destructive/20 text-destructive shadow-sm shadow-destructive/20";
+  }
   if (state === "RUNNING") {
     return "border-warning/40 bg-warning/15 text-warning animate-pulse shadow-sm shadow-warning/10";
   }
   if (state === "SUCCEEDED") {
     return "border-success/30 bg-success/10 text-success shadow-sm shadow-success/5";
-  }
-  if (state === "FAILED") {
-    return "border-destructive/40 bg-destructive/10 text-destructive shadow-sm shadow-destructive/10";
   }
   if (state === "SKIPPED") {
     return "border-sky-400/40 bg-sky-500/10 text-sky-500 shadow-sm shadow-sky-500/5";
@@ -75,8 +74,8 @@ export default function LayerInspectorPage() {
   const [tasks, setTasks] = useState<TaskList[]>([]);
   const [stateFilter, setStateFilter] = useState<TaskStateFilter | "ALL">("ALL");
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [skippingTaskId, setSkippingTaskId] = useState<string | null>(null);
-  const [selectedTaskForLog, setSelectedTaskForLog] = useState<{ id: string; name: string } | null>(null);
+  const [isRequeuingFailed, setIsRequeuingFailed] = useState<boolean>(false);
+  const [selectedTaskForLog, setSelectedTaskForLog] = useState<{ id: string; name: string; state?: TaskList["state"] } | null>(null);
 
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
   const [isDeletingDependency, setIsDeletingDependency] = useState<string | null>(null);
@@ -92,6 +91,8 @@ export default function LayerInspectorPage() {
   const paginatedBlockers = useMemo(() => {
     return blockers.slice((blockersPage - 1) * BLOCKERS_PAGE_SIZE, blockersPage * BLOCKERS_PAGE_SIZE);
   }, [blockers, blockersPage]);
+
+  const failedTaskCount = useMemo(() => tasks.filter((t) => t.state === "FAILED").length, [tasks]);
 
   const visibleTasks = useMemo(() => {
     const filtered = stateFilter === "ALL" ? tasks : tasks.filter((task) => task.state === stateFilter);
@@ -132,28 +133,25 @@ export default function LayerInspectorPage() {
   }, [params.jobId, params.layerId]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadLayer();
-    }, 0);
-
-    return () => window.clearTimeout(timer);
-  }, [loadLayer]);
-
-  const handleSkipTask = async (taskId: string): Promise<void> => {
-    setSkippingTaskId(taskId);
-    try {
-      await skipTask(taskId);
-      setTasks((currentTasks) =>
-        currentTasks.map((task) => (task.id === taskId ? { ...task, state: "SKIPPED" } : task)),
-      );
-      toast.success("Task skipped", {
-        description: "The failed task was moved to SKIPPED.",
-      });
+    void loadLayer();
+    const interval = window.setInterval(() => {
       void refreshTasks();
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [loadLayer, refreshTasks]);
+
+  const handleRequeueFailed = async (): Promise<void> => {
+    setIsRequeuingFailed(true);
+    try {
+      const res = await requeueFailedLayerTasks(params.jobId, params.layerId);
+      toast.success("Failed tasks requeued", {
+        description: `Requeued ${res.requeued_count} failed task(s) in this layer.`,
+      });
+      await refreshTasks();
     } catch (error) {
-      toast.error("Skip failed", { description: formatApiError(error) });
+      toast.error("Requeue failed", { description: formatApiError(error) });
     } finally {
-      setSkippingTaskId(null);
+      setIsRequeuingFailed(false);
     }
   };
 
@@ -181,6 +179,17 @@ export default function LayerInspectorPage() {
           <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
           Refresh
         </Button>
+        {failedTaskCount > 0 && (
+          <Button
+            variant="outline"
+            onClick={() => void handleRequeueFailed()}
+            disabled={isRequeuingFailed}
+            className="gap-2 border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200"
+          >
+            <RefreshCw size={14} className={isRequeuingFailed ? "animate-spin" : ""} />
+            Requeue Failed ({failedTaskCount})
+          </Button>
+        )}
       </PageHeader>
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -352,8 +361,10 @@ export default function LayerInspectorPage() {
                       {state}
                       {count > 0 && (
                         <Badge
-                          variant="secondary"
-                          className="px-2 py-0.5 text-xs rounded-full h-5 min-w-5 justify-center font-medium"
+                          variant={state === "FAILED" ? "destructive" : "secondary"}
+                          className={`px-2 py-0.5 text-xs rounded-full h-5 min-w-5 justify-center font-medium ${
+                            state === "FAILED" ? "bg-destructive text-destructive-foreground" : ""
+                          }`}
                         >
                           {count}
                         </Badge>
@@ -376,36 +387,21 @@ export default function LayerInspectorPage() {
                       {visibleTasks.map((task) => (
                         <div
                           key={task.id}
-                          title={`${task.name} / ${task.state} (Click to inspect log)`}
+                          title={`${task.name} / ${task.state} (Click to inspect log & actions)`}
                           aria-label={`Task ${task.name}: ${task.state}, frames ${task.frame_start} to ${task.frame_end}`}
                           tabIndex={0}
-                          onClick={() => setSelectedTaskForLog({ id: task.id, name: task.name })}
+                          onClick={() => setSelectedTaskForLog({ id: task.id, name: task.name, state: task.state })}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" || e.key === " ") {
                               e.preventDefault();
-                              setSelectedTaskForLog({ id: task.id, name: task.name });
+                              setSelectedTaskForLog({ id: task.id, name: task.name, state: task.state });
                             }
                           }}
-                          className={`group relative aspect-square overflow-hidden rounded-md border text-xs font-semibold cursor-pointer transition-all hover:scale-[1.05] hover:ring-2 hover:ring-primary/60 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${getTaskClasses(task.state)}`}
+                          className={`group relative aspect-square overflow-hidden rounded-md border text-xs font-semibold cursor-pointer transition-all hover:scale-[1.06] hover:ring-2 hover:ring-primary/70 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none flex items-center justify-center select-none ${getTaskClasses(task.state)}`}
                         >
-                          <span className="absolute inset-0 flex items-center justify-center">
+                          <span>
                             {task.frame_start + (task.frame_start !== task.frame_end ? "-" + task.frame_end : "")}
                           </span>
-                          {task.state === "FAILED" && (
-                            <button
-                              type="button"
-                              aria-label={`Skip failed task ${task.name}`}
-                              className="absolute inset-x-1 bottom-1 hidden rounded bg-destructive/95 px-1 py-0.5 text-[10px] font-bold text-destructive-foreground shadow-sm transition-all hover:bg-destructive group-hover:block uppercase tracking-wider z-10"
-                              disabled={skippingTaskId === task.id}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                void handleSkipTask(task.id);
-                              }}
-                            >
-                              {skippingTaskId === task.id ? "..." : "Skip"}
-                            </button>
-                          )}
                         </div>
                       ))}
                     </div>
@@ -422,7 +418,7 @@ export default function LayerInspectorPage() {
                       <i className="size-2.5 rounded-sm bg-success/15 border border-success/30" /> SUCCEEDED
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <i className="size-2.5 rounded-sm bg-destructive/15 border border-destructive/40" /> FAILED
+                      <i className="size-2.5 rounded-sm bg-destructive/20 border border-destructive/50" /> FAILED
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <i className="size-2.5 rounded-sm bg-sky-500/15 border border-sky-400/40" /> SKIPPED
@@ -430,13 +426,9 @@ export default function LayerInspectorPage() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                    <div>
-                      <Terminal size={12} className="mr-1.5 inline text-primary/70" />
-                      Click any task to view execution stdout/stderr logs and diagnostics.
-                    </div>
-                    <div>
-                      <SkipForward size={12} className="mr-1.5 inline text-destructive/70" />
-                      Hover failed tasks to <span className="font-semibold text-foreground/70 uppercase">Skip</span>.
+                    <div className="flex items-center gap-1.5">
+                      <Terminal size={13} className="text-primary" />
+                      <span>Click any task tile to inspect stdout/stderr execution logs, diagnostics, or trigger Requeue / Skip.</span>
                     </div>
                   </div>
                 </TabsContent>
@@ -449,9 +441,16 @@ export default function LayerInspectorPage() {
       <TaskLogViewerDialog
         taskId={selectedTaskForLog?.id || null}
         taskName={selectedTaskForLog?.name}
+        taskState={selectedTaskForLog?.state}
         isOpen={Boolean(selectedTaskForLog)}
         onOpenChange={(open) => {
           if (!open) setSelectedTaskForLog(null);
+        }}
+        onTaskUpdated={() => {
+          void refreshTasks();
+          if (selectedTaskForLog) {
+            setSelectedTaskForLog((prev) => (prev ? { ...prev, state: "READY" } : null));
+          }
         }}
       />
 

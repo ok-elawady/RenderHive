@@ -40,7 +40,7 @@ export function PageControlBar<T extends string = string>({
       <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto hide-scrollbar py-0.5">
         {chips?.map((chip) => {
           const isActive = selectedChip === chip.id;
-          const hasAlert = chip.alert && !isActive;
+          const hasAlert = chip.alert && !isActive && (chip.count === undefined || chip.count > 0);
 
           return (
             <Button
@@ -53,7 +53,6 @@ export function PageControlBar<T extends string = string>({
                 isActive
                   ? "bg-primary text-primary-foreground border-primary font-semibold shadow-none hover:bg-primary/90 hover:text-primary-foreground"
                   : "bg-card text-muted-foreground border-border hover:bg-muted hover:text-foreground",
-                hasAlert && "text-destructive border-destructive/40 bg-destructive/5 hover:bg-destructive/10",
               )}
             >
               <span>{chip.label}</span>
@@ -64,8 +63,8 @@ export function PageControlBar<T extends string = string>({
                     isActive
                       ? "bg-primary-foreground/20 text-primary-foreground font-bold"
                       : hasAlert
-                        ? "bg-destructive text-destructive-foreground font-bold"
-                        : "bg-muted text-muted-foreground",
+                      ? "text-rose-400 bg-rose-500/10 border border-rose-500/30 font-bold"
+                      : "bg-muted text-muted-foreground",
                   )}
                 >
                   {chip.count}
