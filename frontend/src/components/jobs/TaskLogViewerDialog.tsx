@@ -12,41 +12,107 @@ import {
   HardDrive,
   ImageIcon,
   ListTree,
+  PlayCircle,
   RefreshCw,
+  RotateCcw,
   Server,
+  SkipForward,
   Terminal,
   WrapText,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchTaskExecutionLogLatest } from "@/services/api";
+import {
+  fetchTaskExecutionLogById,
+  fetchTaskExecutionLogLatest,
+  fetchTaskExecutionLogs,
+  retryTask,
+  skipTask,
+  formatApiError,
+} from "@/services/api";
+import type { TaskLogList } from "@/types/dashboard";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type LogTab = "full" | "error" | "diagnostics";
 
 interface TaskLogViewerDialogProps {
   taskId: string | null;
   taskName?: string;
+  taskState?: string;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  onTaskUpdated?: () => void;
 }
 
 export default function TaskLogViewerDialog({
   taskId,
   taskName,
+  taskState,
   isOpen,
   onOpenChange,
+  onTaskUpdated,
 }: TaskLogViewerDialogProps) {
   const [activeTab, setActiveTab] = useState<LogTab>("full");
   const [wrapLines, setWrapLines] = useState<boolean>(true);
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const [isRequeuing, setIsRequeuing] = useState<boolean>(false);
+  const [isSkipping, setIsSkipping] = useState<boolean>(false);
+
+  const handleRequeue = async () => {
+    if (!taskId) return;
+    setIsRequeuing(true);
+    try {
+      await retryTask(taskId);
+      toast.success("Task requeued", {
+        description: `Task was requeued back into the READY queue.`,
+      });
+      void mutate();
+      onTaskUpdated?.();
+    } catch (error) {
+      toast.error("Requeue failed", { description: formatApiError(error) });
+    } finally {
+      setIsRequeuing(false);
+    }
+  };
+
+  const handleSkip = async () => {
+    if (!taskId) return;
+    setIsSkipping(true);
+    try {
+      await skipTask(taskId);
+      toast.success("Task skipped", {
+        description: `Task was marked as SKIPPED.`,
+      });
+      void mutate();
+      onTaskUpdated?.();
+    } catch (error) {
+      toast.error("Skip failed", { description: formatApiError(error) });
+    } finally {
+      setIsSkipping(false);
+    }
+  };
+
+  // Fetch all attempts for this task
+  const { data: allAttempts = [] } = useSWR<TaskLogList[]>(
+    taskId && isOpen ? [`/api/telemetry/tasks/logs/`, taskId] : null,
+    () => (taskId ? fetchTaskExecutionLogs(taskId) : Promise.resolve([])),
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 5000,
+    }
+  );
+
+  const activeLogId = selectedLogId || (allAttempts.length > 0 ? allAttempts[0].id : null);
 
   const {
     data: logDetail,
@@ -55,8 +121,13 @@ export default function TaskLogViewerDialog({
     mutate,
     isValidating,
   } = useSWR(
-    taskId && isOpen ? [`/api/telemetry/tasks/logs/latest/`, taskId] : null,
-    () => (taskId ? fetchTaskExecutionLogLatest(taskId) : null),
+    taskId && isOpen ? [`/api/telemetry/tasks/logs/detail/`, taskId, activeLogId] : null,
+    () => {
+      if (activeLogId) {
+        return fetchTaskExecutionLogById(activeLogId);
+      }
+      return taskId ? fetchTaskExecutionLogLatest(taskId) : null;
+    },
     {
       revalidateOnFocus: false,
       dedupingInterval: 5000,
@@ -85,18 +156,70 @@ export default function TaskLogViewerDialog({
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl sm:max-w-4xl max-h-[88vh] flex flex-col p-0 gap-0 border-border bg-surface shadow-2xl overflow-hidden font-mono">
-        {/* Card Header */}
-        <DialogHeader className="border-b border-border/50 px-6 py-4 bg-surface flex flex-row items-center justify-between space-y-0 shrink-0">
-          <div className="text-left space-y-1">
+        {/* Card Header (Clean, standard with close X alone on right) */}
+        <DialogHeader className="border-b border-border/50 px-6 py-4 bg-surface flex flex-row items-center justify-between space-y-0 shrink-0 pr-12">
+          <div className="text-left space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <Terminal className="size-4 text-primary" />
-              <DialogTitle className="text-base font-bold text-foreground">
-                Task Execution Log: {taskName || logDetail?.task_name || taskId}
+              <Terminal className="size-4 text-primary shrink-0" />
+              <DialogTitle className="text-base font-bold text-foreground truncate">
+                Task Log: {taskName || logDetail?.task_name || taskId}
               </DialogTitle>
-              {logDetail && (
+              {taskState ? (
+                <Badge
+                  variant={
+                    taskState === "FAILED"
+                      ? "destructive"
+                      : taskState === "SUCCEEDED"
+                      ? "outline"
+                      : "secondary"
+                  }
+                  className={`text-[10px] font-mono px-2 py-0.5 shrink-0 ${
+                    taskState === "FAILED"
+                      ? "border-destructive/40 text-destructive bg-destructive/10"
+                      : taskState === "SUCCEEDED"
+                      ? "border-success/40 text-success bg-success/10"
+                      : taskState === "RUNNING"
+                      ? "border-warning/40 text-warning bg-warning/10 animate-pulse"
+                      : taskState === "SKIPPED"
+                      ? "border-sky-400/40 text-sky-400 bg-sky-500/10"
+                      : "border-border text-foreground bg-muted/40"
+                  }`}
+                >
+                  {taskState === "READY" && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="size-3" /> State: READY
+                    </span>
+                  )}
+                  {taskState === "RUNNING" && (
+                    <span className="flex items-center gap-1">
+                      <PlayCircle className="size-3" /> State: RUNNING
+                    </span>
+                  )}
+                  {taskState === "SUCCEEDED" && (
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="size-3" /> State: SUCCEEDED
+                    </span>
+                  )}
+                  {taskState === "FAILED" && (
+                    <span className="flex items-center gap-1">
+                      <XCircle className="size-3" /> State: FAILED (Exit {logDetail?.exit_status ?? 1})
+                    </span>
+                  )}
+                  {taskState === "SKIPPED" && (
+                    <span className="flex items-center gap-1">
+                      <SkipForward className="size-3" /> State: SKIPPED
+                    </span>
+                  )}
+                  {taskState === "WAITING" && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="size-3" /> State: WAITING
+                    </span>
+                  )}
+                </Badge>
+              ) : logDetail ? (
                 <Badge
                   variant={isSuccess ? "outline" : "destructive"}
-                  className={`text-[10px] font-mono px-2 py-0.5 ${
+                  className={`text-[10px] font-mono px-2 py-0.5 shrink-0 ${
                     isSuccess
                       ? "border-success/40 text-success bg-success/10"
                       : "border-destructive/40 text-destructive bg-destructive/10"
@@ -112,9 +235,9 @@ export default function TaskLogViewerDialog({
                     </span>
                   )}
                 </Badge>
-              )}
+              ) : null}
             </div>
-            <DialogDescription className="text-xs text-muted-foreground">
+            <DialogDescription className="text-xs text-muted-foreground truncate">
               {logDetail?.job_name ? `Job: ${logDetail.job_name}` : "Process stdout, stderr, and hardware diagnostics."}
             </DialogDescription>
           </div>
@@ -122,10 +245,66 @@ export default function TaskLogViewerDialog({
 
         {/* Card Body */}
         <div className="p-6 space-y-4 flex-1 flex flex-col overflow-hidden">
-          {/* Top Toolbar: Tabs on Left, Actions on Right */}
-          <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
+          {taskState === "READY" && (
+            <div className="p-2.5 px-3 bg-muted/20 border border-border/70 rounded-lg text-xs font-mono flex items-center justify-between text-muted-foreground shrink-0">
+              <div className="flex items-center gap-2">
+                <Clock className="size-4 text-primary shrink-0" />
+                <span>
+                  This task was <strong>requeued</strong> and is currently <strong>READY</strong> in the queue. Viewing execution log from past attempt #{logDetail?.attempt_number || 1}.
+                </span>
+              </div>
+            </div>
+          )}
+          {/* Multi-attempt Selector if more than 1 attempt exists */}
+          {allAttempts.length > 1 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs shrink-0 font-mono">
+              <span className="text-muted-foreground font-sans font-medium text-xs flex items-center gap-1 shrink-0">
+                <RotateCcw className="size-3.5 text-primary" /> Attempts:
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {allAttempts.map((att) => {
+                  const isAttActive = activeLogId === att.id;
+                  const isAttSuccess = att.exit_status === 0;
+                  return (
+                    <button
+                      key={att.id}
+                      type="button"
+                      onClick={() => setSelectedLogId(att.id)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-md text-xs font-mono font-medium transition-all border inline-flex items-center gap-1.5",
+                        isAttActive
+                          ? "bg-primary/20 text-primary border-primary/50 font-bold shadow-xs ring-1 ring-primary/30"
+                          : "bg-surface-deep text-muted-foreground border-border/70 hover:text-foreground hover:bg-muted/40"
+                      )}
+                    >
+                      <span>Attempt #{att.attempt_number}</span>
+                      <Badge
+                        variant={isAttSuccess ? "outline" : "destructive"}
+                        className={cn(
+                          "text-[9px] px-1 py-0 h-4 font-mono font-normal",
+                          isAttSuccess
+                            ? "border-success/30 text-success bg-success/10"
+                            : "border-destructive/30 text-destructive bg-destructive/10"
+                        )}
+                      >
+                        {isAttSuccess ? "Exit 0" : `Exit ${att.exit_status}`}
+                      </Badge>
+                      {att.worker_hostname && (
+                        <span className="text-[10px] text-muted-foreground opacity-70">
+                          {att.worker_hostname}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Top Toolbar: Tabs on Left, Log Controls on Right (Strictly single-row) */}
+          <div className="flex items-center justify-between gap-3 shrink-0">
             {/* Left: Tab Navigation in Dark Container */}
-            <div className="flex items-center gap-1.5 bg-surface-deep border border-border/80 rounded-lg p-1">
+            <div className="flex items-center gap-1 bg-surface-deep border border-border/80 rounded-lg p-1">
               <Button
                 variant={activeTab === "full" ? "default" : "ghost"}
                 size="sm"
@@ -150,10 +329,10 @@ export default function TaskLogViewerDialog({
                 }`}
               >
                 <AlertTriangle
-                  className={`size-3.5 mr-1.5 ${logDetail?.error_tail && !isSuccess ? "text-destructive" : ""}`}
+                  className={`size-3.5 mr-1.5 ${logDetail?.error_tail && !isSuccess && taskState === "FAILED" ? "text-destructive" : ""}`}
                 />
-                Error Tail
-                {logDetail?.error_tail && !isSuccess && (
+                {taskState === "READY" ? "Past Error Tail" : "Error Tail"}
+                {logDetail?.error_tail && !isSuccess && taskState === "FAILED" && (
                   <span className="size-1.5 rounded-full bg-destructive ml-1 animate-pulse" />
                 )}
               </Button>
@@ -172,38 +351,37 @@ export default function TaskLogViewerDialog({
               </Button>
             </div>
 
-            {/* Right: Actions */}
-            <div className="flex items-center gap-2">
-              {activeTab !== "diagnostics" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setWrapLines(!wrapLines)}
-                  className={`h-8 px-2.5 text-xs border-border bg-surface-deep hover:bg-muted ${
-                    wrapLines ? "bg-primary/15 text-primary border-primary/40 font-semibold" : ""
-                  }`}
-                  title="Toggle line wrapping"
-                >
-                  <WrapText className="size-3.5 mr-1.5" /> Wrap
-                </Button>
-              )}
-              {activeTab !== "diagnostics" && (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleCopyLog}
-                  disabled={!logDetail?.log_output && !logDetail?.error_tail}
-                  className="h-8 px-3 text-xs bg-primary text-primary-foreground font-bold"
-                >
-                  <Copy className="size-3.5 mr-1.5" /> Copy Log
-                </Button>
-              )}
+            {/* Right: Log Controls (Fixed geometry, never causes row wrapping) */}
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setWrapLines(!wrapLines)}
+                disabled={activeTab === "diagnostics"}
+                className={`h-7.5 px-2.5 text-xs border-border bg-surface-deep hover:bg-muted transition-all ${
+                  wrapLines && activeTab !== "diagnostics" ? "bg-primary/15 text-primary border-primary/40 font-semibold" : ""
+                } ${activeTab === "diagnostics" ? "opacity-40 cursor-not-allowed" : ""}`}
+                title="Toggle line wrapping"
+              >
+                <WrapText className="size-3.5 mr-1.5" /> Wrap
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleCopyLog}
+                disabled={activeTab === "diagnostics" || (!logDetail?.log_output && !logDetail?.error_tail)}
+                className={`h-7.5 px-3 text-xs bg-primary text-primary-foreground font-bold ${
+                  activeTab === "diagnostics" ? "opacity-40 cursor-not-allowed" : ""
+                }`}
+              >
+                <Copy className="size-3.5 mr-1.5" /> Copy Log
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => void mutate()}
                 disabled={isValidating}
-                className="h-8 px-2.5 text-xs border-border bg-surface-deep hover:bg-muted"
+                className="h-7.5 w-7.5 p-0 text-xs border-border bg-surface-deep hover:bg-muted"
                 title="Refresh log"
               >
                 <RefreshCw className={`size-3.5 ${isValidating ? "animate-spin" : ""}`} />
@@ -388,6 +566,50 @@ export default function TaskLogViewerDialog({
             )}
           </div>
         </div>
+        {/* Dialog Footer with Status Info and Action Buttons */}
+        <DialogFooter className="border-t border-border/50 px-6 py-3 bg-surface flex flex-row items-center justify-between gap-4 shrink-0 sm:justify-between">
+          <div className="text-xs text-muted-foreground font-mono flex items-center gap-2">
+            {logDetail ? (
+              <>
+                <Server className="size-3.5 text-primary shrink-0" />
+                <span>
+                  Node: <strong className="text-foreground">{logDetail.worker_hostname || "N/A"}</strong>
+                </span>
+                <span className="text-border">•</span>
+                <span>
+                  Duration: <strong className="text-foreground">{logDetail.duration_seconds.toFixed(1)}s</strong>
+                </span>
+              </>
+            ) : (
+              <span>Execution Inspector</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleRequeue()}
+              disabled={isRequeuing || !taskId}
+              className="gap-1.5 h-8 px-3 text-xs font-semibold border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200"
+              title="Requeue this task for execution"
+            >
+              <RotateCcw className={`size-3.5 ${isRequeuing ? "animate-spin" : ""}`} />
+              Requeue Task
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleSkip()}
+              disabled={isSkipping || !taskId}
+              className="gap-1.5 h-8 px-3 text-xs font-semibold border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
+              title="Skip this task"
+            >
+              <SkipForward className={`size-3.5 ${isSkipping ? "animate-spin" : ""}`} />
+              Skip Task
+            </Button>
+          </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

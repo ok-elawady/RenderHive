@@ -280,60 +280,77 @@ def task_pre_save(sender, instance, update_fields=None, **kwargs):
             _unblock_tasks_for_deps(deps)
 
         # Atomic state transitions for Job and Layer based on the newly updated counts
-        if instance.state in (TaskState.RUNNING, TaskState.CHECKPOINT):
-            Job.objects.filter(id=instance.job_id, is_paused=False).exclude(state=JobState.RUNNING).update(
-                state=JobState.RUNNING
+        now = timezone.now()
+
+        # 1. Finished: all tasks in the job / layer are succeeded or skipped
+        finished_jobs = Job.objects.filter(
+            id=instance.job_id,
+            total_tasks__gt=0,
+            total_tasks=F("succeeded_tasks") + F("skipped_tasks"),
+        ).exclude(state=JobState.FINISHED).update(state=JobState.FINISHED, stopped_at=now)
+
+        finished_layers = Layer.objects.filter(
+            id=instance.layer_id,
+            total_tasks__gt=0,
+            total_tasks=F("succeeded_tasks") + F("skipped_tasks"),
+        ).exclude(state=JobState.FINISHED).update(state=JobState.FINISHED)
+
+        # If the layer just finished, satisfy LAYER_ON_LAYER deps blocking on it
+        if finished_layers:
+            layer_blocking_deps = Dependency.objects.filter(
+                type=DependencyType.LAYER_ON_LAYER,
+                parent_layer_id=instance.layer_id,
+                is_satisfied=False,
             )
-            Layer.objects.filter(id=instance.layer_id).exclude(state=JobState.RUNNING).update(state=JobState.RUNNING)
+            _unblock_tasks_for_deps(layer_blocking_deps)
 
-        elif instance.state in (TaskState.SUCCEEDED, TaskState.SKIPPED, TaskState.FAILED):
-            now = timezone.now()
+        # If the job just finished, satisfy JOB_ON_JOB deps blocking on it
+        if finished_jobs:
+            job_blocking_deps = Dependency.objects.filter(
+                type=DependencyType.JOB_ON_JOB,
+                parent_job_id=instance.job_id,
+                is_satisfied=False,
+            )
+            _unblock_tasks_for_deps(job_blocking_deps)
 
-            # Check if finished (all tasks are succeeded or skipped)
-            finished_jobs = Job.objects.filter(
-                id=instance.job_id,
-                total_tasks__gt=0,
-                total_tasks=F("succeeded_tasks") + F("skipped_tasks"),
-            ).exclude(state=JobState.FINISHED).update(state=JobState.FINISHED, stopped_at=now)
+        # 2. Failed: no tasks running or ready, and at least 1 failed task
+        Job.objects.filter(
+            id=instance.job_id,
+            running_tasks=0,
+            ready_tasks=0,
+            failed_tasks__gt=0,
+        ).exclude(state__in=[JobState.FINISHED, JobState.FAILED, JobState.PAUSED]).update(state=JobState.FAILED, stopped_at=now)
 
-            finished_layers = Layer.objects.filter(
-                id=instance.layer_id,
-                total_tasks__gt=0,
-                total_tasks=F("succeeded_tasks") + F("skipped_tasks"),
-            ).exclude(state=JobState.FINISHED).update(state=JobState.FINISHED)
+        Layer.objects.filter(
+            id=instance.layer_id,
+            running_tasks=0,
+            ready_tasks=0,
+            failed_tasks__gt=0,
+        ).exclude(state__in=[JobState.FINISHED, JobState.FAILED]).update(state=JobState.FAILED)
 
-            # If the layer just finished, satisfy LAYER_ON_LAYER deps blocking on it
-            if finished_layers:
-                layer_blocking_deps = Dependency.objects.filter(
-                    type=DependencyType.LAYER_ON_LAYER,
-                    parent_layer_id=instance.layer_id,
-                    is_satisfied=False,
-                )
-                _unblock_tasks_for_deps(layer_blocking_deps)
+        # 3. Running: actively executing on at least one worker (running_tasks > 0)
+        Job.objects.filter(
+            id=instance.job_id,
+            running_tasks__gt=0,
+            is_paused=False,
+        ).exclude(state__in=[JobState.FINISHED, JobState.RUNNING, JobState.PAUSED]).update(state=JobState.RUNNING)
 
-            # If the job just finished, satisfy JOB_ON_JOB deps blocking on it
-            if finished_jobs:
-                job_blocking_deps = Dependency.objects.filter(
-                    type=DependencyType.JOB_ON_JOB,
-                    parent_job_id=instance.job_id,
-                    is_satisfied=False,
-                )
-                _unblock_tasks_for_deps(job_blocking_deps)
+        Layer.objects.filter(
+            id=instance.layer_id,
+            running_tasks__gt=0,
+        ).exclude(state__in=[JobState.FINISHED, JobState.RUNNING]).update(state=JobState.RUNNING)
 
-            # Check if failed (no tasks running/ready, and at least 1 failed task)
-            Job.objects.filter(
-                id=instance.job_id,
-                running_tasks=0,
-                ready_tasks=0,
-                failed_tasks__gt=0,
-            ).exclude(state__in=[JobState.FINISHED, JobState.FAILED]).update(state=JobState.FAILED, stopped_at=now)
+        # 4. Pending: no workers actively executing (running_tasks == 0), waiting in queue
+        Job.objects.filter(
+            id=instance.job_id,
+            running_tasks=0,
+            is_paused=False,
+        ).exclude(state__in=[JobState.FINISHED, JobState.FAILED, JobState.PAUSED, JobState.PENDING]).update(state=JobState.PENDING)
 
-            Layer.objects.filter(
-                id=instance.layer_id,
-                running_tasks=0,
-                ready_tasks=0,
-                failed_tasks__gt=0,
-            ).exclude(state__in=[JobState.FINISHED, JobState.FAILED]).update(state=JobState.FAILED)
+        Layer.objects.filter(
+            id=instance.layer_id,
+            running_tasks=0,
+        ).exclude(state__in=[JobState.FINISHED, JobState.FAILED, JobState.PENDING]).update(state=JobState.PENDING)
 
 
 # ── Layer signals ──────────────────────────────────────────────────────────────

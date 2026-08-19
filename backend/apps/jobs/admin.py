@@ -10,7 +10,27 @@ from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 
+from apps.telemetry.models import TaskExecutionLog
 from .models import Dependency, Job, Layer, Task
+
+
+class TaskExecutionLogInline(admin.TabularInline):
+    """Inline display of TaskExecutionLogs within the Task or Job detail page."""
+
+    model = TaskExecutionLog
+    extra = 0
+    show_change_link = True
+    can_delete = False
+    readonly_fields = (
+        "attempt_number",
+        "worker_hostname",
+        "exit_status",
+        "duration_seconds",
+        "peak_memory_mb",
+        "error_tail",
+        "created_at",
+    )
+    fields = readonly_fields
 
 
 class LayerInline(admin.TabularInline):
@@ -109,7 +129,7 @@ class JobAdmin(admin.ModelAdmin):
         "updated_at",
         "stopped_at",
     )
-    inlines = [LayerInline]
+    inlines = [LayerInline, TaskExecutionLogInline]
 
     fieldsets = (
         (
@@ -324,6 +344,7 @@ class TaskAdmin(admin.ModelAdmin):
             },
         ),
     )
+    inlines = [TaskExecutionLogInline]
 
 
 @admin.register(Dependency)

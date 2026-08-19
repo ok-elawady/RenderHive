@@ -153,7 +153,7 @@ export default function DashboardPage() {
           <FarmActivityFeed />
         </div>
         <div className="h-[420px] lg:h-full min-h-0">
-          <AgenticLogs searchQuery="" />
+          <AgenticLogs searchQuery="" showDetails={false} />
         </div>
       </div>
     </div>

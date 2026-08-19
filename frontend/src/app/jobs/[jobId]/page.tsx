@@ -21,6 +21,7 @@ import {
   formatApiError,
   getJob,
   getJobLayers,
+  requeueFailedJobTasks,
   updateJob,
   readAuthSession,
   type JobDetail,
@@ -96,6 +97,7 @@ export default function JobDetailPage() {
   const [isEditOpen, setIsEditOpen] = useState<boolean>(false);
   const [isAbortConfirmOpen, setIsAbortConfirmOpen] = useState<boolean>(false);
   const [isAborting, setIsAborting] = useState<boolean>(false);
+  const [isRequeuingFailed, setIsRequeuingFailed] = useState<boolean>(false);
   const [draft, setDraft] = useState({ visible_name: "", priority: 50, max_tasks_per_worker: 0 });
 
   const session = useMemo(() => readAuthSession(), []);
@@ -155,7 +157,8 @@ export default function JobDetailPage() {
     try {
       await abortJob(jobId);
       toast.success("Job aborted");
-      router.push("/jobs");
+      setIsAbortConfirmOpen(false);
+      await loadJob();
     } catch (error) {
       toast.error("Abort failed", { description: formatApiError(error) });
     } finally {
@@ -163,10 +166,25 @@ export default function JobDetailPage() {
     }
   };
 
+  const handleRequeueFailed = async (): Promise<void> => {
+    setIsRequeuingFailed(true);
+    try {
+      const res = await requeueFailedJobTasks(jobId);
+      toast.success("Failed tasks requeued", {
+        description: `Requeued ${res.requeued_count} failed task(s) for execution.`,
+      });
+      await loadJob();
+    } catch (error) {
+      toast.error("Requeue failed", { description: formatApiError(error) });
+    } finally {
+      setIsRequeuingFailed(false);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col bg-background font-sans text-foreground">
       <PageHeader
-        title={job?.visible_name ?? "Loading job..."}
+        title={job?.visible_name || job?.name || "Job Detail"}
         description={job ? `${job.project} / ${job.department} / ${job.user}` : "Fetching details..."}
         backTo="/jobs"
       >
@@ -174,6 +192,17 @@ export default function JobDetailPage() {
           <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
           Refresh
         </Button>
+        {job && job.failed_tasks > 0 && (
+          <Button
+            variant="outline"
+            onClick={() => void handleRequeueFailed()}
+            disabled={isRequeuingFailed}
+            className="gap-2 border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200"
+          >
+            <RefreshCw size={14} className={isRequeuingFailed ? "animate-spin" : ""} />
+            Requeue Failed ({job.failed_tasks})
+          </Button>
+        )}
         <Button variant="outline" onClick={() => setIsEditOpen(true)} disabled={!job} className="gap-2">
           <Pencil size={14} />
           Edit

@@ -8,7 +8,10 @@ import {
   AlertTriangle,
   CalendarDays,
   Check,
+  ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Copy,
   Info,
   Layers,
@@ -149,6 +152,8 @@ export function FarmActivityTable() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedEvent, setSelectedEvent] = useState<FarmEvent | null>(null);
   const [hasCopied, setHasCopied] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [sortConfig, setSortConfig] = useState<{
     key: string;
     direction: "asc" | "desc";
@@ -239,6 +244,16 @@ export function FarmActivityTable() {
     });
   }, [allEvents, severityFilter, searchQuery, sortConfig]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredAndSortedEvents.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const paginatedEvents = useMemo(() => {
+    return filteredAndSortedEvents.slice(startIndex, startIndex + pageSize);
+  }, [filteredAndSortedEvents, startIndex, pageSize]);
+
+  const itemStart = filteredAndSortedEvents.length === 0 ? 0 : startIndex + 1;
+  const itemEnd = Math.min(startIndex + pageSize, filteredAndSortedEvents.length);
+
   const handleCopyPayload = (payload: unknown) => {
     navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
     setHasCopied(true);
@@ -252,9 +267,15 @@ export function FarmActivityTable() {
       <PageControlBar
         chips={chips}
         selectedChip={severityFilter}
-        onSelectChip={(id) => setSeverityFilter(id)}
+        onSelectChip={(id) => {
+          setSeverityFilter(id);
+          setCurrentPage(1);
+        }}
         search={searchQuery}
-        onSearchChange={setSearchQuery}
+        onSearchChange={(q) => {
+          setSearchQuery(q);
+          setCurrentPage(1);
+        }}
         searchPlaceholder="Search events, hostnames, messages, actors..."
       />
 
@@ -372,7 +393,7 @@ export function FarmActivityTable() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredAndSortedEvents.map((evt) => {
+                paginatedEvents.map((evt) => {
                   const targetInfo = getTargetDisplayName(evt);
 
                   return (
@@ -436,6 +457,87 @@ export function FarmActivityTable() {
             </TableBody>
           </Table>
         </CardContent>
+
+        {/* Table Footer with Pagination Controls */}
+        {filteredAndSortedEvents.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border/50 bg-muted/15 px-6 py-3 text-xs text-muted-foreground">
+            {/* Left: Item Range & Page Size Selector */}
+            <div className="flex items-center gap-4">
+              <span>
+                Showing <strong className="font-semibold text-foreground font-mono">{itemStart}–{itemEnd}</strong> of{" "}
+                <strong className="font-semibold text-foreground font-mono">{filteredAndSortedEvents.length}</strong> events
+              </span>
+
+              <div className="flex items-center gap-1.5 pl-3 border-l border-border/60">
+                <span>Rows per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="h-7 rounded-md border border-border/80 bg-surface-deep px-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Right: Page Navigation Controls */}
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs mr-1">
+                Page <strong className="text-foreground">{safePage}</strong> of{" "}
+                <strong className="text-foreground">{totalPages}</strong>
+              </span>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  disabled={safePage <= 1}
+                  onClick={() => setCurrentPage(1)}
+                  title="First page"
+                >
+                  <ChevronsLeft className="size-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  disabled={safePage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  title="Previous page"
+                >
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  title="Next page"
+                >
+                  <ChevronRight className="size-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                  title="Last page"
+                >
+                  <ChevronsRight className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Side Sheet Matching Users Page Layout */}

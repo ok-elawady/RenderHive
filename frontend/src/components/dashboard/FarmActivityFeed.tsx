@@ -118,9 +118,9 @@ export default function FarmActivityFeed() {
             Farm Activity Stream
           </CardTitle>
           {tabs.map((tab) => {
-            const Icon = tab.icon;
             const isActive = severityFilter === tab.id;
             const hasAlert = tab.hasAlert && tab.count > 0;
+
             return (
               <button
                 key={tab.id}
@@ -130,8 +130,7 @@ export default function FarmActivityFeed() {
                   "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
                   isActive
                     ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                  hasAlert && !isActive && "text-destructive hover:text-destructive bg-destructive/10",
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 )}
               >
                 <span>{tab.label}</span>
@@ -141,8 +140,8 @@ export default function FarmActivityFeed() {
                     isActive
                       ? "bg-primary-foreground/25 text-primary-foreground font-bold"
                       : hasAlert
-                        ? "bg-destructive text-destructive-foreground font-bold"
-                        : "bg-muted text-muted-foreground",
+                      ? "text-rose-400 bg-rose-500/10 border border-rose-500/30 font-bold"
+                      : "bg-muted text-muted-foreground"
                   )}
                 >
                   {tab.count}

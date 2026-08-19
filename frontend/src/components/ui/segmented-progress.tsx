@@ -61,13 +61,7 @@ export function SegmentedProgressBar({
           </div>
           {showCounts && (
             <div className="flex items-center gap-2.5 text-xs text-foreground/90 w-full mt-1.5 font-medium">
-              <div className="min-w-[2.5rem]">{(((succeeded + skipped) / safeTotal) * 100).toFixed(0)}%</div>
-
-              {failed > 0 && (
-                <div className="flex items-center gap-1 text-destructive bg-destructive/15 px-2 py-0.5 rounded text-xs font-medium">
-                  <AlertCircle size={12} /> {failed} Err
-                </div>
-              )}
+              <div className="min-w-[2.5rem] font-mono">{(((succeeded + skipped) / safeTotal) * 100).toFixed(0)}%</div>
 
               {running > 0 && (
                 <div className="flex items-center gap-1 text-info bg-info/15 px-2 py-0.5 rounded text-xs font-medium">
