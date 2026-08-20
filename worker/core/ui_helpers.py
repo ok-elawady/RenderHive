@@ -259,3 +259,114 @@ def format_timestamp(value: Any) -> str:
         return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         return text
+
+
+def get_cpu_name() -> str:
+    """Return the human-readable CPU brand/marketing model name."""
+    if os.name == "nt":
+        try:
+            import winreg  # type: ignore
+
+            key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+            )
+            val, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+            winreg.CloseKey(key)
+            cleaned = " ".join(str(val or "").strip().split())
+            if cleaned:
+                return cleaned
+        except Exception:
+            pass
+    elif os.name == "posix":
+        try:
+            if os.path.isfile("/proc/cpuinfo"):
+                with open("/proc/cpuinfo", "r", encoding="utf-8") as f:
+                    for line in f:
+                        if "model name" in line:
+                            return line.split(":", 1)[1].strip()
+        except Exception:
+            pass
+        try:
+            import subprocess
+            output = subprocess.check_output(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+            if output:
+                return output
+        except Exception:
+            pass
+
+    import platform
+    return platform.processor() or platform.machine() or "Generic CPU"
+
+
+def collect_disk_metrics() -> Dict[str, Any]:
+    """Collect aggregated disk metrics across all mounted local drives, plus per-drive details."""
+    import psutil
+
+    total = 0
+    used = 0
+    free = 0
+    drives: List[Dict[str, Any]] = []
+    seen = set()
+
+    try:
+        partitions = psutil.disk_partitions(all=False)
+    except Exception:
+        partitions = []
+
+    for p in partitions:
+        if os.name == "nt" and ("cdrom" in p.opts or not p.fstype):
+            continue
+        mount = p.mountpoint
+        if mount in seen:
+            continue
+        try:
+            usage = psutil.disk_usage(mount)
+            if usage.total == 0:
+                continue
+            seen.add(mount)
+            total += usage.total
+            used += usage.used
+            free += usage.free
+            drives.append({
+                "mount": mount,
+                "device": p.device or mount,
+                "total": usage.total,
+                "used": usage.used,
+                "free": usage.free,
+                "percent": usage.percent,
+            })
+        except Exception:
+            continue
+
+    if not seen:
+        try:
+            root_path = (os.environ.get("SystemDrive") or "C:") + "\\" if os.name == "nt" else "/"
+            usage = psutil.disk_usage(root_path)
+            total = usage.total
+            used = usage.used
+            free = usage.free
+            drives.append({
+                "mount": root_path,
+                "device": root_path,
+                "total": usage.total,
+                "used": usage.used,
+                "free": usage.free,
+                "percent": usage.percent,
+            })
+        except Exception:
+            pass
+
+    percent = round((used / total * 100), 1) if total > 0 else 0.0
+
+    return {
+        "disk_total_bytes": total,
+        "disk_used_bytes": used,
+        "disk_free_bytes": free,
+        "disk_percent": percent,
+        "disk_drives": drives,
+    }

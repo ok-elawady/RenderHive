@@ -13,6 +13,9 @@ from typing import Callable, Dict, List, Optional
 from .runtime_paths import writable_log_root
 
 
+import psutil
+
+
 _IMAGE_RE = re.compile(
     r"(?:writing|written|saved|saving|output(?:\s+image)?)[^\n]*?"
     r"((?:[A-Za-z]:[\\/]|\\\\|//)[^\r\n\"']+?\.(?:exr|png|iff|jpg|jpeg|tga|tif|tiff|bmp))",
@@ -20,6 +23,21 @@ _IMAGE_RE = re.compile(
 )
 
 
+def _get_process_tree_rss_mb(pid: int) -> int:
+    """Calculate total RSS memory in MB for the process and all its child processes."""
+    if not pid:
+        return 0
+    try:
+        parent = psutil.Process(pid)
+        total_rss = parent.memory_info().rss
+        for child in parent.children(recursive=True):
+            try:
+                total_rss += child.memory_info().rss
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        return int(total_rss // (1024 * 1024))
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return 0
 
 
 def _windows_absolute(path: str) -> bool:
@@ -58,6 +76,7 @@ class ProcessResult:
     log_path: str
     output_image_path: str = ""
     error_tail: str = ""
+    peak_memory_mb: int = 0
 
 
 def _terminate_process_tree(process: subprocess.Popen) -> None:
@@ -157,6 +176,9 @@ def run_process(
                     pass
 
             last_heartbeat = time.monotonic()
+            last_mem_check = time.monotonic()
+            peak_memory_mb = 0
+
             while True:
                 if is_cancelled():
                     log("Cancellation requested. Stopping the DCC process...")
@@ -185,6 +207,13 @@ def run_process(
                     break
 
                 now = time.monotonic()
+                if now - last_mem_check >= 1.5:
+                    if process and process.pid:
+                        rss_mb = _get_process_tree_rss_mb(process.pid)
+                        if rss_mb > peak_memory_mb:
+                            peak_memory_mb = rss_mb
+                    last_mem_check = now
+
                 if now - last_heartbeat >= 5.0:
                     heartbeat()
                     last_heartbeat = now
@@ -207,7 +236,7 @@ def run_process(
                     pass
         with open(log_path, "a", encoding="utf-8", errors="replace") as handle:
             handle.write("\nWorker execution error: {}\n".format(error))
-        return ProcessResult(exit_code=-1, log_path=log_path, error_tail=str(error))
+        return ProcessResult(exit_code=-1, log_path=log_path, error_tail=str(error), peak_memory_mb=0)
 
     error_tail = ""
     if exit_code != 0:
@@ -223,4 +252,5 @@ def run_process(
         log_path=log_path,
         output_image_path=output_image_path,
         error_tail=error_tail,
+        peak_memory_mb=peak_memory_mb,
     )

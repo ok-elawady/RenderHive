@@ -106,11 +106,17 @@ class MayaAdapter(BaseAdapter):
             escaped_runner = runner.replace("\\", "\\\\").replace('"', '\\"')
             mel_cmd = f'python("{escaped_runner}");'
             
-            # Insert right before the scene path (which is the last element)
-            command.insert(-1, "-preRender")
-            command.insert(-1, mel_cmd)
-            command.insert(-1, "-fnc")
-            command.insert(-1, "3")
+            # Find the position of scene_path to insert flags before it
+            scene_idx = -1
+            if task.scene_path in command:
+                scene_idx = command.index(task.scene_path)
+            
+            arnold_flags = ["-preRender", mel_cmd, "-fnc", "3"]
+            if scene_idx != -1:
+                for idx, flag in enumerate(arnold_flags):
+                    command.insert(scene_idx + idx, flag)
+            else:
+                command.extend(arnold_flags)
         env = dict(task.env)
         env["RENDERHIVE_DCC"] = "maya"
         env["RENDERHIVE_MAYA_VERSION"] = installation.version
