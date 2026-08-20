@@ -42,6 +42,7 @@ class ProcessRunnerTests(unittest.TestCase):
         self.assertIn("starting_process", events)
         self.assertIn("process_started", events)
         self.assertTrue(any("RENDERHIVE_FRAME_DONE" in line for line in lines))
+        self.assertGreaterEqual(result.peak_memory_mb, 0)
 
 
 if __name__ == "__main__":

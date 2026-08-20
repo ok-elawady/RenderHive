@@ -66,7 +66,11 @@ const RULES_STORAGE_KEY = "renderhive-ai-rules";
 
 function loadSavedRules(): string {
   if (typeof window === "undefined") return DEFAULT_SYSTEM_PROMPT;
-  return window.localStorage.getItem(RULES_STORAGE_KEY) ?? DEFAULT_SYSTEM_PROMPT;
+  try {
+    return window.localStorage?.getItem(RULES_STORAGE_KEY) ?? DEFAULT_SYSTEM_PROMPT;
+  } catch {
+    return DEFAULT_SYSTEM_PROMPT;
+  }
 }
 
 export default function AiSchedulerPage() {
@@ -82,7 +86,11 @@ export default function AiSchedulerPage() {
 
   // ── Rules persistence ──────────────────────────────────────────────────────
   const handleSaveRules = () => {
-    window.localStorage.setItem(RULES_STORAGE_KEY, rules);
+    try {
+      window.localStorage?.setItem(RULES_STORAGE_KEY, rules);
+    } catch {
+      // Ignore if storage access restricted
+    }
     setSavedRules(rules);
     setIsRulesOpen(false);
     toast.success("Rules saved locally", {
@@ -93,7 +101,11 @@ export default function AiSchedulerPage() {
 
   const handleResetRules = () => {
     setRules(DEFAULT_SYSTEM_PROMPT);
-    window.localStorage.setItem(RULES_STORAGE_KEY, DEFAULT_SYSTEM_PROMPT);
+    try {
+      window.localStorage?.setItem(RULES_STORAGE_KEY, DEFAULT_SYSTEM_PROMPT);
+    } catch {
+      // Ignore if storage access restricted
+    }
     setSavedRules(DEFAULT_SYSTEM_PROMPT);
     toast.info("Rules reset to defaults");
   };

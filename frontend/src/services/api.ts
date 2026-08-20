@@ -255,12 +255,20 @@ export function readAuthSession(): AuthSession | null {
 
 export function persistAuthSession(session: AuthSession): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  try {
+    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // Storage access may be blocked or restricted
+  }
 }
 
 export function clearAuthSession(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  try {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  } catch {
+    // Storage access may be blocked or restricted
+  }
 }
 
 function getApiHeaders(): HeadersInit {

@@ -30,10 +30,15 @@ function getInitialTheme(): ThemeMode {
 }
 
 function applyTheme(theme: ThemeMode): void {
-  const root = document.documentElement;
-  root.classList.remove("light", "dark");
-  root.classList.add(theme);
-  root.style.colorScheme = theme;
+  if (typeof document === "undefined") return;
+  try {
+    const root = document.documentElement;
+    root.classList.remove("light", "dark");
+    root.classList.add(theme);
+    root.style.colorScheme = theme;
+  } catch {
+    // Ignore DOM styling errors
+  }
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
@@ -43,10 +48,17 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
-    const storedTheme = window.localStorage.getItem(STORAGE_KEY);
-    if (storedTheme === "light" || storedTheme === "dark") {
-      setThemeState(storedTheme);
-    } else {
+    try {
+      const storedTheme = window.localStorage?.getItem(STORAGE_KEY);
+      if (storedTheme === "light" || storedTheme === "dark") {
+        setThemeState(storedTheme);
+        return;
+      }
+    } catch {
+      // Storage access may be blocked or restricted (e.g. Firefox private browsing)
+    }
+
+    if (typeof document !== "undefined") {
       setThemeState(
         document.documentElement.classList.contains("light") ? "light" : "dark"
       );
@@ -56,7 +68,11 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   useEffect(() => {
     if (mounted) {
       applyTheme(theme);
-      window.localStorage.setItem(STORAGE_KEY, theme);
+      try {
+        window.localStorage?.setItem(STORAGE_KEY, theme);
+      } catch {
+        // Storage access may be blocked or quota exceeded
+      }
     }
   }, [theme, mounted]);
 

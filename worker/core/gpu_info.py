@@ -212,6 +212,7 @@ class GPUDetector:
         self.nvidia_smi = candidates[0] if candidates else ""
         self._static_rows: List[Dict[str, Any]] = []
         self._last_static_query = 0.0
+        self._last_known_summary: Dict[str, Any] = {}
 
     def _query_nvidia(self) -> List[Dict[str, Any]]:
         if not self.nvidia_smi or not os.path.isfile(self.nvidia_smi):
@@ -238,10 +239,21 @@ class GPUDetector:
     def query(self) -> Dict[str, Any]:
         nvidia_rows = self._query_nvidia()
         if nvidia_rows:
-            return summarize_gpu_rows(nvidia_rows, "nvidia-smi")
+            summary = summarize_gpu_rows(nvidia_rows, "nvidia-smi")
+            self._last_known_summary = dict(summary)
+            return summary
 
         now = time.monotonic()
         if not self._static_rows or now - self._last_static_query >= self.static_refresh_seconds:
             self._static_rows = query_windows_video_controllers()
             self._last_static_query = now
-        return summarize_gpu_rows(self._static_rows, "windows-cim" if self._static_rows else "none")
+
+        if self._static_rows:
+            summary = summarize_gpu_rows(self._static_rows, "windows-cim")
+            self._last_known_summary = dict(summary)
+            return summary
+
+        if self._last_known_summary:
+            return dict(self._last_known_summary)
+
+        return summarize_gpu_rows([], "none")

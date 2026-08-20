@@ -93,10 +93,14 @@ def _apply_overrides(node, args):
     ):
         changed.append("renderer")
 
-    if _set_integer(node, ("res1", "width", "xres"), args.width):
-        changed.append("width")
-    if _set_integer(node, ("res2", "height", "yres"), args.height):
-        changed.append("height")
+    if args.width or args.height:
+        # Enable resolution overrides on Mantra, Karma, and standard ROPs
+        _set_integer(node, ("override_camerares", "override_resolution", "res_override", "tresoverride"), 1)
+        _set_string(node, ("res_fraction",), "specific")
+        if _set_integer(node, ("res1", "width", "xres", "resolution1", "res_override1"), args.width):
+            changed.append("width")
+        if _set_integer(node, ("res2", "height", "yres", "resolution2", "res_override2"), args.height):
+            changed.append("height")
 
     if changed:
         print("RENDERHIVE_OVERRIDES {}".format(",".join(changed)))

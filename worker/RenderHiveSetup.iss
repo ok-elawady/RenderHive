@@ -17,7 +17,7 @@ PrivilegesRequired=admin
 
 [Files]
 ; Make sure you run build.bat (PyInstaller) before compiling this setup script
-Source: "dist\RenderHiveWorker.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\RenderHiveWorker\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\RenderHive Worker"; Filename: "{app}\RenderHiveWorker.exe"
