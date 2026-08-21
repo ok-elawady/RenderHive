@@ -48,19 +48,28 @@ function matchesJobSearch(job: RenderJob, normalizedQuery: string): boolean {
   );
 }
 
-function formatRuntime(createdAt: string | undefined): string {
-  if (!createdAt) return "-";
+function formatCreatedAt(createdAt: string | undefined): { absolute: string; relative: string } {
+  if (!createdAt) return { absolute: "-", relative: "" };
+  
   const start = new Date(createdAt);
+  
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const absolute = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())} ${pad(start.getHours())}:${pad(start.getMinutes())}`;
+
   const now = new Date();
   const diffMs = now.getTime() - start.getTime();
-  if (diffMs < 0) return "Just now";
+  if (diffMs < 0) return { absolute, relative: "Just now" };
 
   const diffSecs = Math.floor(diffMs / 1000);
   const hours = Math.floor(diffSecs / 3600);
   const minutes = Math.floor((diffSecs % 3600) / 60);
 
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  let relative = "";
+  if (hours > 0) relative = `${hours}h ${minutes}m ago`;
+  else if (minutes > 0) relative = `${minutes}m ago`;
+  else relative = "Just now";
+
+  return { absolute, relative };
 }
 
 const getJobStateBadge = (state: BackendJobState) => {
@@ -274,7 +283,7 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
             <TableHeader className="bg-card sticky top-0 z-10 border-b border-border/50">
               <TableRow className="hover:bg-transparent bg-muted/30">
                 <TableHead className="pl-4 w-[35%] font-semibold text-xs text-muted-foreground">
-                  Job ID / Project
+                  Job / Project
                 </TableHead>
                 <TableHead className="w-[13%] font-semibold text-xs text-muted-foreground">
                   <div className="flex justify-center items-center w-full">State</div>
@@ -283,7 +292,7 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                   <div className="flex justify-center items-center w-full">Priority</div>
                 </TableHead>
                 <TableHead className="w-[14%] font-semibold text-xs text-muted-foreground">
-                  <div className="flex justify-center items-center w-full">Runtime</div>
+                  <div className="flex justify-center items-center w-full">Created At</div>
                 </TableHead>
                 <TableHead className="w-[20%] font-semibold text-xs text-muted-foreground">
                   <div className="flex justify-center items-center w-full">Tasks Progress</div>
@@ -350,7 +359,15 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                       </TableCell>
                       <TableCell className="text-center py-3">
                         <div className="flex flex-col items-center gap-0.5 font-mono">
-                          <div className="text-xs font-semibold text-foreground">{formatRuntime(job.created_at)}</div>
+                          {(() => {
+                            const dt = formatCreatedAt(job.created_at);
+                            return (
+                              <>
+                                <div className="text-xs font-semibold text-foreground">{dt.relative}</div>
+                                <div className="text-[10px] text-muted-foreground">{dt.absolute}</div>
+                              </>
+                            );
+                          })()}
                         </div>
                       </TableCell>
                       <TableCell className="text-center py-3 px-2">
