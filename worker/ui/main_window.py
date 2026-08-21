@@ -1470,7 +1470,7 @@ class MainWindow(QMainWindow):
         self.current_progress_total_frames = max(1, int(data.get("total_frames") or 1))
         self.current_progress_eta_seconds = None
         status = safe_text(data.get("status"), "FAILED").upper()
-        self.job_status_chip.set_status("ONLINE" if status == "SUCCEEDED" else "ERROR")
+        self.job_status_chip.set_status("SUCCEEDED" if status == "SUCCEEDED" else "ERROR")
         self.job_progress.setRange(0, 1000)
         self.job_progress.setValue(self.progress_animator.bar_value)
         self.job_percent_label.setText("{}%".format(self.current_progress_percent))

@@ -183,6 +183,8 @@ class StatusChip(QLabel):
         "ERROR": ("#FF5D73", "●"),
         "CONNECTED": ("#3DDC84", "●"),
         "DISCONNECTED": ("#FF5D73", "●"),
+        "SUCCEEDED": ("#3DDC84", "●"),
+        "COMPLETED": ("#3DDC84", "●"),
     }
 
     def __init__(self, status: str = "OFFLINE", parent=None):
