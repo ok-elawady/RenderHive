@@ -63,12 +63,6 @@ export function SegmentedProgressBar({
             <div className="flex items-center gap-2.5 text-xs text-foreground/90 w-full mt-1.5 font-medium">
               <div className="min-w-[2.5rem] font-mono">{(((succeeded + skipped) / safeTotal) * 100).toFixed(0)}%</div>
 
-              {running > 0 && (
-                <div className="flex items-center gap-1 text-info bg-info/15 px-2 py-0.5 rounded text-xs font-medium">
-                  <PlayCircle size={12} /> {running} Run
-                </div>
-              )}
-
               <div className="flex items-center gap-1 text-muted-foreground ml-auto font-mono text-xs">
                 {succeeded + skipped} / {total}
               </div>

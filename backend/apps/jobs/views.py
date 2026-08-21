@@ -13,7 +13,7 @@ import re
 import django_filters
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, F, Q
+from django.db.models import Count, F, Q, Case, When, Value, IntegerField
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -137,9 +137,9 @@ class JobViewSet(viewsets.ModelViewSet):
         ``POST   /api/jobs/{id}/resume/`` — resume a paused job.
     """
 
-    queryset = Job.objects.all().order_by("-priority", "created_at")
+    queryset = Job.objects.all()
     filterset_class = JobFilter
-    ordering_fields = ["priority", "created_at", "updated_at", "state", "project"]
+    ordering_fields = ["priority", "created_at", "updated_at", "state", "project", "visible_name", "department", "user", "name"]
     search_fields = ["name", "visible_name", "user", "project", "department"]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
@@ -150,7 +150,17 @@ class JobViewSet(viewsets.ModelViewSet):
         N+1 queries — each job in a list would otherwise trigger 2 extra SQL
         queries (one per pool relation) without prefetching.
         """
-        qs = super().get_queryset()
+        qs = super().get_queryset().annotate(
+            state_rank=Case(
+                When(state=JobState.RUNNING, then=Value(1)),
+                When(state=JobState.PENDING, then=Value(2)),
+                When(state=JobState.PAUSED, then=Value(3)),
+                When(state=JobState.FAILED, then=Value(4)),
+                When(state=JobState.FINISHED, then=Value(5)),
+                default=Value(99),
+                output_field=IntegerField(),
+            )
+        ).order_by("state_rank", "-priority", "created_at")
         if self.action == "retrieve":
             qs = qs.prefetch_related("layers", "included_pools", "excluded_pools")
         elif self.action == "list":

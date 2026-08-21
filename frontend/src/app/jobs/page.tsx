@@ -50,9 +50,11 @@ import {
   pauseJob,
   resumeJob,
   updateJob,
+  getPools,
   type BackendJob,
   type JobFilters,
   type JobStateFilter,
+  type WorkerPool,
 } from "@/services/api";
 
 function getJobStateBadge(state: BackendJob["state"]) {
@@ -102,23 +104,33 @@ function getJobStateBadge(state: BackendJob["state"]) {
   }
 }
 
-function formatRuntime(createdAt: string | undefined): string {
-  if (!createdAt) return "-";
+function formatCreatedAt(createdAt: string | undefined): { absolute: string; relative: string } {
+  if (!createdAt) return { absolute: "-", relative: "" };
+  
   const start = new Date(createdAt);
+  
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const absolute = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())} ${pad(start.getHours())}:${pad(start.getMinutes())}`;
+
   const now = new Date();
   const diffMs = now.getTime() - start.getTime();
-  if (diffMs < 0) return "Just now";
+  if (diffMs < 0) return { absolute, relative: "Just now" };
 
   const diffSecs = Math.floor(diffMs / 1000);
   const hours = Math.floor(diffSecs / 3600);
   const minutes = Math.floor((diffSecs % 3600) / 60);
 
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  let relative = "";
+  if (hours > 0) relative = `${hours}h ${minutes}m ago`;
+  else if (minutes > 0) relative = `${minutes}m ago`;
+  else relative = "Just now";
+
+  return { absolute, relative };
 }
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<BackendJob[]>([]);
+  const [pools, setPools] = useState<WorkerPool[]>([]);
   const [selectedState, setSelectedState] = useState<JobStateFilter | "">("");
   const [filters, setFilters] = useState<Omit<JobFilters, "state">>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -171,18 +183,18 @@ export default function JobsPage() {
 
   const handleSort = (key: string) => {
     let nextConfig: { key: string; direction: "asc" | "desc" } | null = null;
-    setSortConfig((current) => {
-      let newDirection: "asc" | "desc" = "asc";
-      if (current?.key === key) {
-        if (current.direction === "asc") newDirection = "desc";
-        else {
-          nextConfig = null;
-          return null;
-        }
+    
+    if (sortConfig?.key === key) {
+      if (sortConfig.direction === "asc") {
+        nextConfig = { key, direction: "desc" };
+      } else {
+        nextConfig = null;
       }
-      nextConfig = { key, direction: newDirection };
-      return nextConfig;
-    });
+    } else {
+      nextConfig = { key, direction: "asc" };
+    }
+    
+    setSortConfig(nextConfig);
     setFilters((current) => ({
       ...current,
       ordering: nextConfig ? `${nextConfig.direction === "desc" ? "-" : ""}${nextConfig.key}` : undefined,
@@ -194,7 +206,12 @@ export default function JobsPage() {
       if (showLoadingState) setIsLoading(true);
       setIsRefreshing(true);
       try {
-        setJobs(await getJobs(filters));
+        const [fetchedJobs, fetchedPools] = await Promise.all([
+          getJobs(filters),
+          getPools().catch(() => [])
+        ]);
+        setJobs(fetchedJobs);
+        setPools(fetchedPools);
       } catch (error) {
         toast.error("Unable to load jobs", { description: formatApiError(error) });
       } finally {
@@ -206,6 +223,7 @@ export default function JobsPage() {
   );
 
   const initialLoad = useRef(true);
+  const pollingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!initialLoad.current) {
@@ -215,7 +233,17 @@ export default function JobsPage() {
       void fetchData(initialLoad.current);
       initialLoad.current = false;
     }, 300);
-    return () => window.clearTimeout(timer);
+
+    pollingTimerRef.current = window.setInterval(() => {
+      void fetchData(false);
+    }, 7000);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (pollingTimerRef.current !== null) {
+        window.clearInterval(pollingTimerRef.current);
+      }
+    };
   }, [fetchData]);
 
   const updateFilter =
@@ -397,8 +425,8 @@ export default function JobsPage() {
                 <TableRow className="hover:bg-transparent bg-muted/30">
                   <TableHead className="w-[14%] pl-6">
                     <TableSortHeader
-                      label="Job ID"
-                      sortKey="name"
+                      label="Job"
+                      sortKey="visible_name"
                       currentSortKey={sortConfig?.key}
                       currentDirection={sortConfig?.direction}
                       onSort={handleSort}
@@ -460,7 +488,7 @@ export default function JobsPage() {
                   </TableHead>
                   <TableHead className="w-[8%]">
                     <TableSortHeader
-                      label="Runtime"
+                      label="Created At"
                       sortKey="created_at"
                       currentSortKey={sortConfig?.key}
                       currentDirection={sortConfig?.direction}
@@ -594,25 +622,37 @@ export default function JobsPage() {
                         <TableCell className="text-center py-3">
                           <div className="flex flex-wrap items-center justify-center gap-1">
                             {job.included_pools && job.included_pools.length > 0 ? (
-                              job.included_pools.map((poolName) => (
-                                <Badge
-                                  key={poolName}
-                                  variant="secondary"
-                                  className="text-[10px] px-1.5 py-0 h-4 bg-muted/60 text-muted-foreground"
-                                >
-                                  {poolName}
-                                </Badge>
-                              ))
+                              job.included_pools.map((poolId) => {
+                                const matchedPool = pools.find(p => p.id === poolId);
+                                const displayName = matchedPool ? matchedPool.name : poolId;
+                                return (
+                                  <Badge
+                                    key={poolId}
+                                    variant="secondary"
+                                    className="text-[10px] px-1.5 py-0 h-4 bg-muted/60 text-muted-foreground"
+                                  >
+                                    {displayName}
+                                  </Badge>
+                                );
+                              })
                             ) : (
                               <span className="text-xs text-muted-foreground/60">-</span>
                             )}
                           </div>
                         </TableCell>
 
-                        {/* Runtime */}
+                        {/* Created At */}
                         <TableCell className="text-center py-3">
                           <div className="flex flex-col items-center gap-0.5 font-mono">
-                            <div className="text-xs font-semibold text-foreground">{formatRuntime(job.created_at)}</div>
+                            {(() => {
+                              const dt = formatCreatedAt(job.created_at);
+                              return (
+                                <>
+                                  <div className="text-xs font-semibold text-foreground">{dt.relative}</div>
+                                  <div className="text-[10px] text-muted-foreground">{dt.absolute}</div>
+                                </>
+                              );
+                            })()}
                           </div>
                         </TableCell>
 
