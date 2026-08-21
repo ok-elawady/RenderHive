@@ -118,7 +118,103 @@ def admin_mode_enabled():
     return _as_bool(os.environ.get("RENDERHIVE_ADMIN_MODE"), False)
 
 
+def get_env_file_path():
+    explicit = str(os.environ.get("RENDERHIVE_ENV_FILE") or "").strip()
+    if explicit and os.path.isfile(explicit):
+        return os.path.abspath(explicit)
+
+    candidates = [
+        os.path.join(_package_root(), ".env"),
+        os.path.join(_local_config_root(), ".env"),
+        os.path.join(os.path.dirname(_package_root()), ".env"),
+        os.path.join(os.path.dirname(os.path.dirname(_package_root())), ".env"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return os.path.abspath(path)
+
+    return os.path.join(_package_root(), ".env")
+
+
+def load_env_file(path=None):
+    target_path = path or get_env_file_path()
+    if not target_path or not os.path.isfile(target_path):
+        return {}
+
+    values = {}
+    try:
+        with open(target_path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip()
+                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                    val = val[1:-1]
+                values[key] = val
+                os.environ.setdefault(key, val)
+    except Exception as error:
+        LOGGER.warning("Could not read .env file at %s: %s", target_path, error)
+
+    if "API_URL" in values and "RENDERHIVE_API_URL" not in os.environ:
+        os.environ["RENDERHIVE_API_URL"] = values["API_URL"]
+    if "NEXT_PUBLIC_API_URL" in values and "RENDERHIVE_API_URL" not in os.environ:
+        os.environ["RENDERHIVE_API_URL"] = values["NEXT_PUBLIC_API_URL"] + "/api"
+    if "API_TOKEN" in values and "RENDERHIVE_API_TOKEN" not in os.environ:
+        os.environ["RENDERHIVE_API_TOKEN"] = values["API_TOKEN"]
+    if "RENDERHIVE_API_KEY" in values and "RENDERHIVE_API_TOKEN" not in os.environ:
+        os.environ["RENDERHIVE_API_TOKEN"] = values["RENDERHIVE_API_KEY"]
+
+    return values
+
+
+def write_env_file(updates, path=None):
+    target_path = path or get_env_file_path()
+    parent = os.path.dirname(target_path)
+    if parent and not os.path.exists(parent):
+        try:
+            os.makedirs(parent)
+        except Exception:
+            pass
+
+    existing_lines = []
+    if os.path.isfile(target_path):
+        try:
+            with open(target_path, "r", encoding="utf-8") as handle:
+                existing_lines = handle.readlines()
+        except Exception:
+            existing_lines = []
+
+    written_keys = set()
+    new_lines = []
+
+    for line in existing_lines:
+        trimmed = line.strip()
+        if trimmed and not trimmed.startswith("#") and "=" in trimmed:
+            key = trimmed.split("=", 1)[0].strip()
+            if key in updates:
+                new_lines.append("{}={}\n".format(key, updates[key]))
+                written_keys.add(key)
+                os.environ[key] = str(updates[key])
+                continue
+        new_lines.append(line if line.endswith("\n") else line + "\n")
+
+    for key, val in updates.items():
+        if key not in written_keys:
+            new_lines.append("{}={}\n".format(key, val))
+            os.environ[key] = str(val)
+
+    temp_path = target_path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        handle.writelines(new_lines)
+    shutil.move(temp_path, target_path)
+    return target_path
+
+
 def _environment_overrides():
+    load_env_file()
     overrides = {}
 
     base_url = str(os.environ.get("RENDERHIVE_API_URL") or "").strip()

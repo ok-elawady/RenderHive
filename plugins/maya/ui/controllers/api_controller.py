@@ -6,6 +6,7 @@ from ..qt_compat import QtCore, QtGui, QtWidgets
 from ..qt_theme import COLORS
 from ..targeting_widgets import WorkerSyncThread
 from ..runtime_registry import WIDGETS as _WIDGETS
+from ..common_widgets import RenderHiveMessageDialog
 
 
 class ApiControllerMixin(object):
@@ -126,10 +127,11 @@ class ApiControllerMixin(object):
                     "Opened managed API config: {}".format(path)
                 )
             except Exception as error:
-                QtWidgets.QMessageBox.warning(
+                RenderHiveMessageDialog.show_message(
                     self,
                     "RenderHive API",
                     "Could not open managed configuration:\n\n{}".format(error),
+                    icon="warning",
                 )
 
 
@@ -239,10 +241,11 @@ class ApiControllerMixin(object):
             ok, message = self.api.save_scene_if_needed()
     
             if not ok:
-                QtWidgets.QMessageBox.warning(
+                RenderHiveMessageDialog.show_message(
                     self,
                     "RenderHive Submission",
                     message,
+                    icon="warning",
                 )
                 return None
     
@@ -255,13 +258,14 @@ class ApiControllerMixin(object):
             )
     
             if error_count:
-                QtWidgets.QMessageBox.critical(
+                RenderHiveMessageDialog.show_message(
                     self,
                     "RenderHive Submission Blocked",
                     (
                         "The scene contains {} validation error(s).\n\n"
                         "Fix them before submitting the job."
                     ).format(error_count),
+                    icon="error",
                 )
                 return None
     
@@ -269,7 +273,7 @@ class ApiControllerMixin(object):
                 self.worker_target_has_sync
                 and self.worker_data_is_stale()
             ):
-                answer = QtWidgets.QMessageBox.question(
+                answer = RenderHiveMessageDialog.show_message(
                     self,
                     "Worker Data Is Stale",
                     (
@@ -277,11 +281,11 @@ class ApiControllerMixin(object):
                         "5 minutes ago.\n\n"
                         "Submit using the cached snapshot?"
                     ),
-                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                    QtWidgets.QMessageBox.No,
+                    "warning",
+                    [("Cancel", "secondary"), ("Submit Anyway", "primary")]
                 )
     
-                if answer != QtWidgets.QMessageBox.Yes:
+                if answer != "Submit Anyway":
                     self.set_status(
                         "Submission cancelled: refresh worker targeting.",
                         level="warning",
@@ -291,20 +295,18 @@ class ApiControllerMixin(object):
             eligible = self.eligible_workers()
     
             if not eligible:
-                answer = QtWidgets.QMessageBox.question(
+                answer = RenderHiveMessageDialog.show_message(
                     self,
-                    "No Eligible Workers",
-                    (
-                        "No online workers are available in the targeted pools.\n\n"
-                        "The Job can still be submitted, but it may remain PENDING "
-                        "until a Worker in one of those pools becomes available.\n\n"
-                        "Submit it anyway?"
-                    ),
-                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                    QtWidgets.QMessageBox.No,
+                    "No Active Workers",
+                    "No online workers are available in the targeted pools.\n\n"
+                    "The Job can still be submitted, but it may remain PENDING "
+                    "until a Worker in one of those pools becomes available.\n\n"
+                    "Submit it anyway?",
+                    "warning",
+                    [("Cancel", "secondary"), ("Submit Anyway", "primary")]
                 )
     
-                if answer != QtWidgets.QMessageBox.Yes:
+                if answer != "Submit Anyway":
                     self.set_status(
                         "Submission cancelled: no workers in the targeted pools.",
                         level="warning",
@@ -320,10 +322,11 @@ class ApiControllerMixin(object):
             errors = self.api.validate_task(task)
     
             if errors:
-                QtWidgets.QMessageBox.critical(
+                RenderHiveMessageDialog.show_message(
                     self,
-                    "RenderHive Task Validation",
+                    "Validation Failed",
                     "\n".join("• {}".format(error) for error in errors),
+                    "error"
                 )
                 return None
     
@@ -339,14 +342,13 @@ class ApiControllerMixin(object):
                     "RenderHive API is disabled.",
                     level="warning",
                 )
-                QtWidgets.QMessageBox.warning(
+                RenderHiveMessageDialog.show_message(
                     self,
-                    "RenderHive API",
-                    (
-                        "Backend submission is disabled in the managed "
-                        "RenderHive configuration. Contact the pipeline "
-                        "administrator."
-                    ),
+                    "RenderHive API Disabled",
+                    "Backend submission is disabled in the managed "
+                    "RenderHive configuration. Contact the pipeline "
+                    "administrator.",
+                    "error"
                 )
                 return None
     
@@ -451,20 +453,16 @@ class ApiControllerMixin(object):
                 )
             )
     
-            QtWidgets.QMessageBox.information(
+            RenderHiveMessageDialog.show_message(
                 self,
-                "RenderHive Submission",
-                (
-                    "{}\n\n"
-                    "Job: {}\n"
-                    "Status: {}\n"
-                    "Backend Reference: {}"
-                ).format(
+                "Job Submitted",
+                "{}\n\nJob: {}\nStatus: {}\nBackend Reference: {}".format(
                     message,
                     job_display_name,
                     status,
                     job_id,
                 ),
+                "success"
             )
 
 
@@ -480,10 +478,11 @@ class ApiControllerMixin(object):
             self.append_activity(
                 "API submission failed: {}".format(error)
             )
-            QtWidgets.QMessageBox.critical(
+            RenderHiveMessageDialog.show_message(
                 self,
-                "RenderHive Submission Failed",
+                "Submission Failed",
                 str(error),
+                "error"
             )
 
 

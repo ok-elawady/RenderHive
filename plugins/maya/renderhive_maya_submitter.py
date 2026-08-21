@@ -438,6 +438,33 @@ def rebuild_camera_menu():
     return None
 
 
+def browse_scene_path(*args):
+    selected = cmds.fileDialog2(
+        fileMode=1,
+        caption="Select Scene File",
+        fileFilter="Maya Scenes (*.mb *.ma)"
+    )
+
+    if selected:
+        set_text(
+            "rh_scene_path",
+            selected[0]
+        )
+
+
+def browse_project_path(*args):
+    selected = cmds.fileDialog2(
+        fileMode=3,
+        caption="Select Project Root"
+    )
+
+    if selected:
+        set_text(
+            "rh_project_path",
+            selected[0]
+        )
+
+
 def browse_output_path(*args):
     selected = cmds.fileDialog2(
         fileMode=3,

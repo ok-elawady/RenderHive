@@ -1,65 +1,44 @@
+"""Tools, activity log and runtime telemetry view for RenderHive Maya Submitter."""
+
 from __future__ import print_function
 
-from ..qt_compat import QtWidgets
+from ..qt_compat import QtCore, QtWidgets
 from ..common_widgets import Card
+from ..icons import get_icon
+from ..qt_theme import COLORS
+
 
 def build_more_page(self, register):
     page, body = self.scroll_page(
-        "Tools",
-        "Connection status, activity and plugin maintenance.",
+        "Tools & Activity Logs",
+        "Real-time submission telemetry, validation logs, and network dispatch events.",
     )
 
-    connection_card = Card(
-        "Connection",
-        "RenderHive connects automatically using the managed studio configuration.",
-    )
+    # ── Real-time Activity Log Card with Toolbar ──
+    log_toolbar = QtWidgets.QWidget()
+    log_tb_layout = QtWidgets.QHBoxLayout(log_toolbar)
+    log_tb_layout.setContentsMargins(0, 0, 0, 0)
+    log_tb_layout.setSpacing(6)
 
-    connection_row = QtWidgets.QHBoxLayout()
-    connection_row.setSpacing(10)
+    copy_log_btn = QtWidgets.QPushButton("  Copy Log")
+    copy_log_btn.setObjectName("SecondaryBtn")
+    copy_log_btn.setIcon(get_icon("copy", "#CBD5E1", 12))
+    copy_log_btn.setFixedHeight(28)
+    copy_log_btn.setCursor(QtCore.Qt.PointingHandCursor)
 
-    backend_status = register(
-        "api_connection_status",
-        QtWidgets.QLabel("Checking RenderHive connection…"),
-    )
-    backend_status.setObjectName("ConnectionState")
-    backend_status.setWordWrap(True)
-    connection_row.addWidget(backend_status, 1)
+    clear_log_btn = QtWidgets.QPushButton("  Clear")
+    clear_log_btn.setObjectName("GhostBtn")
+    clear_log_btn.setIcon(get_icon("x", COLORS["muted"], 12))
+    clear_log_btn.setFixedHeight(28)
+    clear_log_btn.setCursor(QtCore.Qt.PointingHandCursor)
 
-    test_button = register(
-        "test_api_button",
-        QtWidgets.QPushButton("Retry Connection"),
-    )
-    test_button.setObjectName("InfoButton")
-    test_button.clicked.connect(self.test_api_connection)
-    connection_row.addWidget(test_button)
-
-    connection_card.layout.addLayout(connection_row)
-
-    source_label = register(
-        "api_config_source",
-        QtWidgets.QLabel("Managed configuration"),
-    )
-    source_label.setObjectName("MutedText")
-    connection_card.layout.addWidget(source_label)
-
-    if bool(getattr(self.api, "api_admin_mode_enabled", lambda: False)()):
-        admin_row = QtWidgets.QHBoxLayout()
-        admin_row.setSpacing(7)
-
-        open_button = QtWidgets.QPushButton(
-            "Open Managed Configuration"
-        )
-        open_button.setObjectName("GhostButton")
-        open_button.clicked.connect(self.open_api_config)
-        admin_row.addWidget(open_button)
-        admin_row.addStretch()
-        connection_card.layout.addLayout(admin_row)
-
-    body.addWidget(connection_card)
+    log_tb_layout.addWidget(copy_log_btn)
+    log_tb_layout.addWidget(clear_log_btn)
 
     activity = Card(
         "Activity Log",
-        "Recent RenderHive actions and operational messages.",
+        "Live streaming log events from Maya submitter, scene validator, and farm dispatcher.",
+        action_widget=log_toolbar,
     )
 
     activity_log = register(
@@ -68,59 +47,42 @@ def build_more_page(self, register):
     )
     activity_log.setObjectName("ActivityLog")
     activity_log.setReadOnly(True)
-    activity_log.setMaximumBlockCount(250)
-    activity_log.setMinimumHeight(260)
-    activity.layout.addWidget(activity_log)
+    activity_log.setMaximumBlockCount(500)
+    activity_log.setMinimumHeight(380)
+    activity.layout.addWidget(activity_log, 1)
+
+    def _copy_activity_log():
+        text = activity_log.toPlainText()
+        if text:
+            clipboard = QtWidgets.QApplication.clipboard()
+            if clipboard:
+                clipboard.setText(text)
+                self.append_activity("Activity log copied to clipboard.")
+
+    def _clear_activity_log():
+        activity_log.clear()
+        self.append_activity("Activity log cleared.")
+
+    copy_log_btn.clicked.connect(_copy_activity_log)
+    clear_log_btn.clicked.connect(_clear_activity_log)
+
     body.addWidget(activity, 1)
 
-    maintenance_row = QtWidgets.QHBoxLayout()
-    maintenance_row.addStretch()
+    # ── Quick Utility Bar ──
+    utility_row = QtWidgets.QHBoxLayout()
+    utility_row.setSpacing(8)
 
-    menu_button = QtWidgets.QToolButton()
-    menu_button.setObjectName("MaintenanceButton")
-    menu_button.setText("•••")
-    menu_button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+    open_logs_btn = QtWidgets.QPushButton("  Open Full Runtime Log File")
+    open_logs_btn.setObjectName("SecondaryBtn")
+    open_logs_btn.setIcon(get_icon("terminal", "#CBD5E1", 13))
+    open_logs_btn.setFixedHeight(32)
+    open_logs_btn.setCursor(QtCore.Qt.PointingHandCursor)
+    if hasattr(self, "open_runtime_logs_folder"):
+        open_logs_btn.clicked.connect(self.open_runtime_logs_folder)
 
-    menu = QtWidgets.QMenu(menu_button)
+    utility_row.addWidget(open_logs_btn)
+    utility_row.addStretch()
 
-    state_folder_action = menu.addAction(
-        "Open Restore Data Folder"
-    )
-    state_folder_action.triggered.connect(
-        self.open_state_storage_folder
-    )
+    body.addLayout(utility_row)
 
-    runtime_logs_action = menu.addAction(
-        "Open Runtime Logs"
-    )
-    runtime_logs_action.triggered.connect(
-        self.open_runtime_logs_folder
-    )
-
-    diagnostics_action = menu.addAction(
-        "Create Support Bundle"
-    )
-    diagnostics_action.triggered.connect(
-        self.create_support_bundle
-    )
-
-    health_action = menu.addAction(
-        "Run Production Check"
-    )
-    health_action.triggered.connect(
-        self.run_production_check
-    )
-
-    menu.addSeparator()
-
-    uninstall_action = menu.addAction("Uninstall RenderHive…")
-    uninstall_action.triggered.connect(
-        self.api.uninstall_renderhive_from_maya
-    )
-    menu_button.setMenu(menu)
-    maintenance_row.addWidget(menu_button)
-
-    body.addLayout(maintenance_row)
-    body.addStretch()
     return page
-

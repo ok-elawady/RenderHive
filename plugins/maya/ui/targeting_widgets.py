@@ -1,7 +1,10 @@
 from __future__ import absolute_import
 
+import os
+
 from .qt_compat import QtCore, QtGui, QtWidgets
-from .qt_theme import COLORS
+from .icons import get_icon, icon_path
+from .qt_theme import COLORS, build_stylesheet
 from .worker_data import (
     format_gb,
     pool_display_name,
@@ -16,6 +19,8 @@ from .worker_data import (
 
 
 class PoolSelectionDialog(QtWidgets.QDialog):
+    """Modern pool targeting dialog matching Worker/Frontend modal design tokens."""
+
     def __init__(
         self,
         title,
@@ -26,9 +31,19 @@ class PoolSelectionDialog(QtWidgets.QDialog):
         parent=None,
     ):
         super(PoolSelectionDialog, self).__init__(parent)
-        self.setWindowTitle(title)
+        self.setObjectName("RenderHiveDialog")
+        self.setWindowTitle(title or "Select Target Pools")
         self.setModal(True)
-        self.resize(900, 590)
+        self.setMinimumSize(780, 520)
+        self.resize(880, 580)
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.Window)
+
+        # Window icon
+        _icon_path = icon_path("renderhive_header_logo.png")
+        if os.path.isfile(_icon_path):
+            self.setWindowIcon(QtGui.QIcon(_icon_path))
+
+        self.setStyleSheet(build_stylesheet())
 
         self._pools = list(pools or [])
         self._memberships = dict(memberships or {})
@@ -40,69 +55,116 @@ class PoolSelectionDialog(QtWidgets.QDialog):
         self._items = []
 
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 14)
-        root.setSpacing(9)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        title_label = QtWidgets.QLabel(title)
+        # ── Header (#0B0E17 matching DWM Titlebar & Frontend SheetHeader) ──
+        header_frame = QtWidgets.QFrame()
+        header_frame.setObjectName("DialogHeader")
+        header_layout = QtWidgets.QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(20, 14, 20, 14)
+        header_layout.setSpacing(12)
+        header_layout.setAlignment(QtCore.Qt.AlignVCenter)
+
+        title_col = QtWidgets.QVBoxLayout()
+        title_col.setSpacing(2)
+        title_label = QtWidgets.QLabel(title or "Select Target Pools")
         title_label.setObjectName("PageTitle")
-        root.addWidget(title_label)
-
-        hint = QtWidgets.QLabel(
-            "Select backend pools and expand any pool to review its workers."
+        subtitle_label = QtWidgets.QLabel(
+            "Select backend pools for job dispatch. Expand any pool to inspect assigned nodes and hardware telemetry."
         )
-        hint.setObjectName("MutedText")
-        hint.setWordWrap(True)
-        hint.setVisible(False)
-        root.addWidget(hint)
+        subtitle_label.setObjectName("CardDescription")
+        title_col.addWidget(title_label)
+        title_col.addWidget(subtitle_label)
+        header_layout.addLayout(title_col, 1)
+
+        self.header_badge = QtWidgets.QLabel("0 pools selected")
+        self.header_badge.setObjectName("MetaChip")
+        header_layout.addWidget(self.header_badge)
+
+        root.addWidget(header_frame)
+
+        # ── Body Content Container ──
+        body_container = QtWidgets.QWidget()
+        body_layout = QtWidgets.QVBoxLayout(body_container)
+        body_layout.setContentsMargins(18, 14, 18, 14)
+        body_layout.setSpacing(10)
+
+        # Search & Toolbar Row
+        search_row = QtWidgets.QHBoxLayout()
+        search_row.setSpacing(8)
 
         self.search = QtWidgets.QLineEdit()
-        self.search.setPlaceholderText(
-            "Search pools, workers, status or hardware…"
-        )
+        self.search.setPlaceholderText("Search pools, workers, status or hardware…")
         self.search.setClearButtonEnabled(True)
+        self.search.setFixedHeight(32)
         self.search.textChanged.connect(self.filter_items)
-        root.addWidget(self.search)
+        search_row.addWidget(self.search, 1)
 
+        select_all_btn = QtWidgets.QPushButton("  Select All")
+        select_all_btn.setObjectName("SecondaryBtn")
+        select_all_btn.setIcon(get_icon("check-square", "#CBD5E1", 13))
+        select_all_btn.setFixedHeight(32)
+        select_all_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        select_all_btn.clicked.connect(self.select_all)
+        search_row.addWidget(select_all_btn)
+
+        clear_btn = QtWidgets.QPushButton("  Clear")
+        clear_btn.setObjectName("SecondaryBtn")
+        clear_btn.setIcon(get_icon("x", "#CBD5E1", 13))
+        clear_btn.setFixedHeight(32)
+        clear_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        clear_btn.clicked.connect(self.clear_all)
+        search_row.addWidget(clear_btn)
+
+        expand_btn = QtWidgets.QPushButton("  Expand All")
+        expand_btn.setObjectName("SecondaryBtn")
+        expand_btn.setIcon(get_icon("chevrons-down", "#CBD5E1", 13))
+        expand_btn.setFixedHeight(32)
+        expand_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        search_row.addWidget(expand_btn)
+
+        collapse_btn = QtWidgets.QPushButton("  Collapse All")
+        collapse_btn.setObjectName("SecondaryBtn")
+        collapse_btn.setIcon(get_icon("chevrons-up", "#CBD5E1", 13))
+        collapse_btn.setFixedHeight(32)
+        collapse_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        search_row.addWidget(collapse_btn)
+
+        body_layout.addLayout(search_row)
+
+        # Tree Container
         self.tree = QtWidgets.QTreeWidget()
+        self.tree.setObjectName("JobDependencyTree")
         self.tree.setColumnCount(5)
         self.tree.setHeaderLabels([
-            "Pool / Worker",
+            "Pool / Worker Node",
             "Status",
             "RAM",
             "GPU",
-            "Description / Details",
+            "Description / Hardware Details",
         ])
         self.tree.setRootIsDecorated(True)
         self.tree.setItemsExpandable(True)
         self.tree.setExpandsOnDoubleClick(True)
         self.tree.setAlternatingRowColors(True)
-        self.tree.setSelectionMode(
-            QtWidgets.QAbstractItemView.NoSelection
-        )
+        self.tree.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.tree.setUniformRowHeights(True)
         self.tree.header().setStretchLastSection(False)
-        self.tree.header().setSectionResizeMode(
-            0,
-            QtWidgets.QHeaderView.Stretch,
-        )
-        self.tree.header().setSectionResizeMode(
-            1,
-            QtWidgets.QHeaderView.ResizeToContents,
-        )
-        self.tree.header().setSectionResizeMode(
-            2,
-            QtWidgets.QHeaderView.ResizeToContents,
-        )
-        self.tree.header().setSectionResizeMode(
-            3,
-            QtWidgets.QHeaderView.Stretch,
-        )
-        self.tree.header().setSectionResizeMode(
-            4,
-            QtWidgets.QHeaderView.Stretch,
-        )
-        root.addWidget(self.tree, 1)
+        self.tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        self.tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        self.tree.header().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        self.tree.header().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+        self.tree.header().setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
+        self.tree.itemChanged.connect(self._on_item_changed)
+        body_layout.addWidget(self.tree, 1)
 
+        expand_btn.clicked.connect(self.tree.expandAll)
+        collapse_btn.clicked.connect(self.tree.collapseAll)
+
+        root.addWidget(body_container, 1)
+
+        # ── Populate Items ──
         workers_by_id = {
             worker_identifier(worker): worker
             for worker in self._workers
@@ -116,72 +178,40 @@ class PoolSelectionDialog(QtWidgets.QDialog):
             if not pool_id:
                 continue
 
-            member_ids = list(
-                self._memberships.get(name, [])
-            )
+            member_ids = list(self._memberships.get(name, []))
             online = sum(
                 1
                 for worker_id in member_ids
                 if (
                     worker_id in workers_by_id
-                    and worker_is_online(
-                        workers_by_id[worker_id]
-                    )
+                    and worker_is_online(workers_by_id[worker_id])
                 )
             )
 
             pool_item = QtWidgets.QTreeWidgetItem([
                 name,
-                "{} online / {}".format(
-                    online,
-                    len(member_ids),
-                ),
+                "{} online / {}".format(online, len(member_ids)),
                 "—",
                 "—",
-                str(pool.get("description") or ""),
+                str(pool.get("description") or "Standard worker pool"),
             ])
-            pool_item.setData(
-                0,
-                QtCore.Qt.UserRole,
-                pool_id,
-            )
-            pool_item.setData(
-                0,
-                QtCore.Qt.UserRole + 1,
-                "pool",
-            )
-            pool_item.setFlags(
-                pool_item.flags()
-                | QtCore.Qt.ItemIsUserCheckable
-            )
+            pool_item.setData(0, QtCore.Qt.UserRole, pool_id)
+            pool_item.setData(0, QtCore.Qt.UserRole + 1, "pool")
+            pool_item.setFlags(pool_item.flags() | QtCore.Qt.ItemIsUserCheckable)
             pool_item.setCheckState(
                 0,
                 QtCore.Qt.Checked
-                if (
-                    pool_id in self._selected
-                    or name in self._selected
-                )
+                if (pool_id in self._selected or name in self._selected)
                 else QtCore.Qt.Unchecked,
             )
             pool_item.setForeground(
                 1,
-                QtGui.QBrush(
-                    QtGui.QColor(
-                        COLORS["success"]
-                        if online
-                        else COLORS["muted"]
-                    )
-                ),
-            )
-            pool_item.setToolTip(
-                0,
-                "Expand to review the workers assigned to this pool.",
+                QtGui.QBrush(QtGui.QColor(COLORS["success"] if online else COLORS["muted"])),
             )
 
             if member_ids:
                 for worker_id in member_ids:
                     worker = workers_by_id.get(worker_id)
-
                     if worker is None:
                         worker_item = QtWidgets.QTreeWidgetItem([
                             str(worker_id),
@@ -192,27 +222,19 @@ class PoolSelectionDialog(QtWidgets.QDialog):
                         ])
                         worker_item.setForeground(
                             1,
-                            QtGui.QBrush(
-                                QtGui.QColor(COLORS["muted"])
-                            ),
+                            QtGui.QBrush(QtGui.QColor(COLORS["muted"])),
                         )
                     else:
                         status = worker_status(worker) or "UNKNOWN"
                         online_worker = worker_is_online(worker)
-                        ip_address = str(
-                            worker.get("ip_address") or ""
-                        ).strip()
-                        last_ping = str(
-                            worker.get("last_ping") or ""
-                        ).strip()
+                        ip_address = str(worker.get("ip_address") or "").strip()
+                        last_ping = str(worker.get("last_ping") or "").strip()
 
                         details = []
                         if ip_address:
                             details.append("IP {}".format(ip_address))
                         if last_ping:
-                            details.append(
-                                "Last ping {}".format(last_ping)
-                            )
+                            details.append("Last ping {}".format(last_ping))
 
                         worker_item = QtWidgets.QTreeWidgetItem([
                             worker_display_name(worker),
@@ -224,38 +246,17 @@ class PoolSelectionDialog(QtWidgets.QDialog):
 
                         status_color = (
                             COLORS["info"]
-                            if status in (
-                                "RENDERING",
-                                "BUSY",
-                                "WORKING",
-                            )
-                            else (
-                                COLORS["success"]
-                                if online_worker
-                                else COLORS["muted"]
-                            )
+                            if status in ("RENDERING", "BUSY", "WORKING")
+                            else (COLORS["success"] if online_worker else COLORS["muted"])
                         )
                         worker_item.setForeground(
                             1,
-                            QtGui.QBrush(
-                                QtGui.QColor(status_color)
-                            ),
+                            QtGui.QBrush(QtGui.QColor(status_color)),
                         )
 
-                    worker_item.setData(
-                        0,
-                        QtCore.Qt.UserRole,
-                        str(worker_id),
-                    )
-                    worker_item.setData(
-                        0,
-                        QtCore.Qt.UserRole + 1,
-                        "worker",
-                    )
-                    worker_item.setFlags(
-                        worker_item.flags()
-                        & ~QtCore.Qt.ItemIsUserCheckable
-                    )
+                    worker_item.setData(0, QtCore.Qt.UserRole, str(worker_id))
+                    worker_item.setData(0, QtCore.Qt.UserRole + 1, "worker")
+                    worker_item.setFlags(worker_item.flags() & ~QtCore.Qt.ItemIsUserCheckable)
                     pool_item.addChild(worker_item)
             else:
                 empty_item = QtWidgets.QTreeWidgetItem([
@@ -265,18 +266,9 @@ class PoolSelectionDialog(QtWidgets.QDialog):
                     "—",
                     "Pool membership is managed by RenderHive.",
                 ])
-                empty_item.setData(
-                    0,
-                    QtCore.Qt.UserRole + 1,
-                    "empty",
-                )
+                empty_item.setData(0, QtCore.Qt.UserRole + 1, "empty")
                 empty_item.setFlags(QtCore.Qt.NoItemFlags)
-                empty_item.setForeground(
-                    0,
-                    QtGui.QBrush(
-                        QtGui.QColor(COLORS["muted"])
-                    ),
-                )
+                empty_item.setForeground(0, QtGui.QBrush(QtGui.QColor(COLORS["muted"])))
                 pool_item.addChild(empty_item)
 
             self.tree.addTopLevelItem(pool_item)
@@ -291,46 +283,81 @@ class PoolSelectionDialog(QtWidgets.QDialog):
                 "Refresh after pools are created in RenderHive.",
             ])
             item.setFlags(QtCore.Qt.NoItemFlags)
-            item.setForeground(
-                0,
-                QtGui.QBrush(
-                    QtGui.QColor(COLORS["muted"])
-                ),
-            )
+            item.setForeground(0, QtGui.QBrush(QtGui.QColor(COLORS["muted"])))
             self.tree.addTopLevelItem(item)
 
-        utility = QtWidgets.QHBoxLayout()
-        utility.setSpacing(7)
+        # ── Dialog Footer (#0B0E17 matching DWM Titlebar & Worker Dialogs) ──
+        footer_frame = QtWidgets.QFrame()
+        footer_frame.setObjectName("DialogFooter")
+        footer_layout = QtWidgets.QHBoxLayout(footer_frame)
+        footer_layout.setContentsMargins(20, 10, 20, 10)
+        footer_layout.setSpacing(8)
+        footer_layout.setAlignment(QtCore.Qt.AlignVCenter)
 
-        select_all = QtWidgets.QPushButton("Select All")
-        select_all.clicked.connect(self.select_all)
+        self.footer_hint = QtWidgets.QLabel("0 pools selected")
+        self.footer_hint.setObjectName("MutedText")
+        footer_layout.addWidget(self.footer_hint, 1)
 
-        clear = QtWidgets.QPushButton("Clear Results")
-        clear.setObjectName("GhostButton")
-        clear.clicked.connect(self.clear_all)
+        cancel_btn = QtWidgets.QPushButton("Cancel")
+        cancel_btn.setObjectName("SecondaryBtn")
+        cancel_btn.setFixedHeight(32)
+        cancel_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        cancel_btn.clicked.connect(self.reject)
+        footer_layout.addWidget(cancel_btn)
 
-        expand = QtWidgets.QPushButton("Expand All")
-        expand.setObjectName("GhostButton")
-        expand.clicked.connect(self.tree.expandAll)
+        apply_btn = QtWidgets.QPushButton("  Apply Selection")
+        apply_btn.setObjectName("SubmitButton")
+        apply_btn.setIcon(get_icon("check", COLORS["primary_fg"], 13))
+        apply_btn.setFixedHeight(32)
+        apply_btn.setMinimumWidth(130)
+        apply_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        apply_btn.clicked.connect(self.accept)
+        footer_layout.addWidget(apply_btn)
 
-        collapse = QtWidgets.QPushButton("Collapse All")
-        collapse.setObjectName("GhostButton")
-        collapse.clicked.connect(self.tree.collapseAll)
+        root.addWidget(footer_frame)
 
-        utility.addWidget(select_all)
-        utility.addWidget(clear)
-        utility.addStretch()
-        utility.addWidget(expand)
-        utility.addWidget(collapse)
-        root.addLayout(utility)
+        self.update_selection_counter()
 
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Cancel
-            | QtWidgets.QDialogButtonBox.Ok
+    def showEvent(self, event):
+        super(PoolSelectionDialog, self).showEvent(event)
+        self._apply_window_theme()
+
+    def _apply_window_theme(self):
+        """Match native OS titlebar and window border to studio dark theme (#0B0E17)."""
+        import sys
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            import ctypes.wintypes as wintypes
+            hwnd = wintypes.HWND(int(self.winId()))
+            dark = ctypes.c_int(1)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), ctypes.sizeof(dark))
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 19, ctypes.byref(dark), ctypes.sizeof(dark))
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 35, ctypes.byref(ctypes.c_int(0x00170E0B)), 4)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 36, ctypes.byref(ctypes.c_int(0x00E1D5CB)), 4)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 34, ctypes.byref(ctypes.c_int(0x0036251E)), 4)
+        except Exception:
+            pass
+
+    def _on_item_changed(self, item, column):
+        if column == 0:
+            self.update_selection_counter()
+
+    def update_selection_counter(self):
+        count = len(self.selected_values())
+        total = len(self._items)
+        badge_text = "{} pool{} selected".format(count, "s" if count != 1 else "")
+        hint_text = "{} of {} pool{} selected for dispatch".format(
+            count, total, "s" if total != 1 else ""
         )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        root.addWidget(buttons)
+        if hasattr(self, "header_badge"):
+            self.header_badge.setText(badge_text)
+        if hasattr(self, "footer_hint"):
+            self.footer_hint.setText(hint_text)
 
     @staticmethod
     def item_search_text(item):
@@ -364,19 +391,19 @@ class PoolSelectionDialog(QtWidgets.QDialog):
                 pool_item.setExpanded(True)
 
     def select_all(self):
+        self.tree.blockSignals(True)
         for item in self._items:
             if not item.isHidden():
-                item.setCheckState(
-                    0,
-                    QtCore.Qt.Checked,
-                )
+                item.setCheckState(0, QtCore.Qt.Checked)
+        self.tree.blockSignals(False)
+        self.update_selection_counter()
 
     def clear_all(self):
+        self.tree.blockSignals(True)
         for item in self._items:
-            item.setCheckState(
-                0,
-                QtCore.Qt.Unchecked,
-            )
+            item.setCheckState(0, QtCore.Qt.Unchecked)
+        self.tree.blockSignals(False)
+        self.update_selection_counter()
 
     def selected_values(self):
         values = []
@@ -397,13 +424,15 @@ class PoolMultiSelect(QtWidgets.QPushButton):
 
     def __init__(self, title, empty_text, parent=None):
         super(PoolMultiSelect,self).__init__(parent)
+        self.setObjectName("SecondaryBtn")
         self._title=str(title)
         self._empty_text=str(empty_text)
         self._pools=[]
         self._memberships={}
         self._workers=[]
         self._selected_values=[]
-        self.setMinimumHeight(30)
+        self.setFixedHeight(34)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
         self.clicked.connect(self.open_selector)
         self.update_summary()
 

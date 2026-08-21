@@ -76,6 +76,8 @@ def _validate_staged_package(path):
         os.path.join("api", "version.py"),
         os.path.join("ui", "qt_submitter_window.py"),
         os.path.join("ui", "common_widgets.py"),
+        os.path.join("ui", "font_loader.py"),
+        os.path.join("ui", "icons.py"),
         os.path.join("ui", "targeting_widgets.py"),
         os.path.join("ui", "icons", "check_mark.png"),
         os.path.join("ui", "worker_data.py"),

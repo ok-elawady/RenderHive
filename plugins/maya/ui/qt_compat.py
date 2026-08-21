@@ -1,11 +1,11 @@
 from __future__ import absolute_import
 
 try:
-    from PySide6 import QtCore, QtGui, QtWidgets
+    from PySide6 import QtCore, QtGui, QtWidgets, QtSvg
     from shiboken6 import wrapInstance, isValid
     PYSIDE6 = True
 except ImportError:
-    from PySide2 import QtCore, QtGui, QtWidgets
+    from PySide2 import QtCore, QtGui, QtWidgets, QtSvg
     from shiboken2 import wrapInstance, isValid
     PYSIDE6 = False
 
@@ -14,6 +14,7 @@ __all__ = [
     "QtCore",
     "QtGui",
     "QtWidgets",
+    "QtSvg",
     "wrapInstance",
     "isValid",
     "PYSIDE6",

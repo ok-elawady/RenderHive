@@ -19,11 +19,19 @@ from .controllers.targeting_controller import TargetingControllerMixin
 from .controllers.dependency_controller import DependencyControllerMixin
 from .common_widgets import (
     PageHeader,
+    StatusBadge,
+    StatusChip,
+    ScrollFilter,
+    StepperNumberInput,
+    SegmentNavButton,
+    RenderHiveMessageDialog,
 )
 from .targeting_widgets import RenderLayerSelector
+from .icons import get_icon
+from .font_loader import load_application_fonts
 from .pages.job_page import build_job_page as build_job_page_view
 from .pages.render_page import build_render_page as build_render_page_view
-from .pages.validation_page import build_checks_page as build_checks_page_view
+from .pages.validation_page import build_checks_page as build_checks_page_view, get_counter_card_qss
 from .pages.tools_page import build_more_page as build_more_page_view
 from core.state_store import StateStore
 from api.version import PLUGIN_VERSION
@@ -75,6 +83,11 @@ def qt_get_text(name, default=""):
     widget = _WIDGETS.get(name)
     if isinstance(widget, QtWidgets.QLineEdit):
         return widget.text()
+    if hasattr(widget, "text") and callable(widget.text):
+        try:
+            return widget.text()
+        except Exception:
+            pass
     return default
 
 
@@ -82,12 +95,24 @@ def qt_set_text(name, value):
     widget = _WIDGETS.get(name)
     if isinstance(widget, QtWidgets.QLineEdit):
         widget.setText(str(value or ""))
+    elif hasattr(widget, "setText") and callable(widget.setText):
+        try:
+            widget.setText(str(value or ""))
+        except Exception:
+            pass
 
+
+from .font_loader import load_application_fonts
 
 def qt_get_int(name, default=0):
     widget = _WIDGETS.get(name)
     if isinstance(widget, QtWidgets.QSpinBox):
         return int(widget.value())
+    if hasattr(widget, "value"):
+        try:
+            return int(widget.value())
+        except Exception:
+            pass
     return int(default)
 
 
@@ -95,6 +120,11 @@ def qt_set_int(name, value):
     widget = _WIDGETS.get(name)
     if isinstance(widget, QtWidgets.QSpinBox):
         widget.setValue(int(value))
+    elif hasattr(widget, "setValue"):
+        try:
+            widget.setValue(int(value))
+        except Exception:
+            pass
 
 
 def qt_get_option(name, default=""):
@@ -264,31 +294,19 @@ def update_validation_ui(report):
 
     rebuild_category_filter(results)
 
-    counter_data = {
-        "counter_error": ("ERROR", summary.get("ERROR", 0), COLORS["error"]),
-        "counter_warning": (
-            "WARNING",
-            summary.get("WARNING", 0),
-            COLORS["warning"],
-        ),
-        "counter_info": ("INFO", summary.get("INFO", 0), COLORS["info"]),
-        "counter_passed": (
-            "PASSED",
-            summary.get("PASSED", 0),
-            COLORS["success"],
-        ),
-        "counter_total": ("TOTAL", summary.get("total", 0), COLORS["light"]),
-    }
+    counter_specs = [
+        ("counter_error", "ERRORS", summary.get("ERROR", 0), COLORS["error"], "248, 113, 113"),
+        ("counter_warning", "WARNINGS", summary.get("WARNING", 0), COLORS["warning"], "251, 191, 36"),
+        ("counter_info", "INFO", summary.get("INFO", 0), COLORS["info"], "77, 163, 255"),
+        ("counter_passed", "PASSED", summary.get("PASSED", 0), COLORS["success"], "74, 222, 128"),
+        ("counter_total", "ALL CHECKS", summary.get("total", 0), COLORS["primary"], "156, 115, 242"),
+    ]
 
-    for name, (title, count, color) in counter_data.items():
+    for name, title, count, color, rgb in counter_specs:
         button = _WIDGETS.get(name)
         if isinstance(button, QtWidgets.QPushButton):
             button.setText("{}\n{}".format(title, count))
-            button.setStyleSheet(
-                "QPushButton#CounterCard {"
-                "border-top:3px solid %s;"
-                "}" % color
-            )
+            button.setStyleSheet(get_counter_card_qss(color, rgb, count=count))
 
     refresh_validation_filters()
 
@@ -640,12 +658,19 @@ class RenderHiveSubmitter(
         )
 
         self.setObjectName("RenderHiveWindow")
-        self.setWindowTitle("RenderHive")
-        self.setMinimumSize(720, 620)
-        self.resize(760, 720)
+        self.setWindowTitle("RenderHive — Maya Submitter")
+        self.setMinimumSize(720, 580)
+        self.resize(780, 700)
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.Window)
         self.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
+        load_application_fonts(self)
         self.setStyleSheet(build_stylesheet())
+
+        # Window icon (shows in OS taskbar and native titlebar)
+        _icon_path = icon_path("renderhive_header_logo.png")
+        if os.path.isfile(_icon_path):
+            from .qt_compat import QtGui as _QtGui
+            self.setWindowIcon(_QtGui.QIcon(_icon_path))
 
         self.build_ui()
         self.load_api_settings()
@@ -831,6 +856,11 @@ class RenderHiveSubmitter(
             widget = _WIDGETS.get(name)
             if isinstance(widget, QtWidgets.QSpinBox):
                 state["integer"][name] = int(widget.value())
+            elif hasattr(widget, "value"):
+                try:
+                    state["integer"][name] = int(widget.value())
+                except Exception:
+                    pass
 
         for name in fields["boolean"]:
             widget = _WIDGETS.get(name)
@@ -860,14 +890,22 @@ class RenderHiveSubmitter(
             return False
         self._scene_state_restoring = True
         try:
-            for name,value in (state.get("text") or {}).items():
-                widget=_WIDGETS.get(name)
-                if isinstance(widget,QtWidgets.QLineEdit): widget.setText(str(value or ""))
-            for name,value in (state.get("integer") or {}).items():
-                widget=_WIDGETS.get(name)
-                if isinstance(widget,QtWidgets.QSpinBox):
-                    try: widget.setValue(int(value))
-                    except Exception: pass
+            for name, value in (state.get("text") or {}).items():
+                widget = _WIDGETS.get(name)
+                if isinstance(widget, QtWidgets.QLineEdit):
+                    widget.setText(str(value or ""))
+            for name, value in (state.get("integer") or {}).items():
+                widget = _WIDGETS.get(name)
+                if isinstance(widget, QtWidgets.QSpinBox):
+                    try:
+                        widget.setValue(int(value))
+                    except Exception:
+                        pass
+                elif hasattr(widget, "setValue"):
+                    try:
+                        widget.setValue(int(value))
+                    except Exception:
+                        pass
             for name,value in (state.get("boolean") or {}).items():
                 widget=_WIDGETS.get(name)
                 if isinstance(widget,QtWidgets.QCheckBox): widget.setChecked(bool(value))
@@ -1111,7 +1149,7 @@ class RenderHiveSubmitter(
                 QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(folder))
             self.append_activity("Opened runtime logs: {}".format(folder))
         except Exception as error:
-            QtWidgets.QMessageBox.warning(self, "RenderHive", "Could not open runtime logs:\n\n{}".format(error))
+            RenderHiveMessageDialog.show_message(self, "RenderHive", "Could not open runtime logs:\n\n{}".format(error), icon="warning")
 
     def create_support_bundle(self):
         provider = getattr(self.api, "create_diagnostics_bundle", None)
@@ -1120,13 +1158,14 @@ class RenderHiveSubmitter(
         try:
             path = provider()
             self.append_activity("Created support bundle: {}".format(path))
-            QtWidgets.QMessageBox.information(
+            RenderHiveMessageDialog.show_message(
                 self,
                 "RenderHive Support Bundle",
                 "Support bundle created successfully:\n\n{}".format(path),
+                icon="info",
             )
         except Exception as error:
-            QtWidgets.QMessageBox.warning(self, "RenderHive", "Could not create support bundle:\n\n{}".format(error))
+            RenderHiveMessageDialog.show_message(self, "RenderHive", "Could not create support bundle:\n\n{}".format(error), icon="warning")
 
     def run_production_check(self):
         provider = getattr(self.api, "get_production_health_report", None)
@@ -1143,9 +1182,9 @@ class RenderHiveSubmitter(
             for item in report.get("checks", []):
                 lines.append("{}  {}".format("PASS" if item.get("ok") else "FAIL", item.get("name", "check")))
             self.append_activity("Production check completed: {}".format("PASS" if not failed else "{} issue(s)".format(len(failed))))
-            QtWidgets.QMessageBox.information(self, "RenderHive Production Check", "\n".join(lines))
+            RenderHiveMessageDialog.show_message(self, "RenderHive Production Check", "\n".join(lines), icon="info")
         except Exception as error:
-            QtWidgets.QMessageBox.warning(self, "RenderHive", "Production check failed:\n\n{}".format(error))
+            RenderHiveMessageDialog.show_message(self, "RenderHive", "Production check failed:\n\n{}".format(error), icon="warning")
 
     def open_state_storage_folder(self):
         try:
@@ -1162,137 +1201,190 @@ class RenderHiveSubmitter(
                 "Opened SQLite state folder: {}".format(folder)
             )
         except Exception as error:
-            QtWidgets.QMessageBox.warning(
+            RenderHiveMessageDialog.show_message(
                 self,
                 "RenderHive State Storage",
                 "Could not open the state folder:\n\n{}".format(error),
+                icon="warning",
             )
+
+    def open_settings_dialog(self):
+        try:
+            try:
+                from .settings_dialog import SettingsDialog
+            except (ImportError, ValueError):
+                from ui.settings_dialog import SettingsDialog
+            dialog = SettingsDialog(self, parent=self)
+            dialog.exec_()
+        except Exception as error:
+            import traceback
+            traceback.print_exc()
+            self.append_activity("Could not open Settings dialog: {}".format(error))
+            RenderHiveMessageDialog.show_message(
+                self,
+                "RenderHive Settings Error",
+                "Could not open settings dialog:\n\n{}".format(error),
+                icon="warning",
+            )
+
+    def showEvent(self, event):
+        super(RenderHiveSubmitter, self).showEvent(event)
+        self._apply_window_theme()
+
+    def _apply_window_theme(self):
+        """Match native OS titlebar and window border to studio dark theme (#0B0E17).
+
+        Uses Windows DWM attributes (Win10 20H1+ / Win11) to seamlessly integrate
+        the native caption bar with our dark UI. Identical technique to the Worker.
+        No-op on macOS / Linux; all errors are silently swallowed.
+        """
+        import sys
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            import ctypes.wintypes as wintypes
+            hwnd = wintypes.HWND(int(self.winId()))
+            # Dark mode caption buttons (Win10 20H1+ = 19, Win11 = 20)
+            dark = ctypes.c_int(1)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), ctypes.sizeof(dark))
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 19, ctypes.byref(dark), ctypes.sizeof(dark))
+            # Caption background #0B0E17 → COLORREF 0x00170E0B
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 35, ctypes.byref(ctypes.c_int(0x00170E0B)), 4)
+            # Caption text #CBD5E1 → COLORREF 0x00E1D5CB
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 36, ctypes.byref(ctypes.c_int(0x00E1D5CB)), 4)
+            # Window border #283145 → COLORREF 0x00453128 (matches Worker outline)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 34, ctypes.byref(ctypes.c_int(0x00453128)), 4)
+        except Exception:
+            pass
 
     def build_ui(self):
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(10, 10, 10, 10)
-        root.setSpacing(7)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
         root.addWidget(self.build_header())
 
-        center = QtWidgets.QHBoxLayout()
-        center.setSpacing(7)
-        center.addWidget(self.build_sidebar())
+        body = QtWidgets.QWidget()
+        body.setObjectName("PageRoot")
+        body_layout = QtWidgets.QVBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
 
         self.page_stack = QtWidgets.QStackedWidget()
+        self.page_stack.setObjectName("MainContentStack")
         self.page_stack.addWidget(self.build_job_page())
         self.page_stack.addWidget(self.build_render_page())
         self.page_stack.addWidget(self.build_checks_page())
         self.page_stack.addWidget(self.build_more_page())
-        center.addWidget(self.page_stack, 1)
+        body_layout.addWidget(self.page_stack, 1)
 
-        root.addLayout(center, 1)
+        root.addWidget(body, 1)
         root.addWidget(self.build_footer())
 
     def build_header(self):
+        """Full-width top header bar with pill nav on left and primary action buttons on right.
+
+        Layout:
+        [NavSegmentContainer (Job|Render|Validation|Tools)] ────────stretch──────── [ ⟳ Sync ] [ 🛡 Validate ] [ 🚀 Submit Job ]
+        """
         frame = QtWidgets.QFrame()
-        frame.setObjectName("HeaderCard")
+        frame.setObjectName("TopHeaderBar")
+        frame.setFixedHeight(50)
 
         layout = QtWidgets.QHBoxLayout(frame)
-        layout.setContentsMargins(10, 7, 10, 7)
-        layout.setSpacing(7)
+        layout.setContentsMargins(14, 9, 14, 9)
+        layout.setSpacing(8)
+        layout.setAlignment(QtCore.Qt.AlignVCenter)
 
-        logo = QtWidgets.QLabel()
-        logo.setObjectName("HeaderLogo")
-        logo.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
-        logo.setStyleSheet("background: transparent; border: none;")
-        logo.setFixedSize(48, 48)
-        pixmap = QtGui.QPixmap(icon_path("renderhive_header_logo.png"))
-        if not pixmap.isNull():
-            logo.setPixmap(
-                pixmap.scaled(
-                    48,
-                    48,
-                    QtCore.Qt.KeepAspectRatio,
-                    QtCore.Qt.SmoothTransformation,
-                )
-            )
-        layout.addWidget(logo)
+        # ── Segmented Pill Nav Container (left) ──
+        nav_container = QtWidgets.QFrame()
+        nav_container.setObjectName("NavSegmentContainer")
+        nav_container.setFixedHeight(32)
+        nav_layout = QtWidgets.QHBoxLayout(nav_container)
+        nav_layout.setContentsMargins(2, 2, 2, 2)
+        nav_layout.setSpacing(2)
 
-        brand_column = QtWidgets.QVBoxLayout()
-        brand_column.setSpacing(0)
+        self._nav_group = QtWidgets.QButtonGroup(self)
+        self._nav_group.setExclusive(True)
 
-        brand_row = QtWidgets.QHBoxLayout()
-        brand_row.setSpacing(0)
-
-        render_label = QtWidgets.QLabel("RENDER")
-        render_label.setObjectName("BrandMain")
-        hive_label = QtWidgets.QLabel("HIVE")
-        hive_label.setObjectName("BrandAccent")
-
-        brand_row.addWidget(render_label)
-        brand_row.addWidget(hive_label)
-        brand_row.addStretch()
-        brand_column.addLayout(brand_row)
-
-        subtitle = QtWidgets.QLabel("MAYA RENDER SUBMISSION")
-        subtitle.setObjectName("BrandSubtitle")
-        brand_column.addWidget(subtitle)
-
-        scene_label = register("header_scene", QtWidgets.QLabel("Scene: —"))
-        scene_label.setObjectName("MutedText")
-        brand_column.addWidget(scene_label)
-
-        layout.addLayout(brand_column, 1)
-
-        meta_column = QtWidgets.QVBoxLayout()
-        meta_column.setSpacing(5)
-        meta_column.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-
-        version = QtWidgets.QLabel("UI v{}".format(UI_VERSION))
-        version.setObjectName("MetaChip")
-        version.setAlignment(QtCore.Qt.AlignCenter)
-        meta_column.addWidget(version, 0, QtCore.Qt.AlignRight)
-
-        renderer_chip = register("header_renderer", QtWidgets.QLabel("Renderer: —"))
-        renderer_chip.setObjectName("MetaChip")
-        renderer_chip.setAlignment(QtCore.Qt.AlignCenter)
-        meta_column.addWidget(renderer_chip, 0, QtCore.Qt.AlignRight)
-
-        layout.addLayout(meta_column)
-        return frame
-
-    def build_sidebar(self):
-        frame = QtWidgets.QFrame()
-        frame.setObjectName("Sidebar")
-        frame.setFixedWidth(104)
-
-        layout = QtWidgets.QVBoxLayout(frame)
-        layout.setContentsMargins(0, 8, 0, 8)
-        layout.setSpacing(2)
-
-        button_group = QtWidgets.QButtonGroup(self)
-        button_group.setExclusive(True)
-
-        pages = [
-            "Job",
-            "Render",
-            "Validation",
-            "Tools",
+        _pages = [
+            ("layers",       "Job"),
+            ("camera",       "Render"),
+            ("shield-check", "Validation"),
+            ("terminal",     "Logs"),
         ]
-
-        for index, title in enumerate(pages):
-            button = QtWidgets.QPushButton(title)
-            button.setObjectName("NavButton")
-            button.setCheckable(True)
-            button.clicked.connect(
-                lambda checked=False, page=index: self.select_page(page)
+        for idx, (icon_name, label) in enumerate(_pages):
+            btn = QtWidgets.QPushButton("  " + label)
+            btn.setObjectName("SegmentNavBtn")
+            btn.setCheckable(True)
+            btn.setFixedHeight(28)
+            btn.setIcon(get_icon(icon_name, COLORS["muted"], 13))
+            btn.setCursor(QtCore.Qt.PointingHandCursor)
+            btn.setAccessibleName(label + " page")
+            btn.clicked.connect(
+                lambda checked=False, page=idx: self.select_page(page)
             )
-            button_group.addButton(button)
-            self.nav_buttons.append(button)
-            layout.addWidget(button)
+            self._nav_group.addButton(btn, idx)
+            self.nav_buttons.append(btn)
+            nav_layout.addWidget(btn)
 
-        layout.addStretch()
+        # Activate first tab
+        if self.nav_buttons:
+            self.nav_buttons[0].setChecked(True)
 
-        maya_chip = QtWidgets.QLabel("Maya {}".format(cmds.about(version=True)))
-        maya_chip.setObjectName("MetaChip")
-        maya_chip.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(maya_chip)
+        layout.addWidget(nav_container)
+
+        # ── Right cluster (Action Controls) ──
+        layout.addStretch(1)
+
+        # Action 1: Sync (pull settings/layers from current Maya scene)
+        sync_scene_btn = QtWidgets.QPushButton("  Sync")
+        sync_scene_btn.setObjectName("SecondaryBtn")
+        sync_scene_btn.setIcon(get_icon("refresh", COLORS["secondary"], 13))
+        sync_scene_btn.setFixedHeight(32)
+        sync_scene_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        sync_scene_btn.setAccessibleName("Sync settings from the current Maya scene")
+        sync_scene_btn.clicked.connect(self.sync_from_scene)
+        layout.addWidget(sync_scene_btn)
+
+        # Action 2: Validate (run pre-flight check suite)
+        validate_btn = QtWidgets.QPushButton("  Validate")
+        validate_btn.setObjectName("SecondaryBtn")
+        validate_btn.setIcon(get_icon("shield-check", COLORS["secondary"], 13))
+        validate_btn.setFixedHeight(32)
+        validate_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        validate_btn.setAccessibleName("Run scene validation checks")
+        validate_btn.clicked.connect(self.validate_scene)
+        layout.addWidget(validate_btn)
+
+        # Action 3: Submit Job (primary dispatch CTA)
+        submit = register(
+            "submit_job_button",
+            QtWidgets.QPushButton("  Submit Job"),
+        )
+        submit.setObjectName("SubmitButton")
+        submit.setIcon(get_icon("send", COLORS["primary_fg"], 13))
+        submit.setCursor(QtCore.Qt.PointingHandCursor)
+        submit.setMinimumWidth(130)
+        submit.setFixedHeight(32)
+        submit.setAccessibleName("Submit render job to RenderHive")
+        submit.clicked.connect(self.submit_job)
+        layout.addWidget(submit)
+
+        # Action 4: Settings Icon Button (far right, matching Worker)
+        settings_btn = QtWidgets.QPushButton()
+        settings_btn.setObjectName("SecondaryBtn")
+        settings_btn.setIcon(get_icon("settings", COLORS["secondary"], 14))
+        settings_btn.setFixedSize(32, 32)
+        settings_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        settings_btn.setToolTip("Submitter Settings")
+        settings_btn.setAccessibleName("Open RenderHive Submitter Settings")
+        settings_btn.clicked.connect(self.open_settings_dialog)
+        layout.addWidget(settings_btn)
 
         return frame
 
@@ -1300,19 +1392,24 @@ class RenderHiveSubmitter(
         if self.page_stack is not None:
             self.page_stack.setCurrentIndex(index)
 
+        icon_map = ["layers", "camera", "shield-check", "terminal"]
         for button_index, button in enumerate(self.nav_buttons):
-            button.setChecked(button_index == index)
+            is_active = button_index == index
+            button.setChecked(is_active)
+            if button_index < len(icon_map):
+                color = COLORS["primary_fg"] if is_active else COLORS["muted"]
+                button.setIcon(get_icon(icon_map[button_index], color, 13))
 
-    def scroll_page(self, title, subtitle):
+    def scroll_page(self, title, subtitle, action_widget=None):
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
 
         content = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(content)
-        layout.setContentsMargins(0, 1, 4, 1)
-        layout.setSpacing(7)
-        layout.addWidget(PageHeader(title, subtitle))
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(14)
+        layout.addWidget(PageHeader(title, subtitle, action_widget=action_widget))
 
         scroll.setWidget(content)
         return scroll, layout
@@ -1342,7 +1439,13 @@ class RenderHiveSubmitter(
         combo = _WIDGETS.get("severity_filter")
         if isinstance(combo, QtWidgets.QComboBox):
             index = combo.findText(value)
-            combo.setCurrentIndex(index if index >= 0 else 0)
+            if index >= 0 and combo.currentIndex() != index:
+                combo.setCurrentIndex(index)
+
+        btn_map = getattr(self, "_validation_counter_buttons", {})
+        btn = btn_map.get(value)
+        if btn and not btn.isChecked():
+            btn.setChecked(True)
 
 
     def show_validation_details(self):
@@ -1524,20 +1627,15 @@ class RenderHiveSubmitter(
             return
 
         if module.requires_confirmation(result):
-            answer = QtWidgets.QMessageBox.question(
+            answer = RenderHiveMessageDialog.show_message(
                 self,
                 "RenderHive Auto Fix",
-                (
-                    "{} cannot be undone. Continue?"
-                ).format(
-                    module.fix_label(result)
-                ),
-                QtWidgets.QMessageBox.Yes
-                | QtWidgets.QMessageBox.No,
-                QtWidgets.QMessageBox.No,
+                "{} cannot be undone. Continue?".format(module.fix_label(result)),
+                icon="warning",
+                buttons=[("No", "secondary"), ("Yes", "primary")]
             )
 
-            if answer != QtWidgets.QMessageBox.Yes:
+            if answer != "Yes":
                 return
 
         def apply_selected():
@@ -1597,19 +1695,18 @@ class RenderHiveSubmitter(
             )
             return
 
-        answer = QtWidgets.QMessageBox.question(
+        answer = RenderHiveMessageDialog.show_message(
             self,
             "RenderHive Fix All Safe",
             (
                 "Apply {} unique safe fix(es)?\n\n"
                 "Maya attribute changes will be grouped into one Undo step."
             ).format(len(results)),
-            QtWidgets.QMessageBox.Yes
-            | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.Yes,
+            icon="info",
+            buttons=[("No", "secondary"), ("Yes", "primary")]
         )
 
-        if answer != QtWidgets.QMessageBox.Yes:
+        if answer != "Yes":
             return
 
         def apply_all():
@@ -1655,7 +1752,7 @@ class RenderHiveSubmitter(
                     for item in failures
                 )
 
-                QtWidgets.QMessageBox.warning(
+                RenderHiveMessageDialog.show_message(
                     self,
                     "RenderHive Auto Fix",
                     (
@@ -1665,6 +1762,7 @@ class RenderHiveSubmitter(
                         len(failures),
                         failure_text,
                     ),
+                    icon="warning",
                 )
 
             return {
@@ -1693,6 +1791,7 @@ class RenderHiveSubmitter(
     def update_validation_summary(self, summary):
         error_count = summary.get("ERROR", 0)
         warning_count = summary.get("WARNING", 0)
+        total_count = summary.get("total", 0)
 
         if error_count:
             self.set_status(
@@ -1704,8 +1803,10 @@ class RenderHiveSubmitter(
                 "Validation passed with {} warning(s).".format(warning_count),
                 level="warning",
             )
+        elif total_count > 0:
+            self.set_status("Validation passed (all checks clean).", level="success")
         else:
-            self.set_status("Validation passed.", level="success")
+            self.set_status("Ready", level="success")
 
     # ------------------------------------------------------------------
     # More page
@@ -1716,60 +1817,55 @@ class RenderHiveSubmitter(
         return build_more_page_view(self, register)
 
     def build_footer(self):
+        """Full-width studio footer with status badge, live telemetry/status, and DCC environment chips.
+
+        Layout:
+        [StatusChip] [│] [Live Status Hint ────────stretch] [Maya 2025] [Arnold]
+        Height 48px to comfortably match standard studio status bars.
+        """
         frame = QtWidgets.QFrame()
-        frame.setObjectName("FooterBar")
+        frame.setObjectName("BottomStatusBar")
+        frame.setFixedHeight(48)
 
-        layout = QtWidgets.QVBoxLayout(frame)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(7)
+        layout = QtWidgets.QHBoxLayout(frame)
+        layout.setContentsMargins(14, 0, 14, 0)
+        layout.setSpacing(8)
+        layout.setAlignment(QtCore.Qt.AlignVCenter)
 
-        submit_row = QtWidgets.QHBoxLayout()
-        submit_row.setSpacing(0)
-        submit_row.addStretch()
-
-        submit = register(
-            "submit_job_button",
-            QtWidgets.QPushButton("Submit Job"),
-        )
-        submit.setObjectName("SubmitButton")
-        submit.setMinimumWidth(340)
-        submit.setMaximumWidth(420)
-        submit.setMinimumHeight(38)
-        submit.clicked.connect(self.submit_job)
-
-        submit_row.addWidget(submit)
-        submit_row.addStretch()
-        layout.addLayout(submit_row)
-
-        progress = register(
-            "progress",
-            QtWidgets.QProgressBar(),
-        )
-        progress.setRange(0, 0)
-        progress.setVisible(False)
-        layout.addWidget(progress)
-
-        status_row = QtWidgets.QHBoxLayout()
-        status_row.setSpacing(7)
-
-        status_dot = register(
-            "status_dot",
-            QtWidgets.QLabel(),
-        )
-        status_dot.setObjectName("StatusDot")
-        status_row.addWidget(status_dot)
-
-        status_text = register(
+        # Status badge / chip on the bottom-left
+        status_chip = register(
             "status",
-            QtWidgets.QLabel("Ready"),
+            StatusChip("READY"),
         )
-        status_text.setObjectName("StatusText")
-        status_row.addWidget(status_text, 1)
+        layout.addWidget(status_chip)
 
-        status_row.addWidget(
-            QtWidgets.QLabel("RenderHive")
+        div0 = QtWidgets.QLabel("│")
+        div0.setObjectName("StatusBarDivider")
+        layout.addWidget(div0)
+
+        # Live telemetry / status hint on the left
+        live_hint = register(
+            "live_status_hint",
+            QtWidgets.QLabel("Ready for submission"),
         )
-        layout.addLayout(status_row)
+        live_hint.setObjectName("StatusBarHint")
+        layout.addWidget(live_hint, 1)
+
+        # DCC application chip (e.g. Maya 2025)
+        try:
+            _maya_ver = "Maya {}".format(cmds.about(version=True))
+        except Exception:
+            _maya_ver = "Maya"
+        maya_chip = QtWidgets.QLabel(_maya_ver)
+        maya_chip.setObjectName("MetaChip")
+        maya_chip.setAccessibleName("DCC application: {}".format(_maya_ver))
+        layout.addWidget(maya_chip)
+
+        # Active renderer chip (e.g. Arnold)
+        renderer_chip = register("header_renderer", QtWidgets.QLabel("Arnold"))
+        renderer_chip.setObjectName("MetaChip")
+        renderer_chip.setAccessibleName("Renderer: Arnold")
+        layout.addWidget(renderer_chip)
 
         return frame
 
@@ -1781,35 +1877,58 @@ class RenderHiveSubmitter(
     def infer_status_level(self, message):
         value = message.lower()
 
-        if "error" in value or "failed" in value:
+        if "error" in value or "failed" in value or "disconnected" in value or "refused" in value:
             return "error"
-        if "warning" in value:
+        if "warning" in value or "offline" in value or "unauthorized" in value or "403" in value or "401" in value:
             return "warning"
-        if "complete" in value or "passed" in value or "saved" in value:
+        if "complete" in value or "passed" in value or "saved" in value or "connected" in value:
             return "success"
-        if "validat" in value or "sync" in value or "running" in value:
+        if "validat" in value or "sync" in value or "running" in value or "check" in value or "connecting" in value:
             return "info"
-        return "success"
+        return "info"
 
     def set_status(self, message, level=None):
-        status_text = _WIDGETS.get("status")
-        status_dot = _WIDGETS.get("status_dot")
+        status_chip = _WIDGETS.get("status") or _WIDGETS.get("header_status")
+        live_hint = _WIDGETS.get("live_status_hint")
 
         level = level or self.infer_status_level(message)
+        msg_lower = message.lower()
         color = {
             "error": COLORS["error"],
             "warning": COLORS["warning"],
             "info": COLORS["info"],
             "success": COLORS["success"],
+            "offline": COLORS["muted"],
         }.get(level, COLORS["success"])
 
-        if isinstance(status_text, QtWidgets.QLabel):
-            status_text.setText(message)
+        # StatusChip in footer left
+        if isinstance(status_chip, StatusChip):
+            if "disconnect" in msg_lower or "refused" in msg_lower or "unreachable" in msg_lower:
+                status_chip.set_status("DISCONNECTED")
+            elif "offline" in msg_lower or level == "offline":
+                status_chip.set_status("OFFLINE")
+            elif "validat" in msg_lower and ("..." in message or "running" in msg_lower):
+                status_chip.set_status("VALIDATING")
+            elif "submit" in msg_lower and ("..." in message or "running" in msg_lower):
+                status_chip.set_status("SUBMITTING")
+            elif level == "error":
+                status_chip.set_status("ERROR")
+            elif level == "warning":
+                status_chip.set_status("WARNING")
+            elif level == "success":
+                status_chip.set_status("READY")
+            elif level == "info":
+                status_chip.set_status("INFO")
+            else:
+                status_chip.set_status(level.upper())
 
-        if isinstance(status_dot, QtWidgets.QLabel):
-            status_dot.setStyleSheet(
-                "QLabel#StatusDot { background-color:%s; }" % color
-            )
+        # Live hint text in footer (full message with rich color when warning/error)
+        if isinstance(live_hint, QtWidgets.QLabel):
+            live_hint.setText(message)
+            if level in ("error", "warning"):
+                live_hint.setStyleSheet("color: %s; font-size: 12px; font-weight: 600;" % color)
+            else:
+                live_hint.setStyleSheet("")
 
     def append_activity(self, message):
         log = _WIDGETS.get("activity_log")
@@ -1827,10 +1946,11 @@ class RenderHiveSubmitter(
             return callback()
         except Exception as error:
             self.set_status("{} failed: {}".format(label, error), level="error")
-            QtWidgets.QMessageBox.critical(
+            RenderHiveMessageDialog.show_message(
                 self,
                 "RenderHive",
                 "{} failed:\n\n{}".format(label, error),
+                icon="critical",
             )
             return None
         finally:
@@ -1993,6 +2113,7 @@ class RenderHiveSubmitter(
 def show_submitter(api):
     global _WINDOW, _API, _WIDGETS
 
+    load_application_fonts()
     _API = api
     install_api_bridge(api)
 
