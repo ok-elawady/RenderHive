@@ -41,6 +41,20 @@ class ValidationPageCallbackStaticTests(unittest.TestCase):
             source,
         )
 
+    def test_all_colors_accessed_in_window_and_page_exist_in_theme(self):
+        import re
+        import sys
+        if ROOT not in sys.path:
+            sys.path.insert(0, ROOT)
+        from ui.qt_theme import COLORS
+
+        for file_path in (VALIDATION_PAGE, WINDOW_PATH):
+            with open(file_path, "r", encoding="utf-8") as handle:
+                source = handle.read()
+            keys = re.findall(r'COLORS\[["\'](\w+)["\']\]', source)
+            for k in keys:
+                self.assertIn(k, COLORS, "Key '{}' accessed in {} not in COLORS".format(k, file_path))
+
 
 if __name__ == "__main__":
     unittest.main()

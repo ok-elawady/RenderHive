@@ -273,10 +273,24 @@ class TargetingControllerMixin(object):
             detail="No online workers match the CPU/RAM/GPU requirements."; color=COLORS["error"]
         else:
             detail="Ready for submission."; color=COLORS["success"]
-        label.setText("{}  —  {}".format(summary,detail))
+        label.setText("{}  —  {}".format(summary, detail))
+
+        bg_map = {
+            COLORS["success"]: "rgba(34, 197, 94, 0.08)",
+            COLORS["warning"]: "rgba(245, 158, 11, 0.10)",
+            COLORS["error"]: "rgba(239, 68, 68, 0.10)",
+        }
+        bg_color = bg_map.get(color, "rgba(255, 255, 255, 0.04)")
         label.setStyleSheet(
-            "QLabel#EligibilitySummary {background-color:%s;border:1px solid %s;border-radius:6px;"
-            "color:%s;padding:7px 9px;font-weight:600;}"%(COLORS["surface2"],color,color)
+            "QLabel#EligibilitySummary {"
+            "background-color: %s;"
+            "border: none;"
+            "border-radius: 6px;"
+            "color: #CBD5E1;"
+            "padding: 8px 12px;"
+            "font-size: 12px;"
+            "font-weight: 500;"
+            "}" % bg_color
         )
 
     def update_pool_strategy_ui(self):

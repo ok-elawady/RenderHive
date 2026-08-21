@@ -4,6 +4,7 @@ import uuid
 
 from ..qt_compat import QtWidgets
 from ..runtime_registry import WIDGETS as _WIDGETS
+from ..common_widgets import RenderHiveMessageDialog
 from ..targeting_widgets import WorkerSyncThread
 from ..job_dependency_widgets import JobDependencyDialog, job_display_name, job_identifier
 
@@ -152,18 +153,20 @@ class DependencyControllerMixin(object):
         try:
             config = self.api.get_api_config()
         except Exception as error:
-            QtWidgets.QMessageBox.warning(
+            RenderHiveMessageDialog.show_message(
                 self,
                 "RenderHive Dependencies",
                 "Could not read backend configuration:\n\n{}".format(error),
+                icon="warning",
             )
             return
 
         if not bool(config.get("enabled", False)):
-            QtWidgets.QMessageBox.information(
+            RenderHiveMessageDialog.show_message(
                 self,
                 "RenderHive Dependencies",
                 "Backend access is disabled by the managed RenderHive configuration.",
+                icon="info",
             )
             return
 
@@ -217,10 +220,11 @@ class DependencyControllerMixin(object):
     def on_job_dependencies_failed(self, error):
         self.set_status("Could not load RenderHive jobs.", level="warning")
         self.append_activity("Job dependency browser failed: {}".format(error))
-        QtWidgets.QMessageBox.warning(
+        RenderHiveMessageDialog.show_message(
             self,
             "RenderHive Dependencies",
             "Could not load jobs from the RenderHive backend:\n\n{}".format(error),
+            icon="warning",
         )
 
     def on_job_dependencies_finished(self):

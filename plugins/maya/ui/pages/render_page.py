@@ -1,8 +1,13 @@
+"""Render configuration, Arnold settings and layer selection view for RenderHive Maya Submitter."""
+
 from __future__ import print_function
 
 from ..qt_compat import QtWidgets
-from ..common_widgets import Card, LabeledField
+from ..common_widgets import Card, LabeledField, ScrollFilter, StepperNumberInput
 from ..targeting_widgets import RenderLayerSelector
+from ..icons import get_icon
+from ..qt_theme import COLORS
+
 
 def build_render_page(self, register):
     page, body = self.scroll_page(
@@ -12,8 +17,10 @@ def build_render_page(self, register):
 
     preset_card = Card("Render Preset", "Apply a tested baseline, then adjust individual render settings as needed.")
     preset_row = QtWidgets.QHBoxLayout()
+    preset_row.setSpacing(8)
 
     preset = register("render_preset", QtWidgets.QComboBox())
+    ScrollFilter.install(preset)
     preset.addItems(
         [
             "Manual Configuration",
@@ -24,8 +31,9 @@ def build_render_page(self, register):
         ]
     )
 
-    apply_button = QtWidgets.QPushButton("Apply Preset")
+    apply_button = QtWidgets.QPushButton("  Apply Preset")
     apply_button.setObjectName("PrimaryButton")
+    apply_button.setIcon(get_icon("sliders", COLORS["primary_fg"], 13))
     apply_button.clicked.connect(self.apply_preset)
 
     preset_row.addWidget(preset, 1)
@@ -48,26 +56,24 @@ def build_render_page(self, register):
     render_grid.setHorizontalSpacing(10)
     render_grid.setVerticalSpacing(8)
 
-    frame_start = register("rh_frame_start", QtWidgets.QSpinBox())
-    frame_end = register("rh_frame_end", QtWidgets.QSpinBox())
-    frame_step = register("rh_frame_step", QtWidgets.QSpinBox())
-    for widget in (frame_start, frame_end):
-        widget.setRange(-1000000, 1000000)
-    frame_step.setRange(1, 1000)
-    frame_step.setValue(1)
+    frame_start = register("rh_frame_start", StepperNumberInput(minimum=-1000000, maximum=1000000, default=1))
+    frame_end = register("rh_frame_end", StepperNumberInput(minimum=-1000000, maximum=1000000, default=100))
+    frame_step = register("rh_frame_step", StepperNumberInput(minimum=1, maximum=1000, default=1))
 
     renderer = register("rh_renderer", QtWidgets.QComboBox())
+    ScrollFilter.install(renderer)
     renderer.addItem("arnold")
     renderer.setToolTip("RenderHive Maya currently supports Arnold only.")
 
     camera = register("rh_camera", QtWidgets.QComboBox())
+    ScrollFilter.install(camera)
     camera.addItem("Loading")
 
-    render_grid.addWidget(LabeledField("Start Frame", frame_start, "First frame included in the submission."), 0, 0)
-    render_grid.addWidget(LabeledField("End Frame", frame_end, "Last frame included in the submission."), 0, 1)
-    render_grid.addWidget(LabeledField("Frame Step", frame_step, "Increment between submitted frames."), 1, 0)
-    render_grid.addWidget(LabeledField("Renderer", renderer, "RenderHive Maya currently submits Arnold renders only."), 1, 1)
-    render_grid.addWidget(LabeledField("Render Camera", camera, "Camera used for this render submission."), 2, 0, 1, 2)
+    render_grid.addWidget(LabeledField("Start Frame", frame_start), 0, 0)
+    render_grid.addWidget(LabeledField("End Frame", frame_end), 0, 1)
+    render_grid.addWidget(LabeledField("Frame Step", frame_step), 1, 0)
+    render_grid.addWidget(LabeledField("Renderer", renderer), 1, 1)
+    render_grid.addWidget(LabeledField("Render Camera", camera), 2, 0, 1, 2)
     render_grid.setColumnStretch(0, 1)
     render_grid.setColumnStretch(1, 1)
     render_card.layout.addLayout(render_grid)
@@ -80,24 +86,21 @@ def build_render_page(self, register):
 
     image_name = register("rh_image_name", QtWidgets.QLineEdit())
     image_name.setPlaceholderText("Enter the output file prefix")
+    ScrollFilter.install(image_name)
 
     image_format = register("rh_image_format", QtWidgets.QComboBox())
+    ScrollFilter.install(image_format)
     image_format.addItems(["png", "jpg", "exr", "tif"])
 
-    padding = register("rh_frame_padding", QtWidgets.QSpinBox())
-    padding.setRange(1, 12)
-    padding.setValue(4)
+    padding = register("rh_frame_padding", StepperNumberInput(minimum=1, maximum=12, default=4))
+    width = register("rh_width", StepperNumberInput(minimum=1, maximum=65536, default=1920))
+    height = register("rh_height", StepperNumberInput(minimum=1, maximum=65536, default=1080))
 
-    width = register("rh_width", QtWidgets.QSpinBox())
-    height = register("rh_height", QtWidgets.QSpinBox())
-    for widget in (width, height):
-        widget.setRange(1, 65536)
-
-    output_grid.addWidget(LabeledField("Image Prefix", image_name, "Base name written before the frame number and file extension."), 0, 0, 1, 2)
-    output_grid.addWidget(LabeledField("File Format", image_format, "Image file format written by the renderer."), 1, 0)
-    output_grid.addWidget(LabeledField("Frame Padding", padding, "Number of digits used for frame numbers in output filenames."), 1, 1)
-    output_grid.addWidget(LabeledField("Width", width, "Output image width in pixels."), 2, 0)
-    output_grid.addWidget(LabeledField("Height", height, "Output image height in pixels."), 2, 1)
+    output_grid.addWidget(LabeledField("Image Prefix", image_name), 0, 0, 1, 2)
+    output_grid.addWidget(LabeledField("File Format", image_format), 1, 0)
+    output_grid.addWidget(LabeledField("Frame Padding", padding), 1, 1)
+    output_grid.addWidget(LabeledField("Width", width), 2, 0)
+    output_grid.addWidget(LabeledField("Height", height), 2, 1)
     output_grid.setColumnStretch(0, 1)
     output_grid.setColumnStretch(1, 1)
     output_card.layout.addLayout(output_grid)
@@ -105,4 +108,3 @@ def build_render_page(self, register):
 
     body.addStretch()
     return page
-
