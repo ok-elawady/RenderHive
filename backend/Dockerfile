@@ -6,8 +6,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Enable bytecode compilation
+# Enable bytecode compilation and set virtualenv location outside /app
 ENV UV_COMPILE_BYTECODE=1
+ENV UV_PROJECT_ENVIRONMENT="/opt/venv"
 
 # Copy project configuration files
 COPY pyproject.toml uv.lock ./
@@ -28,17 +29,20 @@ FROM python:3.13-slim AS runner
 WORKDIR /app
 
 # Copy virtual environment from builder stage
-COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /opt/venv /opt/venv
 
 # Place virtual environment on PATH
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/opt/venv/bin:$PATH"
+ENV VIRTUAL_ENV="/opt/venv"
 
 # Copy application source code
 COPY . .
 
-# Ensure entrypoint is executable
-RUN chmod +x entrypoint.sh
+# Copy entrypoint to a location outside the volume mount to prevent Windows host from shadowing it with a CRLF version
+RUN cp entrypoint.sh /usr/local/bin/entrypoint.sh && \
+    sed -i 's/\r$//' /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

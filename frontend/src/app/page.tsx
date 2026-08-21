@@ -2,81 +2,107 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AgenticLogs from "@/components/dashboard/AgenticLogs";
+import FarmActivityFeed from "@/components/dashboard/FarmActivityFeed";
 import HardwareTelemetry from "@/components/dashboard/HardwareTelemetry";
 import JobQueue from "@/components/dashboard/JobQueue";
 import KpiCards from "@/components/dashboard/KpiCards";
+import { PoolSaturationStrip } from "@/components/dashboard/PoolSaturationStrip";
 import { PageSkeleton } from "@/components/ui/SkeletonLoaders";
 import {
-  deriveLogsFromJobs,
-  deriveTelemetryFromJobs,
+  computeClusterTelemetry,
+  computeFarmEfficiency,
   fetchJobs,
+  getNodes,
+  getPools,
   mapBackendJobToRenderJob,
-  API_BASE_URL,
+  type WorkerNode,
+  type WorkerPool,
 } from "@/services/api";
-import { useNavigation } from "@/components/common/NavigationProvider";
-import { useTheme } from "@/components/common/ThemeProvider";
-import type { LogEntry, RenderJob, TelemetryMetrics } from "@/types/dashboard";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { useClusterHealth } from "@/hooks/useClusterHealth";
+import type { RenderJob, TelemetryMetrics } from "@/types/dashboard";
 
 const emptyTelemetry: TelemetryMetrics = {
-  vramUsage: 0,
   cpuLoad: 0,
+  memoryUsage: 0,
+  vramUsage: 0,
   points: [],
 };
 
-function getFarmEfficiency(jobs: RenderJob[]): number {
-  if (jobs.length === 0) return 0;
-
-  const failedJobs = jobs.filter((job) => job.status === "Failed").length;
-  const completedOrActiveJobs = jobs.filter((job) => job.status === "Completed" || job.status === "Rendering").length;
-
-  return Math.round(((completedOrActiveJobs + (jobs.length - failedJobs)) / (jobs.length * 2)) * 100);
-}
-
 export default function DashboardPage() {
+  const { latencyMs, isOffline: isClusterOffline } = useClusterHealth();
   const [jobs, setJobs] = useState<RenderJob[]>([]);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [nodes, setNodes] = useState<WorkerNode[]>([]);
+  const [pools, setPools] = useState<WorkerPool[]>([]);
   const [telemetry, setTelemetry] = useState<TelemetryMetrics>(emptyTelemetry);
+  const [isFetchOffline, setIsFetchOffline] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
   const initialFetchTimerRef = useRef<number | null>(null);
   const pollingTimerRef = useRef<number | null>(null);
-  const { activeView } = useNavigation();
-  const { theme } = useTheme();
-  const activeJobCount = useMemo<number>(() => jobs.filter((job) => job.status === "Rendering").length, [jobs]);
 
-  const farmEfficiency = useMemo<number>(() => getFarmEfficiency(jobs), [jobs]);
+  // Derived real-time cluster metrics
+  const totalNodes = nodes.length;
+  const onlineNodes = useMemo(
+    () => nodes.filter((n) => n.status === "ONLINE" || n.status === "RENDERING").length,
+    [nodes]
+  );
+  const totalCores = useMemo(
+    () => nodes.reduce((sum, n) => sum + (n.cores || 1), 0),
+    [nodes]
+  );
+  const activeJobCount = useMemo(
+    () => jobs.filter((job) => job.status === "Rendering").length,
+    [jobs]
+  );
+  const activeTaskCount = useMemo(
+    () =>
+      jobs.reduce(
+        (sum, j) => sum + (j.running_tasks ?? (j.status === "Rendering" ? 1 : 0)),
+        0
+      ),
+    [jobs]
+  );
 
-  const fetchJobsData = useCallback(async (): Promise<void> => {
-    const backendJobs = await fetchJobs();
-    const mappedJobs = backendJobs.map(mapBackendJobToRenderJob);
+  const { efficiency, completedJobs, failedJobs } = useMemo(
+    () => computeFarmEfficiency(jobs),
+    [jobs]
+  );
 
-    setJobs(mappedJobs);
-    setLogs(deriveLogsFromJobs(mappedJobs));
-    setTelemetry(deriveTelemetryFromJobs(mappedJobs));
-    setIsLoading(false);
+  const fetchDashboardData = useCallback(async (): Promise<void> => {
+    try {
+      const [backendJobs, backendNodes, backendPools] = await Promise.all([
+        fetchJobs(),
+        getNodes().catch(() => []),
+        getPools().catch(() => []),
+      ]);
+      const mappedJobs = backendJobs.map(mapBackendJobToRenderJob);
+
+      setJobs(mappedJobs);
+      setNodes(backendNodes);
+      setPools(backendPools);
+      setIsFetchOffline(false);
+
+      setTelemetry((prev) =>
+        computeClusterTelemetry(mappedJobs, backendNodes, prev.points)
+      );
+    } catch {
+      setIsFetchOffline(true);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const refreshJobsData = useCallback(async (): Promise<void> => {
-    await fetchJobsData();
-  }, [fetchJobsData]);
+  const refreshDashboardData = useCallback(async (): Promise<void> => {
+    await fetchDashboardData();
+  }, [fetchDashboardData]);
 
   useEffect(() => {
     initialFetchTimerRef.current = window.setTimeout(() => {
-      void fetchJobsData().catch(() => {
-        setJobs([]);
-        setLogs([]);
-        setTelemetry(emptyTelemetry);
-        setIsLoading(false);
-      });
+      void fetchDashboardData();
     }, 0);
 
     pollingTimerRef.current = window.setInterval(() => {
-      void fetchJobsData().catch(() => {
-        setJobs([]);
-        setLogs([]);
-        setTelemetry(emptyTelemetry);
-        setIsLoading(false);
-      });
+      void fetchDashboardData();
     }, 7000);
 
     return () => {
@@ -88,84 +114,48 @@ export default function DashboardPage() {
         window.clearInterval(pollingTimerRef.current);
       }
     };
-  }, [fetchJobsData]);
+  }, [fetchDashboardData]);
 
-  const renderKpiCards = (): React.ReactNode => (
-    <KpiCards activeJobs={activeJobCount} farmEfficiency={farmEfficiency} />
-  );
+  if (isLoading) {
+    return <PageSkeleton />;
+  }
 
-  const renderJobQueue = (): React.ReactNode => <JobQueue jobs={jobs} searchQuery="" onJobRemoved={refreshJobsData} />;
+  return (
+    <div className="flex-1 flex flex-col p-6 space-y-6 font-mono min-h-screen">
+      <KpiCards
+        totalNodes={totalNodes}
+        onlineNodes={onlineNodes}
+        totalCores={totalCores}
+        activeJobs={activeJobCount}
+        activeTasks={activeTaskCount}
+        farmEfficiency={efficiency}
+        completedJobs={completedJobs}
+        failedJobs={failedJobs}
+        latencyMs={latencyMs}
+        isOffline={isClusterOffline || isFetchOffline}
+      />
 
-  const renderDashboardContent = (): React.ReactNode => {
-    if (isLoading) {
-      return <PageSkeleton />;
-    }
+      <PoolSaturationStrip pools={pools} />
 
-    if (activeView === "Job Queue") {
-      return <div className="min-h-[520px]">{renderJobQueue()}</div>;
-    }
-
-    if (activeView === "Node Pool") {
-      return (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 lg:relative min-h-[400px] lg:min-h-0">
+          <div className="lg:absolute lg:inset-0 h-full w-full">
+            <JobQueue jobs={jobs} searchQuery="" onJobRemoved={refreshDashboardData} />
+          </div>
+        </div>
+        <div>
           <HardwareTelemetry telemetry={telemetry} />
-          <Card className="border-border">
-            <CardHeader>
-              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Node Pool Preview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              <p className="text-sm text-foreground">
-                Worker pool metrics are derived from the latest Django job queue response until dedicated telemetry
-                endpoints are exposed.
-              </p>
-            </CardContent>
-          </Card>
         </div>
-      );
-    }
+      </div>
 
-    if (activeView === "AI Rules") {
-      return <AgenticLogs logs={logs} searchQuery="" />;
-    }
-
-    if (activeView === "Settings") {
-      return (
-        <Card className="border-border">
-          <CardHeader>
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Platform Settings
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <h2 className="text-xl font-bold text-foreground">API base URL: {API_BASE_URL}</h2>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    return (
-      <>
-        {renderKpiCards()}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 lg:relative min-h-[400px] lg:min-h-0">
-            <div className="lg:absolute lg:inset-0 h-full w-full">
-              {renderJobQueue()}
-            </div>
-          </div>
-          <div>
-            <HardwareTelemetry telemetry={telemetry} />
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:h-[420px]">
+        <div className="h-[420px] lg:h-full min-h-0">
+          <FarmActivityFeed />
         </div>
-
-        <div className="flex-1 min-h-0">
-          <AgenticLogs logs={logs} searchQuery="" />
+        <div className="h-[420px] lg:h-full min-h-0">
+          <AgenticLogs searchQuery="" showDetails={false} />
         </div>
-      </>
-    );
-  };
-
-  return <div className="flex-1 flex flex-col p-6 space-y-6 font-mono h-[calc(100vh-theme(spacing.16))]">{renderDashboardContent()}</div>;
+      </div>
+    </div>
+  );
 }

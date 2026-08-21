@@ -30,26 +30,28 @@ services:
       dockerfile: Dockerfile
       args:
         DEV: "true"
-    volumes:
-      - ./backend:/app
-      - /app/.venv # Prevents host .venv from shadowing container .venv
     ports:
       - "8000:8000"
     environment:
       PYTHONUNBUFFERED: "1"
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-123456}
       DEBUG: ${DEBUG:-True}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,api}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,api,renderhive.local,server.renderhive.local}
       DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/renderhive}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
       CORS_ALLOW_ALL_ORIGINS: ${CORS_ALLOW_ALL_ORIGINS:-False}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
-      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://renderhive.local}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://renderhive.local}
       # Dev superuser — auto-created on first container start.
       # Override in your .env file. Leave blank to skip creation.
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-admin@renderhive.local}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-admin}
+      # AI Scheduler — points Django at the ai_scheduler service.
+      # Set SCHEDULER_AI_ENABLED=False to disable the AI path entirely.
+      SCHEDULER_AI_ENABLED: ${SCHEDULER_AI_ENABLED:-True}
+      SCHEDULER_AI_URL: ${SCHEDULER_AI_URL:-http://ai_scheduler:8001/api/v1/rank-tasks}
+      SCHEDULER_AI_TIMEOUT: ${SCHEDULER_AI_TIMEOUT:-2.5}
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,32 +59,114 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        DEV: "true"
+    command: celery -A config worker -l INFO
+    environment:
+      PYTHONUNBUFFERED: "1"
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-123456}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/renderhive}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      TELEMETRY_WORKER_METRIC_INTERVAL_SECONDS: ${TELEMETRY_WORKER_METRIC_INTERVAL_SECONDS:-60}
+      TELEMETRY_RETENTION_DAYS: ${TELEMETRY_RETENTION_DAYS:-30}
+      WORKER_STALE_THRESHOLD_SECONDS: ${WORKER_STALE_THRESHOLD_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        DEV: "true"
+    command: celery -A config beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      PYTHONUNBUFFERED: "1"
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-123456}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/renderhive}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      WORKER_REAP_INTERVAL_SECONDS: ${WORKER_REAP_INTERVAL_SECONDS:-15.0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  ai_scheduler:
+    profiles: ["ai"]
+    build:
+      context: ./services/ai_scheduler
+      dockerfile: Dockerfile
+      args:
+        USE_CUDA: ${AI_USE_CUDA:-0}
+    ports:
+      - "8001:8001"
+    environment:
+      # Path to the GGUF model file inside the container.
+      # Mount your model directory via the 'models' volume below and set this
+      # to the matching container path, e.g. /models/mistral-7b-instruct.gguf
+      LLAMA_MODEL_PATH: ${LLAMA_MODEL_PATH:-}
+      LLAMA_PROMPT_TEMPLATE: ${LLAMA_PROMPT_TEMPLATE:-mistral}
+      LLAMA_THREADS: ${LLAMA_THREADS:-4}
+      MODELS_DIR: /models
+    volumes:
+      # Mount a local directory containing your GGUF model files.
+      # Set LLAMA_MODEL_PATH in your .env to the container path of the model.
+      # Example: ./models:/models (create the models/ dir in the repo root)
+      - models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+    command: uvicorn main:app --host 0.0.0.0 --port 8001
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   frontend:
     profiles: ["frontend"]
     build:
       context: ./frontend
       dockerfile: Dockerfile
     command: pnpm run dev:docker
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules # Prevent host node_modules from overriding container's
-      - /app/.next # Prevent host .next from overriding container's
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
       - CHOKIDAR_USEPOLLING=true
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://server.renderhive.local}
     restart: unless-stopped
 
   nginx:
     profiles: ["frontend"]
-    image: nginx:alpine
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
     ports:
       - "80:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - api
       - frontend
@@ -95,3 +179,7 @@ services:
 
 volumes:
   postgres_data:
+  # Named volume for GGUF model files used by the ai_scheduler service.
+  # To pre-populate it, copy your .gguf files into this volume or bind-mount
+  # a local directory instead (see the ai_scheduler service volumes comment).
+  models:

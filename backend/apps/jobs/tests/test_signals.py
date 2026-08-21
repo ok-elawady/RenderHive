@@ -1,8 +1,8 @@
 import pytest
 
-from apps.jobs.models import TaskState, Job, JobState, Layer
+from apps.jobs.models import Job, JobState, Layer, TaskState
 
-from .factories import DependencyFactory, TaskFactory, LayerFactory
+from .factories import DependencyFactory, LayerFactory, TaskFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -218,4 +218,27 @@ class TestJobAndLayerStateTransitions:
 
         # Job should remain PAUSED, not switch to RUNNING
         assert job.state == JobState.PAUSED
-        assert job.is_paused is True
+
+    def test_job_layer_transition_to_pending_when_no_active_workers(self):
+        layer = LayerFactory()
+        job = layer.job
+        task1 = TaskFactory(layer=layer, job=job, state=TaskState.READY)
+        task2 = TaskFactory(layer=layer, job=job, state=TaskState.READY)
+
+        # Worker starts task1
+        task1.state = TaskState.RUNNING
+        task1.save()
+
+        job.refresh_from_db()
+        layer.refresh_from_db()
+        assert job.state == JobState.RUNNING
+        assert layer.state == JobState.RUNNING
+
+        # Worker finishes task1; now running_tasks == 0 and task2 is READY in queue
+        task1.state = TaskState.SUCCEEDED
+        task1.save()
+
+        job.refresh_from_db()
+        layer.refresh_from_db()
+        assert job.state == JobState.PENDING
+        assert layer.state == JobState.PENDING

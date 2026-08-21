@@ -12,31 +12,14 @@ import {
   Pencil,
   Trash2,
   Layers,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  DatabaseZap,
   Server,
-  Network,
-  Search
 } from "lucide-react";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Sheet,
   SheetContent,
@@ -52,6 +35,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PageControlBar } from "@/components/common/PageControlBar";
+import { TableSortHeader } from "@/components/common/TableSortHeader";
 import {
   createPool,
   deletePool,
@@ -76,7 +61,6 @@ interface PoolsTabProps {
   pools: WorkerPool[];
   setPools: React.Dispatch<React.SetStateAction<WorkerPool[]>>;
   isLoading: boolean;
-  isRefreshing: boolean;
   isCreateOpen: boolean;
   setIsCreateOpen: (open: boolean) => void;
 }
@@ -85,7 +69,6 @@ export function PoolsTab({
   pools, 
   setPools, 
   isLoading, 
-  isRefreshing, 
   isCreateOpen, 
   setIsCreateOpen 
 }: PoolsTabProps) {
@@ -107,12 +90,6 @@ export function PoolsTab({
       }
       return { key, direction: "asc" };
     });
-  };
-
-  const renderSortIcon = (key: string) => {
-    if (sortConfig?.key !== key) return <ArrowUpDown className="ml-2 size-4 opacity-50 group-hover:opacity-100 transition-opacity" />;
-    if (sortConfig.direction === "asc") return <ArrowUp className="ml-2 size-4 text-primary" />;
-    return <ArrowDown className="ml-2 size-4 text-primary" />;
   };
 
   const sortedPools = useMemo(() => {
@@ -137,13 +114,6 @@ export function PoolsTab({
       return 0;
     });
   }, [pools, sortConfig, search]);
-
-  const counts = useMemo(
-    () => ({
-      total: pools.length,
-    }),
-    [pools],
-  );
 
   const handleRowKeyDown = (
     event: KeyboardEvent<HTMLTableRowElement>,
@@ -229,170 +199,128 @@ export function PoolsTab({
   };
 
   return (
-    <div className="flex-1 font-mono h-full flex flex-col">
-      <div className="space-y-6">
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Total Pools
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-3xl font-black tracking-tight text-foreground">{counts.total}</p>
-              <p className="text-xs font-mono text-primary flex items-center gap-1.5">
-                <DatabaseZap size={14} /> Active clusters
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Capacity Planning
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-3xl font-black tracking-tight text-foreground">Dynamic</p>
-              <p className="text-xs font-mono text-info flex items-center gap-1.5">
-                <Server size={14} /> Auto-scaling ready
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Routing
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-3xl font-black tracking-tight text-foreground">Enabled</p>
-              <p className="text-xs font-mono text-success flex items-center gap-1.5">
-                <Network size={14} /> Tag-based dispatch
-              </p>
-            </CardContent>
-          </Card>
-        </section>
+    <div className="flex-1 font-mono h-full flex flex-col space-y-4">
+      {/* Control Bar: Matching Jobs and Nodes pages */}
+      <PageControlBar
+        chips={[{ id: "ALL", label: "All Pools", count: pools.length }]}
+        selectedChip="ALL"
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search pools by name or description..."
+      />
 
-        <div className="flex items-center gap-4 mt-8 mb-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by pool name or description..."
-              className="pl-9 h-10 bg-card border-border/50 shadow-none font-sans"
-            />
-          </div>
-        </div>
-
-        <Card className="border-border overflow-hidden bg-card/80 backdrop-blur-sm p-0">
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[30%] pl-4">
-                    <Button variant="ghost" size="sm" onClick={() => handleSort('name')} className="font-semibold flex items-center group -ml-3">
-                      Pool Name
-                      {renderSortIcon('name')}
-                    </Button>
-                  </TableHead>
-                  <TableHead className="w-[35%]">
-                    <div className="flex justify-start w-full pl-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleSort('description')} className="font-semibold flex items-center group">
-                        Description
-                        {renderSortIcon('description')}
-                      </Button>
-                    </div>
-                  </TableHead>
-                  <TableHead className="w-[15%]">
-                    <div className="flex justify-center w-full">
-                      <Button variant="ghost" size="sm" onClick={() => handleSort('created_at')} className="font-semibold flex items-center group">
-                        Created
-                        {renderSortIcon('created_at')}
-                      </Button>
-                    </div>
-                  </TableHead>
-                  <TableHead className="w-[10%]">
-                    <div className="flex justify-center w-full">
-                      <Button variant="ghost" size="sm" onClick={() => handleSort('worker_count')} className="font-semibold flex items-center group">
-                        Nodes
-                        {renderSortIcon('worker_count')}
-                      </Button>
-                    </div>
-                  </TableHead>
-                  <TableHead className="font-semibold pr-6 text-right w-[10%] align-middle">Actions</TableHead>
+      {/* Main Pools Table Card */}
+      <Card className="flex flex-col border-border p-0 gap-0 overflow-hidden bg-card">
+        <CardContent className="p-0 overflow-hidden">
+          <Table className="table-fixed">
+            <TableHeader className="bg-card sticky top-0 z-10 border-b border-border/50">
+              <TableRow className="hover:bg-transparent bg-muted/30">
+                <TableHead className="w-[28%] pl-6">
+                  <TableSortHeader
+                    label="Pool Name"
+                    sortKey="name"
+                    currentSortKey={sortConfig?.key}
+                    currentDirection={sortConfig?.direction}
+                    onSort={handleSort}
+                    align="left"
+                  />
+                </TableHead>
+                <TableHead className="w-[36%]">
+                  <TableSortHeader
+                    label="Description"
+                    sortKey="description"
+                    currentSortKey={sortConfig?.key}
+                    currentDirection={sortConfig?.direction}
+                    onSort={handleSort}
+                    align="left"
+                  />
+                </TableHead>
+                <TableHead className="w-[16%]">
+                  <TableSortHeader
+                    label="Created"
+                    sortKey="created_at"
+                    currentSortKey={sortConfig?.key}
+                    currentDirection={sortConfig?.direction}
+                    onSort={handleSort}
+                    align="center"
+                  />
+                </TableHead>
+                <TableHead className="w-[12%]">
+                  <TableSortHeader
+                    label="Nodes"
+                    sortKey="worker_count"
+                    currentSortKey={sortConfig?.key}
+                    currentDirection={sortConfig?.direction}
+                    onSort={handleSort}
+                    align="center"
+                  />
+                </TableHead>
+                <TableHead className="font-semibold pr-6 text-right w-[8%] text-xs text-muted-foreground align-middle">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="text-xs">
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-44 text-center text-muted-foreground">
+                    <Loader2 className="mx-auto mb-2 animate-spin text-primary" size={22} />
+                    Loading worker pools...
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                      <Loader2 className="mx-auto mb-2 animate-spin text-primary" size={22} />
-                      Loading worker pools...
+              ) : sortedPools.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-44 text-center text-muted-foreground">
+                    No worker pools found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                sortedPools.map((item) => (
+                  <TableRow
+                    key={item.id}
+                    tabIndex={0}
+                    className="group cursor-pointer hover:bg-muted/40 transition-colors focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    onClick={() => { setSelectedPool(item); setSheetMode("view"); }}
+                    onKeyDown={(event) => handleRowKeyDown(event, item)}
+                    aria-label={`View ${item.name}`}
+                  >
+                    <TableCell className="pl-6 py-3 text-left">
+                      <span className="font-bold text-foreground">
+                        {item.name}
+                      </span>
+                    </TableCell>
+                    <TableCell className="py-3 text-muted-foreground truncate max-w-[240px]">
+                      {item.description || "No description provided"}
+                    </TableCell>
+                    <TableCell className="py-3 text-muted-foreground text-center">
+                      {new Intl.DateTimeFormat("en", { dateStyle: "short" }).format(new Date(item.created_at))}
+                    </TableCell>
+                    <TableCell className="py-3 text-center">
+                      <Badge variant="secondary" className="font-mono gap-1.5 px-2 bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 text-[11px] h-5">
+                        <Server size={11} />
+                        {item.worker_count ?? 0} Nodes
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="pr-6 py-3 text-right">
+                      <ChevronRight className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors" size={16} />
                     </TableCell>
                   </TableRow>
-                ) : sortedPools.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                      No worker pools found.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  sortedPools.map((item) => (
-                    <TableRow
-                      key={item.id}
-                      tabIndex={0}
-                      className="group cursor-pointer hover:bg-muted/40 transition-colors focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                      onClick={() => { setSelectedPool(item); setSheetMode("view"); }}
-                      onKeyDown={(event) => handleRowKeyDown(event, item)}
-                      aria-label={`View ${item.name}`}
-                    >
-                      <TableCell className="pl-6 py-4 text-left">
-                        <span className="font-bold text-foreground flex items-center gap-2">
-                          <Layers size={14} className="text-primary" />
-                          {item.name}
-                        </span>
-                      </TableCell>
-                      <TableCell className="py-4 text-muted-foreground pl-5 truncate max-w-[200px]">
-                        {item.description || "No description provided"}
-                      </TableCell>
-                      <TableCell className="py-4 text-muted-foreground text-center">
-                        {new Intl.DateTimeFormat("en", { dateStyle: "short" }).format(new Date(item.created_at))}
-                      </TableCell>
-                      <TableCell className="py-4 text-center">
-                        <Badge variant="secondary" className="font-mono gap-1.5 px-2 bg-primary/10 text-primary hover:bg-primary/20 border-primary/20">
-                          <Server size={12} />
-                          {item.worker_count ?? 0} Nodes
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="pr-6 py-4 text-right">
-                        <ChevronRight className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors" size={16} />
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       {/* Edit Profile / Details Sheet */}
       <Sheet open={selectedPool !== null} onOpenChange={(open) => !open && setSelectedPool(null)}>
         <SheetContent className="w-full border-border bg-card sm:max-w-md flex flex-col h-full overflow-hidden p-0">
           {selectedPool && (
             <>
-              <SheetHeader className="border-b border-border p-6 shrink-0 bg-muted/20">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
-                    <Layers size={20} />
-                  </div>
-                </div>
+              <SheetHeader className="border-b border-border p-6 shrink-0">
                 <SheetTitle className="text-xl font-black">
                   {selectedPool.name}
                 </SheetTitle>
                 <SheetDescription className="mt-1.5 leading-relaxed">
-                  Worker Pool ID: {selectedPool.id.substring(0, 8)}...
+                  {selectedPool.description || "Worker pool for job routing"}
                 </SheetDescription>
               </SheetHeader>
               
@@ -406,103 +334,83 @@ export function PoolsTab({
                   />
                 ) : (
                   <div className="space-y-5 flex flex-col flex-1">
-                    <div className="grid gap-4 pt-2">
+                    <div className="grid gap-4 pt-1">
                       <div className="flex items-start gap-3">
                         <Layers className="mt-0.5 text-primary" size={16} />
                         <div>
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</p>
-                          <p className="mt-1 break-words text-sm text-foreground/90 leading-relaxed">
+                          <p className="text-xs text-muted-foreground">Description</p>
+                          <p className="mt-1 break-words text-sm text-foreground leading-relaxed">
                             {selectedPool.description || "No description provided"}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-start gap-3 mt-2">
+                      <div className="flex items-start gap-3">
                         <CalendarDays className="mt-0.5 text-primary" size={16} />
                         <div>
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Created</p>
-                          <p className="mt-1 text-sm text-foreground/90">{formatDate(selectedPool.created_at)}</p>
+                          <p className="text-xs text-muted-foreground">Date Created</p>
+                          <p className="mt-1 text-sm text-foreground">{formatDate(selectedPool.created_at)}</p>
                         </div>
                       </div>
-                      <div className="flex items-start gap-3 mt-2">
-                        <CalendarDays className="mt-0.5 text-primary" size={16} />
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Updated</p>
-                          <p className="mt-1 text-sm text-foreground/90">{formatDate(selectedPool.updated_at)}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3 mt-4 pt-4 border-t border-border">
+                      <div className="flex items-start gap-3 border-t border-border pt-4">
                         <Server className="mt-0.5 text-primary" size={16} />
                         <div className="w-full">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Worker Machines ({selectedPool.worker_count ?? 0})</p>
+                          <p className="text-xs text-muted-foreground mb-2">Worker Nodes ({selectedPool.worker_count ?? 0})</p>
                           {selectedPool.workers && selectedPool.workers.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-1.5">
                               {selectedPool.workers.map((workerName: string) => (
-                                <span key={workerName} className="font-mono bg-muted/50 border border-border px-2 py-1 rounded text-xs">
+                                <Badge key={workerName} variant="secondary" className="font-mono text-xs px-2 py-0.5">
                                   {workerName}
-                                </span>
+                                </Badge>
                               ))}
                             </div>
                           ) : (
-                            <p className="text-sm text-muted-foreground">No worker machines assigned to this pool.</p>
+                            <p className="text-sm text-muted-foreground">No worker nodes assigned to this pool.</p>
                           )}
                         </div>
                       </div>
                     </div>
 
                     <div className="border-t border-border pt-5 mt-4">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</p>
-                      <div className="mt-3 grid grid-cols-1 gap-2">
+                      <p className="text-xs uppercase text-muted-foreground">Actions</p>
+                      <div className="mt-3">
                         <Button
                           variant="outline"
-                          className="w-full justify-start"
+                          className="w-full"
                           onClick={() => setSheetMode("edit")}
                         >
-                          <Pencil size={15} className="mr-3" />
-                          Edit Pool Configuration
+                          <Pencil size={15} className="mr-2" />
+                          Edit Pool
                         </Button>
                       </div>
                     </div>
 
                     <div className="pt-6 mt-auto">
-                      <AlertDialog>
-                        <AlertDialogTrigger
-                          render={
-                            <Button
-                              variant="ghost"
-                              className="w-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors justify-start"
-                              disabled={deletingPoolId === selectedPool.id}
-                            />
-                          }
-                        >
-                          {deletingPoolId === selectedPool.id ? (
-                            <Loader2 className="animate-spin mr-3" size={15} />
-                          ) : (
-                            <Trash2 size={15} className="mr-3" />
-                          )}
-                          Delete Worker Pool
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Worker Pool</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete{" "}
-                              <span className="font-semibold text-foreground">
-                                {selectedPool.name}
-                              </span>
-                              ? This will not affect active jobs, but nodes in this pool will no longer be targeted using this pool name.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              variant="destructive"
-                              onClick={() => handleDelete(selectedPool)}
-                            >
-                              Delete Pool
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <ConfirmDialog
+                        variant="destructive"
+                        title="Delete Worker Pool"
+                        description={
+                          <>
+                            Are you sure you want to delete{" "}
+                            <span className="font-semibold text-foreground">
+                              {selectedPool.name}
+                            </span>
+                            ? This will not affect active jobs, but nodes in this pool will no longer be targeted using this pool name.
+                          </>
+                        }
+                        confirmText="Delete Pool"
+                        isLoading={deletingPoolId === selectedPool.id}
+                        onConfirm={() => handleDelete(selectedPool)}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            className="w-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                            disabled={deletingPoolId === selectedPool.id}
+                          >
+                            <Trash2 size={15} className="mr-2" />
+                            Delete Worker Pool
+                          </Button>
+                        }
+                      />
                     </div>
                   </div>
                 )}
@@ -520,7 +428,7 @@ export function PoolsTab({
         }}
       >
         <SheetContent className="w-full border-border bg-card sm:max-w-md flex flex-col h-full overflow-hidden p-0">
-          <SheetHeader className="border-b border-border p-6 shrink-0 bg-muted/20">
+          <SheetHeader className="border-b border-border p-6 shrink-0">
             <SheetTitle className="text-xl font-black">
               Add New Pool
             </SheetTitle>

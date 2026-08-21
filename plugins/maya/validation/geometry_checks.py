@@ -1,4 +1,3 @@
-import math
 
 import maya.cmds as cmds
 

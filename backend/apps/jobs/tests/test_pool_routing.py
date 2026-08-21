@@ -14,11 +14,11 @@ from django.core.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from apps.jobs.models import TaskState, Job, JobState
+from apps.jobs.models import Job, JobState, TaskState
 from apps.jobs.services import create_job_with_layers
 from apps.workers.models import WorkerNode, WorkerPool
 
-from .factories import TaskFactory, JobFactory
+from .factories import JobFactory, TaskFactory
 
 pytestmark = pytest.mark.django_db
 

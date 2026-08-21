@@ -1,6 +1,5 @@
 from __future__ import absolute_import
 
-import re
 
 from .errors import ApiContractError
 from .version import API_CONTRACT_VERSION
@@ -52,14 +51,14 @@ SUBMITTER_ENDPOINTS = {
         "path": "/api/jobs/{job_pk}/layers/{id}/",
         "owner": "maya_submitter",
     },
-    "job_layer_frames": {
+    "job_layer_tasks": {
         "method": "GET",
-        "path": "/api/jobs/{job_pk}/layers/{layer_pk}/frames/",
+        "path": "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/",
         "owner": "maya_submitter",
     },
-    "job_layer_frame_detail": {
+    "job_layer_task_detail": {
         "method": "GET",
-        "path": "/api/jobs/{job_pk}/layers/{layer_pk}/frames/{id}/",
+        "path": "/api/jobs/{job_pk}/layers/{layer_pk}/tasks/{id}/",
         "owner": "maya_submitter",
     },
     "workers": {
@@ -85,14 +84,17 @@ SUBMITTER_ENDPOINTS = {
 }
 
 
+# These endpoints are deliberately not exposed by the Maya submitter. They are
+# listed here so development audits can verify the worker/backend contract
+# without accidentally granting task lifecycle ownership to the DCC plugin.
 WORKER_OWNED_ENDPOINTS = {
-    "/api/workers/ping/",
-    "/api/frames/dispatch/",
-    "/api/frames/{id}/start/",
-    "/api/frames/{id}/succeed/",
-    "/api/frames/{id}/fail/",
-    "/api/frames/{id}/skip/",
-    "/api/frames/{id}/checkpoint/",
+    "/api/workers/ping/": "POST",
+    "/api/tasks/dispatch/": "POST",
+    "/api/tasks/{id}/start/": "POST",
+    "/api/tasks/{id}/succeed/": "POST",
+    "/api/tasks/{id}/fail/": "POST",
+    "/api/tasks/{id}/skip/": "POST",
+    "/api/tasks/{id}/checkpoint/": "POST",
 }
 
 
@@ -104,6 +106,10 @@ REQUIRED_CONFIG_ENDPOINTS = (
     "job_pause",
     "job_resume",
     "job_delete",
+    "job_layers",
+    "job_layer_detail",
+    "job_layer_tasks",
+    "job_layer_task_detail",
     "workers",
     "worker_detail",
     "pools",
@@ -121,21 +127,9 @@ _REQUIRED_PLACEHOLDERS = {
     "pool_detail": ("pool_id",),
     "job_layers": ("job_id",),
     "job_layer_detail": ("job_id", "layer_id"),
-    "job_layer_frames": ("job_id", "layer_id"),
-    "job_layer_frame_detail": ("job_id", "layer_id", "frame_id"),
+    "job_layer_tasks": ("job_id", "layer_id"),
+    "job_layer_task_detail": ("job_id", "layer_id", "task_id"),
 }
-
-
-_FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
-def validate_extension_field(value, setting_name):
-    value = str(value or "").strip()
-    if value and not _FIELD_NAME.match(value):
-        raise ApiContractError(
-            "{} must be a valid JSON field name.".format(setting_name)
-        )
-    return value
 
 
 def validate_endpoint_config(endpoints):
@@ -182,20 +176,10 @@ def contract_capabilities(config):
         "job_create_returns_id": bool(
             contract.get("job_create_returns_id", False)
         ),
-        "layer_pool_ids_field": validate_extension_field(
-            contract.get("layer_pool_ids_field", ""),
-            "contract.layer_pool_ids_field",
+        "job_pool_targeting": bool(
+            contract.get("job_pool_targeting", True)
         ),
-        "job_start_suspended_field": validate_extension_field(
-            contract.get("job_start_suspended_field", ""),
-            "contract.job_start_suspended_field",
-        ),
-        "job_machine_limit_field": validate_extension_field(
-            contract.get("job_machine_limit_field", ""),
-            "contract.job_machine_limit_field",
-        ),
-        "job_dependencies_field": validate_extension_field(
-            contract.get("job_dependencies_field", ""),
-            "contract.job_dependencies_field",
+        "job_dependencies": bool(
+            contract.get("job_dependencies", True)
         ),
     }

@@ -4,9 +4,12 @@ import type { components } from "./schema";
 export type DashboardView =
   | "Dashboard"
   | "Job Queue"
+  | "Worker Nodes"
+  | "Worker Pools"
   | "User Management"
   | "Node Pool"
-  | "AI Rules"
+  | "Infrastructure"
+  | "AI Scheduler"
   | "Settings";
 
 export interface SidebarItem {
@@ -63,10 +66,45 @@ export interface TelemetryPoint {
   x: number;
   vram: number;
   cpu: number;
+  ram?: number;
+  active_tasks?: number;
+  timestamp?: string;
 }
 
 export interface TelemetryMetrics {
-  vramUsage: number;
   cpuLoad: number;
+  memoryUsage: number;
+  vramUsage: number;
+  ramUsage?: number;
   points: TelemetryPoint[];
 }
+
+export interface ClusterTelemetryHistory {
+  range: string;
+  cpu_load: number;
+  vram_usage: number;
+  ram_usage?: number;
+  peak_cpu?: number;
+  peak_vram?: number;
+  peak_ram?: number;
+  total_snapshots?: number;
+  points: TelemetryPoint[];
+}
+export interface FarmEvent {
+  readonly id: string;
+  readonly event_type: string;
+  readonly severity: "INFO" | "WARNING" | "ERROR" | "CRITICAL" | string;
+  readonly actor_username?: string | null;
+  readonly target_type?: string | null;
+  readonly target_id?: string | null;
+  readonly target_name?: string | null;
+  readonly target_display?: string | null;
+  readonly message: string;
+  readonly payload?: unknown;
+  readonly created_at: string;
+}
+export type DispatchTrace = components["schemas"]["DispatchTrace"];
+export type TaskLogDetail = components["schemas"]["TaskLogDetail"];
+export type TaskLogList = components["schemas"]["TaskLogList"];
+export type RecentDispatchLog = components["schemas"]["RecentDispatchLog"];
+

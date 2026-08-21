@@ -1,8 +1,14 @@
 import createClient from "openapi-fetch";
 import type { paths, components } from "@/types/schema";
 import type {
+  ClusterTelemetryHistory,
+  DispatchTrace,
+  FarmEvent,
   LogEntry,
+  RecentDispatchLog,
   RenderJob,
+  TaskLogDetail,
+  TaskLogList,
   TelemetryMetrics,
   TelemetryPoint,
 } from "@/types/dashboard";
@@ -249,12 +255,20 @@ export function readAuthSession(): AuthSession | null {
 
 export function persistAuthSession(session: AuthSession): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  try {
+    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // Storage access may be blocked or restricted
+  }
 }
 
 export function clearAuthSession(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  try {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  } catch {
+    // Storage access may be blocked or restricted
+  }
 }
 
 function getApiHeaders(): HeadersInit {
@@ -561,7 +575,10 @@ export async function getLayerTasks(
     {
       params: {
         path: { job_pk: jobId, layer_pk: layerId },
-        query: state ? { state } : undefined,
+        query: {
+          ...(state ? { state } : {}),
+          page_size: 5000,
+        } as any,
       },
     },
   );
@@ -570,7 +587,7 @@ export async function getLayerTasks(
     throw new Error(JSON.stringify(error));
   }
 
-  return data?.results || [];
+  return (Array.isArray(data) ? data : data?.results || []) as TaskList[];
 }
 
 export async function skipTask(taskId: string): Promise<TaskDetail> {
@@ -583,6 +600,56 @@ export async function skipTask(taskId: string): Promise<TaskDetail> {
   }
 
   return data;
+}
+
+export async function retryTask(taskId: string): Promise<{ status: string; previous_state?: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}/retry/`, {
+    method: "POST",
+    headers: getApiHeaders(),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail || errorBody.message || `Request failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function requeueFailedJobTasks(
+  jobId: string
+): Promise<{ requeued_count: number; status: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/requeue_failed/`, {
+    method: "POST",
+    headers: getApiHeaders(),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail || errorBody.message || `Request failed with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function requeueFailedLayerTasks(
+  jobId: string,
+  layerId: string
+): Promise<{ requeued_count: number; status: string }> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/jobs/${jobId}/layers/${layerId}/requeue_failed/`,
+    {
+      method: "POST",
+      headers: getApiHeaders(),
+    }
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail || errorBody.message || `Request failed with status ${response.status}`);
+  }
+
+  return response.json();
 }
 
 export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
@@ -611,7 +678,22 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
   };
 }
 
-function getRendererName(engine: string): string {
+// ── Layer Command Builder ───────────────────────────────────────────────────
+
+export interface LayerCommandBuilderOptions {
+  engine: string;
+  renderer?: string;
+  scenePath?: string;
+  startFrame?: string | number;
+  endFrame?: string | number;
+  frameStep?: string | number;
+  renderNode?: string;
+  camera?: string;
+  outputPath?: string;
+  useDynamicTokens?: boolean;
+}
+
+export function getRendererName(engine: string): string {
   const normalizedEngine = engine.toLowerCase();
 
   if (normalizedEngine.includes("arnold")) return "arnold";
@@ -628,32 +710,97 @@ function getRendererName(engine: string): string {
   return engine.trim().toLowerCase() || "default_renderer";
 }
 
+export function generateLayerCommand(options: LayerCommandBuilderOptions): string {
+  const {
+    engine,
+    renderer = "",
+    scenePath = "",
+    startFrame = "1",
+    endFrame = "100",
+    frameStep = "1",
+    renderNode = "",
+    camera = "",
+    outputPath = "",
+    useDynamicTokens = true,
+  } = options;
+
+  const normalized = engine.toLowerCase();
+  const sceneToken = useDynamicTokens ? (scenePath ? `"${scenePath}"` : '"{SCENE_PATH}"') : scenePath || "scene";
+  const startToken = useDynamicTokens ? "{START_FRAME}" : String(startFrame);
+  const endToken = useDynamicTokens ? "{END_FRAME}" : String(endFrame);
+  const stepToken = useDynamicTokens ? "{FRAME_STEP}" : String(frameStep);
+  const frameToken = useDynamicTokens ? "{FRAME}" : String(startFrame);
+  const nodeToken = useDynamicTokens ? (renderNode ? `"${renderNode}"` : '"{RENDER_NODE}"') : renderNode || "";
+  const camToken = useDynamicTokens ? (camera ? `"${camera}"` : '"{CAMERA}"') : camera || "";
+
+  // Houdini (Karma / Mantra / Hython ROP)
+  if (normalized.includes("houdini") || normalized.includes("karma") || normalized.includes("mantra")) {
+    if (normalized.includes("husk")) {
+      const activeRenderer = renderer || "Karma XPU";
+      return `husk --renderer "${activeRenderer}" --frame ${frameToken} ${sceneToken}`;
+    }
+    const ropParam = renderNode ? ` --rop ${nodeToken}` : ' --rop "{RENDER_NODE}"';
+    return `"hython" -m renderhive_houdini.worker.render_rop --scene ${sceneToken}${ropParam} --frame ${frameToken}`;
+  }
+
+  // Maya (Arnold / V-Ray / Redshift)
+  if (normalized.includes("maya")) {
+    const activeRenderer = renderer || "arnold";
+    const parts = ["Render.exe", "-r", activeRenderer, "-s", startToken, "-e", endToken, "-b", stepToken];
+    if (camera) {
+      parts.push("-cam", camToken);
+    }
+    if (outputPath) {
+      parts.push("-rd", `"${outputPath}"`);
+    }
+    parts.push(sceneToken);
+    return parts.join(" ");
+  }
+
+  // Blender (Cycles / Eevee)
+  if (normalized.includes("blender") || normalized.includes("cycles")) {
+    const activeEngine = (renderer || "CYCLES").toUpperCase();
+    return `blender -b ${sceneToken} -E ${activeEngine} -s ${startToken} -e ${endToken} -a`;
+  }
+
+  // Unreal Engine 5 (MRQ)
+  if (normalized.includes("unreal") || normalized.includes("mrq")) {
+    return `ue-mrq-render --scene ${sceneToken} --frames ${startToken}-${endToken}`;
+  }
+
+  // Nuke
+  if (normalized.includes("nuke")) {
+    const nodeArg = renderNode ? ` -X "${renderNode}"` : " -x";
+    return `nuke${nodeArg} -F ${startToken}-${endToken} ${sceneToken}`;
+  }
+
+  // Standalone Arnold Kick
+  if (normalized.includes("kick") || normalized.includes("arnold kick")) {
+    return `kick -i ${sceneToken} -frame ${frameToken}`;
+  }
+
+  // Standalone V-Ray
+  if (normalized.includes("vray") || normalized.includes("v-ray standalone")) {
+    return `vray -sceneFile=${sceneToken} -frames=${frameToken}`;
+  }
+
+  // Generic fallback
+  return `render --renderer ${renderer || getRendererName(engine)} --frames ${startToken}-${endToken} ${sceneToken}`;
+}
+
 export function getDefaultRenderCommand(
   engine: string,
   startFrame: string,
   endFrame: string,
 ): string {
-  const frameRange = `${startFrame}-${endFrame}`;
-  const renderer = getRendererName(engine);
-
-  if (renderer === "karma" || renderer === "mantra") {
-    return `hython render.py --renderer ${renderer} --frames ${frameRange}`;
-  }
-
-  if (renderer === "arnold" || renderer === "vray") {
-    return `render -renderer ${renderer} -f ${frameRange}`;
-  }
-
-  if (renderer === "mrq") {
-    return `ue-mrq-render --frames ${frameRange}`;
-  }
-
-  if (renderer === "cycles") {
-    return `blender -b scene.blend -E CYCLES -s ${startFrame} -e ${endFrame} -a`;
-  }
-
-  return `render --renderer ${renderer} --frames ${frameRange}`;
+  return generateLayerCommand({
+    engine,
+    startFrame,
+    endFrame,
+    useDynamicTokens: true,
+  });
 }
+
 
 
 
@@ -935,45 +1082,457 @@ export function deriveLogsFromJobs(jobs: RenderJob[]): LogEntry[] {
   }));
 }
 
-export function deriveTelemetryFromJobs(jobs: RenderJob[]): TelemetryMetrics {
-  const totalJobs = jobs.length;
-  const activeJobs = jobs.filter((job) => job.status === "Rendering").length;
-  const averageProgress =
-    totalJobs > 0
-      ? Math.round(jobs.reduce((sum, job) => sum + job.progress, 0) / totalJobs)
-      : 0;
+export function computeFarmEfficiency(jobs: RenderJob[]): {
+  efficiency: number;
+  completedJobs: number;
+  failedJobs: number;
+} {
+  const completedJobs = jobs.filter((job) => job.status === "Completed").length;
+  const failedJobs = jobs.filter((job) => job.status === "Failed").length;
+  const totalEvaluated = completedJobs + failedJobs;
 
-  const vramUsage = Math.min(
-    100,
-    28 + activeJobs * 14 + Math.round(averageProgress * 0.25),
-  );
-  const cpuLoad = Math.min(
-    100,
-    18 + activeJobs * 18 + Math.round(averageProgress * 0.2),
-  );
-
-  const points: TelemetryPoint[] = Array.from({ length: 14 }, (_, index) => {
-    const x = Math.round((index / 13) * 100);
-    const taper = Math.abs(index - 10) * 2;
-
+  if (totalEvaluated === 0) {
     return {
-      x,
-      vram: Math.max(0, Math.min(100, vramUsage - taper + (index % 3) * 4)),
-      cpu: Math.max(0, Math.min(100, cpuLoad - taper + (index % 2) * 5)),
+      efficiency: 100,
+      completedJobs,
+      failedJobs,
     };
-  });
+  }
 
   return {
-    vramUsage,
-    cpuLoad,
-    points,
+    efficiency: Math.round((completedJobs / totalEvaluated) * 100),
+    completedJobs,
+    failedJobs,
   };
+}
+
+export function computeClusterTelemetry(
+  jobs: RenderJob[],
+  workers: WorkerNode[],
+  previousPoints: TelemetryPoint[] = []
+): TelemetryMetrics {
+  const onlineWorkers = workers.filter(
+    (w) => w.status === "ONLINE" || w.status === "RENDERING"
+  );
+  const totalOnlineCores = onlineWorkers.reduce((sum, w) => sum + (w.cores || 1), 0);
+  const totalOnlineMemoryMb = onlineWorkers.reduce((sum, w) => sum + (w.memory_mb || 4096), 0);
+
+  // Total active running tasks across the entire farm
+  const activeTasks = jobs.reduce(
+    (sum, j) => sum + (j.running_tasks ?? (j.status === "Rendering" ? 1 : 0)),
+    0
+  );
+
+  // 1. Calculate Real CPU Cluster Load
+  let cpuLoad = 0;
+  const workersWithCpu = onlineWorkers.filter(
+    (w) => typeof (w.system_info as Record<string, unknown> | undefined)?.cpu_percent === "number"
+  );
+  if (workersWithCpu.length > 0) {
+    cpuLoad = Math.round(
+      workersWithCpu.reduce(
+        (sum, w) => sum + ((w.system_info as Record<string, unknown>).cpu_percent as number),
+        0
+      ) / workersWithCpu.length
+    );
+  } else if (totalOnlineCores > 0) {
+    cpuLoad = Math.min(100, Math.round((activeTasks / totalOnlineCores) * 100));
+  }
+
+  // 2. Calculate Real System Host Memory (RAM) Utilization
+  let memoryUsage = 0;
+  const workersWithMem = onlineWorkers.filter(
+    (w) => typeof (w.system_info as Record<string, unknown> | undefined)?.memory_percent === "number"
+  );
+  if (workersWithMem.length > 0) {
+    memoryUsage = Math.round(
+      workersWithMem.reduce(
+        (sum, w) => sum + ((w.system_info as Record<string, unknown>).memory_percent as number),
+        0
+      ) / workersWithMem.length
+    );
+  } else if (totalOnlineMemoryMb > 0) {
+    memoryUsage = Math.min(100, Math.round(((activeTasks * 2048) / totalOnlineMemoryMb) * 100));
+  }
+
+  // 3. Calculate Real GPU VRAM Utilization
+  let vramUsage = 0;
+  const workersWithVram = onlineWorkers.filter((w) => {
+    const sys = w.system_info as Record<string, unknown> | undefined;
+    return typeof sys?.vram_percent === "number" || typeof sys?.gpu_vram_used_mb === "number";
+  });
+  if (workersWithVram.length > 0) {
+    vramUsage = Math.round(
+      workersWithVram.reduce((sum, w) => {
+        const sys = w.system_info as Record<string, unknown>;
+        if (typeof sys.vram_percent === "number") {
+          return sum + (sys.vram_percent as number);
+        }
+        const used = (sys.gpu_vram_used_mb as number) || 0;
+        const total = (sys.gpu_vram_mb as number) || 1;
+        return sum + (used / total) * 100;
+      }, 0) / workersWithVram.length
+    );
+  } else if (totalOnlineMemoryMb > 0) {
+    vramUsage = Math.min(100, Math.round(((activeTasks * 3584) / totalOnlineMemoryMb) * 100));
+  }
+
+  // 4. Rolling timeseries points
+  const maxPoints = 15;
+  let nextPoints: TelemetryPoint[];
+
+  if (previousPoints.length === 0) {
+    nextPoints = Array.from({ length: maxPoints }, (_, i) => ({
+      x: Math.round((i / (maxPoints - 1)) * 100),
+      cpu: cpuLoad,
+      ram: memoryUsage,
+      vram: vramUsage,
+      active_tasks: activeTasks,
+    }));
+  } else {
+    const updated = [
+      ...previousPoints.slice(-(maxPoints - 1)),
+      { x: 100, cpu: cpuLoad, ram: memoryUsage, vram: vramUsage, active_tasks: activeTasks },
+    ];
+    nextPoints = updated.map((pt, index) => ({
+      x: Math.round((index / (updated.length - 1)) * 100),
+      cpu: pt.cpu,
+      ram: pt.ram ?? memoryUsage,
+      vram: pt.vram,
+      active_tasks: pt.active_tasks ?? activeTasks,
+    }));
+  }
+
+  return {
+    cpuLoad,
+    memoryUsage,
+    ramUsage: memoryUsage,
+    vramUsage,
+    points: nextPoints,
+  };
+}
+
+export function deriveTelemetryFromJobs(jobs: RenderJob[]): TelemetryMetrics {
+  return computeClusterTelemetry(jobs, []);
+}
+
+// ── AI Dispatch Log API ────────────────────────────────────────────────────────
+
+export interface ScoreBreakdown {
+  job_priority?: number;
+  resource_fit?: number;
+  failure_penalty?: number;
+  dispatch_order?: number;
+  _floor_clamp?: number;
+  ai_adjustment?: number;
+  ai_reason?: string;
+}
+
+export interface DispatchLogEntry {
+  id: string;
+  name: string;
+  worker_name: string | null;
+  started_at: string | null;
+  state: string;
+  job_id: string;
+  job_name: string;
+  job_priority: number;
+  layer_name: string;
+  last_score_breakdown: ScoreBreakdown;
+  ai_was_invoked: boolean;
+  ai_reason: string;
+  final_score: number;
+}
+
+export async function fetchRecentDispatches(limit = 30): Promise<DispatchLogEntry[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/tasks/recent-dispatches/?limit=${limit}`,
+    { cache: "no-store", headers: getApiHeaders() },
+  );
+
+  if (!response.ok) {
+    throw new Error(`fetchRecentDispatches: ${response.status}`);
+  }
+
+  return response.json() as Promise<DispatchLogEntry[]>;
+}
+
+// ── Telemetry & Historical Analytics ──────────────────────────────────────────
+
+export type { ClusterTelemetryHistory };
+
+export async function fetchClusterTelemetryHistory(
+  range: "1h" | "24h" | "7d" = "1h",
+  pool?: string,
+  worker?: string
+): Promise<ClusterTelemetryHistory> {
+  const params = new URLSearchParams({ range });
+  if (pool) params.set("pool", pool);
+  if (worker) params.set("worker", worker);
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/cluster/history/?${params.toString()}`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (!response.ok) {
+    throw new Error(`fetchClusterTelemetryHistory: ${response.status}`);
+  }
+
+  return response.json() as Promise<ClusterTelemetryHistory>;
+}
+
+export async function fetchFarmEvents(
+  limit = 50,
+  severity?: string,
+  eventType?: string
+): Promise<FarmEvent[]> {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", limit.toString());
+  if (severity && severity !== "ALL") params.set("severity", severity);
+  if (eventType) params.set("event_type", eventType);
+
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const response = await fetch(`${API_BASE_URL}/api/telemetry/events/${qs}`, {
+    cache: "no-store",
+    headers: getApiHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`fetchFarmEvents: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (Array.isArray(data) ? data : data.results || []) as FarmEvent[];
+}
+
+export async function fetchDispatchTraces(
+  limit = 50,
+  aiInvoked?: boolean
+): Promise<DispatchTrace[]> {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", limit.toString());
+  if (aiInvoked !== undefined) params.set("ai_invoked", aiInvoked ? "true" : "false");
+
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const response = await fetch(`${API_BASE_URL}/api/telemetry/dispatches/${qs}`, {
+    cache: "no-store",
+    headers: getApiHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`fetchDispatchTraces: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (Array.isArray(data) ? data : data.results || []) as DispatchTrace[];
+}
+
+export async function fetchTaskExecutionLogs(
+  taskId: string
+): Promise<TaskLogList[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/tasks/${taskId}/logs/`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (response.status === 404) {
+    return [];
+  }
+
+  if (!response.ok) {
+    throw new Error(`fetchTaskExecutionLogs: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (Array.isArray(data) ? data : data.results || []) as TaskLogList[];
+}
+
+export async function fetchTaskExecutionLogById(
+  logId: string
+): Promise<TaskLogDetail | null> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/logs/${logId}/`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`fetchTaskExecutionLogById: ${response.status}`);
+  }
+
+  return response.json() as Promise<TaskLogDetail>;
+}
+
+export async function fetchTaskExecutionLogLatest(
+  taskId: string
+): Promise<TaskLogDetail | null> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/tasks/${taskId}/logs/latest/`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`fetchTaskExecutionLogLatest: ${response.status}`);
+  }
+
+  return response.json() as Promise<TaskLogDetail>;
+}
+
+export async function fetchJobExecutionLogs(
+  jobId: string
+): Promise<TaskLogList[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/telemetry/jobs/${jobId}/logs/`,
+    { cache: "no-store", headers: getApiHeaders() }
+  );
+
+  if (!response.ok) {
+    throw new Error(`fetchJobExecutionLogs: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return (Array.isArray(data) ? data : data.results || []) as TaskLogList[];
+}
+
+
+// ── AI Scheduler Health ────────────────────────────────────────────────────────
+
+export const AI_SCHEDULER_URL = (
+  process.env.NEXT_PUBLIC_AI_SCHEDULER_URL || "http://localhost:8001"
+).replace(/\/+$/, "");
+
+export interface AiHealthStatus {
+  status: "ok" | "unreachable";
+  model_loaded: boolean;
+  prompt_template: string;
+  model_path: string | null;
+  n_ctx: number;
+  max_tasks_per_request: number;
+}
+
+export async function fetchAiHealth(): Promise<AiHealthStatus> {
+  try {
+    const response = await fetch(`${AI_SCHEDULER_URL}/health`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json() as Promise<AiHealthStatus>;
+  } catch {
+    return {
+      status: "unreachable",
+      model_loaded: false,
+      prompt_template: "unknown",
+      model_path: null,
+      n_ctx: 0,
+      max_tasks_per_request: 0,
+    };
+  }
+}
+
+// ── AI Model Management ────────────────────────────────────────────────────────
+
+export interface CuratedModel {
+  name: string;
+  filename: string;
+  url: string;
+  template: string;
+  size: string;
+}
+
+export interface LocalModel {
+  filename: string;
+  size_bytes: number;
+}
+
+export interface ModelListResponse {
+  curated: CuratedModel[];
+  local: LocalModel[];
+  active_path: string;
+}
+
+export interface DownloadProgress {
+  is_downloading: boolean;
+  filename: string;
+  bytes_downloaded: number;
+  total_bytes: number;
+  speed_bps: number;
+  error: string | null;
+}
+
+async function aiFetch(endpoint: string, options?: RequestInit): Promise<Response> {
+  const res = await fetch(`${AI_SCHEDULER_URL}${endpoint}`, {
+    cache: "no-store",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `AI Service Error: ${res.status}`);
+  }
+
+  return res;
+}
+
+export async function fetchModels(): Promise<ModelListResponse> {
+  const res = await aiFetch("/api/v1/models");
+  return res.json() as Promise<ModelListResponse>;
+}
+
+export async function startModelDownload(url: string, filename: string): Promise<void> {
+  await aiFetch("/api/v1/models/download", {
+    method: "POST",
+    body: JSON.stringify({ url, filename }),
+  });
+}
+
+export async function fetchDownloadProgress(): Promise<DownloadProgress> {
+  const res = await aiFetch("/api/v1/models/download/progress");
+  return res.json() as Promise<DownloadProgress>;
+}
+
+export async function cancelModelDownload(): Promise<void> {
+  await aiFetch("/api/v1/models/download/cancel", { method: "DELETE" });
+}
+
+export async function loadAiModel(filename: string, prompt_template: string): Promise<void> {
+  await aiFetch("/api/v1/models/load", {
+    method: "POST",
+    body: JSON.stringify({ filename, prompt_template }),
+  });
+}
+
+export async function unloadAiModel(): Promise<void> {
+  await aiFetch("/api/v1/models/unload", { method: "POST" });
+}
+
+export async function deleteAiModel(filename: string): Promise<void> {
+  await aiFetch(`/api/v1/models/${encodeURIComponent(filename)}`, { method: "DELETE" });
 }
 
 // ── Worker Pool API functions ──────────────────────────────────────────────────
 
-export type WorkerPool = components["schemas"]["WorkerPool"];
-export type CreateWorkerPoolPayload = Omit<WorkerPool, "id" | "created_at" | "updated_at">;
+export type WorkerPool = components["schemas"]["WorkerPool"] & {
+  online_worker_count?: number;
+  rendering_worker_count?: number;
+  workers?: string[];
+};
+export interface CreateWorkerPoolPayload {
+  name: string;
+  description?: string;
+}
 export type UpdateWorkerPoolPayload = Partial<CreateWorkerPoolPayload>;
 
 export async function getPools(): Promise<WorkerPool[]> {
@@ -984,7 +1543,7 @@ export async function getPools(): Promise<WorkerPool[]> {
 
 export async function createPool(payload: CreateWorkerPoolPayload): Promise<WorkerPool> {
   const { data, error } = await client.POST("/api/pools/", {
-    body: payload as any,
+    body: payload as unknown as components["schemas"]["WorkerPool"],
   });
   if (error) throw new Error(JSON.stringify(error));
   return data as unknown as WorkerPool;
@@ -993,7 +1552,7 @@ export async function createPool(payload: CreateWorkerPoolPayload): Promise<Work
 export async function updatePool(poolId: string, payload: UpdateWorkerPoolPayload): Promise<WorkerPool> {
   const { data, error } = await client.PATCH("/api/pools/{id}/", {
     params: { path: { id: poolId } },
-    body: payload as any,
+    body: payload as unknown as components["schemas"]["PatchedWorkerPool"],
   });
   if (error) throw new Error(JSON.stringify(error));
   return data as unknown as WorkerPool;
@@ -1024,4 +1583,18 @@ export async function getNodes(): Promise<WorkerNode[]> {
   if (error) throw new Error(JSON.stringify(error));
   return data?.results || [];
 }
+
+/**
+ * Pings the lightweight API health endpoint to measure pure network/HTTP roundtrip latency.
+ */
+export async function pingBackendLatency(): Promise<number> {
+  const start = performance.now();
+  const res = await fetch(`${API_BASE_URL}/api/health/`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("API unreachable");
+  return Math.max(1, Math.round(performance.now() - start));
+}
+
 

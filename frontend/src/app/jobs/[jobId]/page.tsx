@@ -3,28 +3,41 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { Pencil, RefreshCw, Trash2, Hash, LayoutList, Server, Folder, Layers, ShieldAlert, CheckCircle2, Clock, PlayCircle, PauseCircle, XCircle, Terminal, Calendar, Network } from "lucide-react";
+import { Pencil, RefreshCw, Trash2, Server, Layers, CheckCircle2, Clock, PlayCircle, PauseCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DependencyPanel } from "@/components/dashboard/DependencyPanel";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   abortJob,
   formatApiError,
   getJob,
   getJobLayers,
+  requeueFailedJobTasks,
   updateJob,
   readAuthSession,
   type JobDetail,
   type LayerList,
 } from "@/services/api";
+
+function formatRuntimeDuration(createdAt: string | null | undefined, stoppedAt: string | null | undefined): string {
+  if (!createdAt) return "—";
+  const start = new Date(createdAt).getTime();
+  const end = stoppedAt ? new Date(stoppedAt).getTime() : new Date().getTime();
+  const diffMins = Math.floor((end - start) / 60000);
+  if (diffMins < 1) return "< 1m";
+  const hours = Math.floor(diffMins / 60);
+  const mins = diffMins % 60;
+  return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+}
 
 const COUNTER_CONFIG = {
   ready_tasks: { label: "Ready Tasks", icon: Clock, color: "text-muted-foreground", bg: "bg-muted/30" },
@@ -82,6 +95,9 @@ export default function JobDetailPage() {
   const [layers, setLayers] = useState<LayerList[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isEditOpen, setIsEditOpen] = useState<boolean>(false);
+  const [isAbortConfirmOpen, setIsAbortConfirmOpen] = useState<boolean>(false);
+  const [isAborting, setIsAborting] = useState<boolean>(false);
+  const [isRequeuingFailed, setIsRequeuingFailed] = useState<boolean>(false);
   const [draft, setDraft] = useState({ visible_name: "", priority: 50, max_tasks_per_worker: 0 });
 
   const session = useMemo(() => readAuthSession(), []);
@@ -137,21 +153,38 @@ export default function JobDetailPage() {
   };
 
   const handleAbort = async (): Promise<void> => {
-    if (!window.confirm("Abort this job and remove all nested layers and tasks?")) return;
-
+    setIsAborting(true);
     try {
       await abortJob(jobId);
       toast.success("Job aborted");
-      router.push("/jobs");
+      setIsAbortConfirmOpen(false);
+      await loadJob();
     } catch (error) {
       toast.error("Abort failed", { description: formatApiError(error) });
+    } finally {
+      setIsAborting(false);
+    }
+  };
+
+  const handleRequeueFailed = async (): Promise<void> => {
+    setIsRequeuingFailed(true);
+    try {
+      const res = await requeueFailedJobTasks(jobId);
+      toast.success("Failed tasks requeued", {
+        description: `Requeued ${res.requeued_count} failed task(s) for execution.`,
+      });
+      await loadJob();
+    } catch (error) {
+      toast.error("Requeue failed", { description: formatApiError(error) });
+    } finally {
+      setIsRequeuingFailed(false);
     }
   };
 
   return (
     <div className="flex h-full flex-col bg-background font-sans text-foreground">
       <PageHeader
-        title={job?.visible_name ?? "Loading job..."}
+        title={job?.visible_name || job?.name || "Job Detail"}
         description={job ? `${job.project} / ${job.department} / ${job.user}` : "Fetching details..."}
         backTo="/jobs"
       >
@@ -159,13 +192,24 @@ export default function JobDetailPage() {
           <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
           Refresh
         </Button>
+        {job && job.failed_tasks > 0 && (
+          <Button
+            variant="outline"
+            onClick={() => void handleRequeueFailed()}
+            disabled={isRequeuingFailed}
+            className="gap-2 border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-amber-200"
+          >
+            <RefreshCw size={14} className={isRequeuingFailed ? "animate-spin" : ""} />
+            Requeue Failed ({job.failed_tasks})
+          </Button>
+        )}
         <Button variant="outline" onClick={() => setIsEditOpen(true)} disabled={!job} className="gap-2">
           <Pencil size={14} />
           Edit
         </Button>
         <Button
           variant="outline"
-          onClick={() => void handleAbort()}
+          onClick={() => setIsAbortConfirmOpen(true)}
           disabled={!job}
           className="gap-2 border-destructive/30 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
         >
@@ -233,8 +277,8 @@ export default function JobDetailPage() {
                 </CardHeader>
                 <CardContent className="p-4 flex flex-col gap-5">
                   <div className="flex flex-col gap-1.5 px-2">
-                    <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
-                      Command
+                    <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
+                      System Name
                     </div>
                     <div className="font-semibold font-mono text-xs break-all text-foreground/90" title={job.name}>
                       {job.name || "—"}
@@ -242,7 +286,7 @@ export default function JobDetailPage() {
                   </div>
 
                   <div className="flex flex-col gap-1.5 px-2">
-                    <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                    <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
                       Log Directory
                     </div>
                     <div className="font-semibold font-mono text-xs break-all text-foreground/90" title={job.log_directory}>
@@ -254,7 +298,7 @@ export default function JobDetailPage() {
 
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                     <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
                         Priority
                       </div>
                       <div className="font-semibold">
@@ -265,7 +309,7 @@ export default function JobDetailPage() {
                     </div>
 
                     <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
                         Max Tasks
                       </div>
                       <div className="font-semibold text-sm text-foreground/90 flex items-center gap-1.5">
@@ -274,7 +318,7 @@ export default function JobDetailPage() {
                     </div>
 
                     <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
                         Submit Time
                       </div>
                       <div className="font-semibold text-xs text-foreground/80">
@@ -283,31 +327,22 @@ export default function JobDetailPage() {
                     </div>
 
                     <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
                         Runtime
                       </div>
                       <div className="font-semibold text-xs text-foreground/80">
-                        {(() => {
-                          if (!job.created_at) return "—";
-                          const start = new Date(job.created_at).getTime();
-                          const end = job.stopped_at ? new Date(job.stopped_at).getTime() : Date.now();
-                          const diffMins = Math.floor((end - start) / 60000);
-                          if (diffMins < 1) return "< 1m";
-                          const hours = Math.floor(diffMins / 60);
-                          const mins = diffMins % 60;
-                          return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-                        })()}
+                        {formatRuntimeDuration(job.created_at, job.stopped_at)}
                       </div>
                     </div>
 
                     <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider">
+                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
                         Target Pools
                       </div>
                       <div className="font-semibold text-xs flex flex-wrap gap-1">
                         {job.included_pools?.length > 0 ? (
                           job.included_pools.map((pool) => (
-                            <Badge key={pool} variant="secondary" className="px-1.5 py-0 text-[10px]">
+                            <Badge key={pool} variant="secondary" className="px-2 py-0.5 text-xs font-medium">
                               {pool}
                             </Badge>
                           ))
@@ -387,20 +422,33 @@ export default function JobDetailPage() {
           <DialogContent className="border-border bg-surface">
             <DialogHeader>
               <DialogTitle>Edit Job Metadata</DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Update display name, scheduling priority, or worker concurrency limit.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Visible Name</Label>
-                <Input value={draft.visible_name} onChange={handleDraftChange("visible_name")} />
+                <Label htmlFor="job-visible-name">Visible Name</Label>
+                <Input
+                  id="job-visible-name"
+                  value={draft.visible_name}
+                  onChange={handleDraftChange("visible_name")}
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Priority</Label>
-                  <Input type="number" value={draft.priority} onChange={handleDraftChange("priority")} />
+                  <Label htmlFor="job-priority">Priority</Label>
+                  <Input
+                    id="job-priority"
+                    type="number"
+                    value={draft.priority}
+                    onChange={handleDraftChange("priority")}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>Max Tasks / Worker</Label>
+                  <Label htmlFor="job-max-tasks">Max Tasks / Worker</Label>
                   <Input
+                    id="job-max-tasks"
                     type="number"
                     value={draft.max_tasks_per_worker}
                     onChange={handleDraftChange("max_tasks_per_worker")}
@@ -416,6 +464,24 @@ export default function JobDetailPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Abort Confirmation Dialog */}
+        <ConfirmDialog
+          open={isAbortConfirmOpen}
+          onOpenChange={setIsAbortConfirmOpen}
+          variant="destructive"
+          title="Abort Render Job"
+          description={
+            <>
+              Are you sure you want to abort{" "}
+              <strong className="text-foreground">{job?.visible_name || job?.name}</strong>?<br />
+              This will cancel all running tasks and remove the job and all associated layers. This action cannot be undone.
+            </>
+          }
+          confirmText="Abort Job"
+          isLoading={isAborting}
+          onConfirm={handleAbort}
+        />
       </div>
     </div>
   );

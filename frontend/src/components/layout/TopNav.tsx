@@ -5,7 +5,7 @@ import Link from "next/link";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useTheme } from "@/components/common/ThemeProvider";
-import { API_BASE_URL } from "@/services/api";
+import { ClusterConnectionStatus } from "@/components/layout/ClusterConnectionStatus";
 
 export default function TopNav() {
   const { theme, toggleTheme } = useTheme();
@@ -13,18 +13,9 @@ export default function TopNav() {
 
   return (
     <header className="sticky top-0 z-40 flex w-full items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center gap-6 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-primary animate-pulse"></span>
-            <span className="hidden sm:inline">API:</span>{" "}
-            <span className="text-foreground">{API_BASE_URL.replace(/^https?:\/\//, "")}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#9E8EFF]"></span>
-            <span className="hidden sm:inline">Polling:</span>{" "}
-            <span className="text-foreground">7s</span>
-          </div>
-        </div>
+      <div className="flex items-center">
+        <ClusterConnectionStatus />
+      </div>
 
         <div className="relative flex-1 max-w-md mx-4 md:mx-6">
           <GlobalSearch />

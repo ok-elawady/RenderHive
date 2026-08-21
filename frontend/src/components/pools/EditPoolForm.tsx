@@ -2,7 +2,7 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Layers, Loader2, Save } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ interface EditPoolFormProps {
 
 export function EditPoolForm({ pool, onSubmit, onCancel, isSubmitting }: EditPoolFormProps) {
   const form = useForm<UpdatePoolFormValues>({
-    resolver: zodResolver(updatePoolSchema as any),
+    resolver: zodResolver(updatePoolSchema as never) as unknown as import("react-hook-form").Resolver<UpdatePoolFormValues>,
     mode: "onChange",
     defaultValues: {
       name: pool.name,
@@ -54,13 +54,7 @@ export function EditPoolForm({ pool, onSubmit, onCancel, isSubmitting }: EditPoo
         className="flex flex-col flex-1 h-full"
       >
         <div className="flex-1 space-y-6">
-          <div className="mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-                <Layers size={16} />
-              </div>
-              <h3 className="text-sm font-semibold text-foreground">Update Pool</h3>
-            </div>
+          <div>
             <div className="grid gap-4">
               <FormField
                 control={form.control}
@@ -105,13 +99,15 @@ export function EditPoolForm({ pool, onSubmit, onCancel, isSubmitting }: EditPoo
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={!form.formState.isDirty || isSubmitting}>
             {isSubmitting ? (
-              <Loader2 className="animate-spin mr-2" size={16} />
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Saving...
+              </>
             ) : (
-              <Save size={16} className="mr-2" />
+              "Save Changes"
             )}
-            {isSubmitting ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </form>

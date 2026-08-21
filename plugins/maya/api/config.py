@@ -26,7 +26,7 @@ from core.runtime_log import get_logger
 
 
 LOGGER = get_logger("config")
-CONFIG_SCHEMA_VERSION = 3
+CONFIG_SCHEMA_VERSION = 4
 
 DEFAULT_CONFIG = {
     "schema_version": CONFIG_SCHEMA_VERSION,
@@ -56,8 +56,8 @@ DEFAULT_CONFIG = {
         "job_delete": "/api/jobs/{job_id}/",
         "job_layers": "/api/jobs/{job_id}/layers/",
         "job_layer_detail": "/api/jobs/{job_id}/layers/{layer_id}/",
-        "job_layer_frames": "/api/jobs/{job_id}/layers/{layer_id}/frames/",
-        "job_layer_frame_detail": "/api/jobs/{job_id}/layers/{layer_id}/frames/{frame_id}/",
+        "job_layer_tasks": "/api/jobs/{job_id}/layers/{layer_id}/tasks/",
+        "job_layer_task_detail": "/api/jobs/{job_id}/layers/{layer_id}/tasks/{task_id}/",
         "workers": "/api/workers/",
         "worker_detail": "/api/workers/{worker_id}/",
         "pools": "/api/pools/",
@@ -66,16 +66,13 @@ DEFAULT_CONFIG = {
     "contract": {
         "version": API_CONTRACT_VERSION,
         "job_create_returns_id": False,
-        "layer_pool_ids_field": "",
-        "job_start_suspended_field": "",
-        "job_machine_limit_field": "",
-        "job_dependencies_field": "",
+        "job_pool_targeting": True,
+        "job_dependencies": True,
     },
     "maya": {
         "render_executable": "Render.exe",
         "frame_token": "{frame}",
         "layer_name": "beauty",
-        "use_pool_as_tag": True,
         "submission_log_retention": 200,
     },
 }
@@ -121,7 +118,103 @@ def admin_mode_enabled():
     return _as_bool(os.environ.get("RENDERHIVE_ADMIN_MODE"), False)
 
 
+def get_env_file_path():
+    explicit = str(os.environ.get("RENDERHIVE_ENV_FILE") or "").strip()
+    if explicit and os.path.isfile(explicit):
+        return os.path.abspath(explicit)
+
+    candidates = [
+        os.path.join(_package_root(), ".env"),
+        os.path.join(_local_config_root(), ".env"),
+        os.path.join(os.path.dirname(_package_root()), ".env"),
+        os.path.join(os.path.dirname(os.path.dirname(_package_root())), ".env"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return os.path.abspath(path)
+
+    return os.path.join(_package_root(), ".env")
+
+
+def load_env_file(path=None):
+    target_path = path or get_env_file_path()
+    if not target_path or not os.path.isfile(target_path):
+        return {}
+
+    values = {}
+    try:
+        with open(target_path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                val = val.strip()
+                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                    val = val[1:-1]
+                values[key] = val
+                os.environ.setdefault(key, val)
+    except Exception as error:
+        LOGGER.warning("Could not read .env file at %s: %s", target_path, error)
+
+    if "API_URL" in values and "RENDERHIVE_API_URL" not in os.environ:
+        os.environ["RENDERHIVE_API_URL"] = values["API_URL"]
+    if "NEXT_PUBLIC_API_URL" in values and "RENDERHIVE_API_URL" not in os.environ:
+        os.environ["RENDERHIVE_API_URL"] = values["NEXT_PUBLIC_API_URL"] + "/api"
+    if "API_TOKEN" in values and "RENDERHIVE_API_TOKEN" not in os.environ:
+        os.environ["RENDERHIVE_API_TOKEN"] = values["API_TOKEN"]
+    if "RENDERHIVE_API_KEY" in values and "RENDERHIVE_API_TOKEN" not in os.environ:
+        os.environ["RENDERHIVE_API_TOKEN"] = values["RENDERHIVE_API_KEY"]
+
+    return values
+
+
+def write_env_file(updates, path=None):
+    target_path = path or get_env_file_path()
+    parent = os.path.dirname(target_path)
+    if parent and not os.path.exists(parent):
+        try:
+            os.makedirs(parent)
+        except Exception:
+            pass
+
+    existing_lines = []
+    if os.path.isfile(target_path):
+        try:
+            with open(target_path, "r", encoding="utf-8") as handle:
+                existing_lines = handle.readlines()
+        except Exception:
+            existing_lines = []
+
+    written_keys = set()
+    new_lines = []
+
+    for line in existing_lines:
+        trimmed = line.strip()
+        if trimmed and not trimmed.startswith("#") and "=" in trimmed:
+            key = trimmed.split("=", 1)[0].strip()
+            if key in updates:
+                new_lines.append("{}={}\n".format(key, updates[key]))
+                written_keys.add(key)
+                os.environ[key] = str(updates[key])
+                continue
+        new_lines.append(line if line.endswith("\n") else line + "\n")
+
+    for key, val in updates.items():
+        if key not in written_keys:
+            new_lines.append("{}={}\n".format(key, val))
+            os.environ[key] = str(val)
+
+    temp_path = target_path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        handle.writelines(new_lines)
+    shutil.move(temp_path, target_path)
+    return target_path
+
+
 def _environment_overrides():
+    load_env_file()
     overrides = {}
 
     base_url = str(os.environ.get("RENDERHIVE_API_URL") or "").strip()
@@ -197,8 +290,6 @@ def get_config_backup_path():
     return get_config_path() + ".bak"
 
 
-def get_template_path():
-    return os.path.join(_package_root(), "config", "api_config.template.json")
 
 
 def get_credential_info():
@@ -318,10 +409,28 @@ def normalize_config(config):
         result["endpoints"] = copy.deepcopy(DEFAULT_CONFIG["endpoints"])
     result["endpoints"].pop("worker_ping", None)
     result["endpoints"].pop("frame_dispatch", None)
+    # Contract 0.2.0 renamed legacy frame resources to task resources.
+    result["endpoints"].pop("job_layer_frames", None)
+    result["endpoints"].pop("job_layer_frame_detail", None)
     validate_endpoint_config(result["endpoints"])
 
     if not isinstance(result.get("contract"), dict):
         result["contract"] = copy.deepcopy(DEFAULT_CONFIG["contract"])
+    result["contract"] = _deep_merge(
+        DEFAULT_CONFIG["contract"],
+        result["contract"],
+    )
+    # This plugin build is pinned to RenderHive API 0.2.0. Do not let stale
+    # 0.1.x user configuration silently disable or remap fields that are now
+    # part of the official backend contract.
+    result["contract"].pop("layer_pool_ids_field", None)
+    result["contract"].pop("job_dependencies_field", None)
+    result["contract"].pop("job_start_suspended_field", None)
+    result["contract"].pop("job_machine_limit_field", None)
+    result["contract"]["version"] = API_CONTRACT_VERSION
+    result["contract"]["job_create_returns_id"] = False
+    result["contract"]["job_pool_targeting"] = True
+    result["contract"]["job_dependencies"] = True
     contract_capabilities(result)
 
     if not isinstance(result.get("maya"), dict):
@@ -330,9 +439,10 @@ def normalize_config(config):
     result["maya"]["submission_log_retention"] = _bounded_int(
         result["maya"].get("submission_log_retention"), 200, 10, 5000
     )
-    result["maya"]["use_pool_as_tag"] = _as_bool(
-        result["maya"].get("use_pool_as_tag"), True
-    )
+    # Remove the pre-0.2.0 compatibility switch. Pool targeting is a native
+    # JobCreate field now; carrying this stale key forward can make a migrated
+    # user config behave differently from a clean install.
+    result["maya"].pop("use_pool_as_tag", None)
     return result
 
 

@@ -342,24 +342,88 @@ class RenderHiveApiClient(object):
         if parsed.tzinfo is None: parsed = parsed.replace(tzinfo=datetime.timezone.utc)
         return parsed.astimezone(datetime.timezone.utc)
 
+    @staticmethod
+    def _submitted_task_uid(submitted_payload):
+        layers = submitted_payload.get("layers") if isinstance(submitted_payload, dict) else []
+        if not isinstance(layers, list):
+            return ""
+        for layer in layers:
+            if not isinstance(layer, dict):
+                continue
+            scene_info = layer.get("scene_info")
+            if isinstance(scene_info, dict):
+                value = str(scene_info.get("task_uid") or "").strip()
+                if value:
+                    return value
+        return ""
+
+    @staticmethod
+    def _job_task_uid(job):
+        layers = job.get("layers") if isinstance(job, dict) else []
+        if not isinstance(layers, list):
+            return ""
+        for layer in layers:
+            if not isinstance(layer, dict):
+                continue
+            scene_info = layer.get("scene_info")
+            if isinstance(scene_info, dict):
+                value = str(scene_info.get("task_uid") or "").strip()
+                if value:
+                    return value
+        return ""
+
     def _resolve_created_job(self, submitted_payload, submitted_after=None):
         jobs = self.list_all_jobs()
         visible_name = str(submitted_payload.get("visible_name") or "").strip()
         project = str(submitted_payload.get("project") or "").strip()
         user = str(submitted_payload.get("user") or "").strip()
+        task_uid = self._submitted_task_uid(submitted_payload)
         if submitted_after is not None:
             submitted_after = submitted_after.astimezone(datetime.timezone.utc) - datetime.timedelta(seconds=10)
         candidates = []
         for job in jobs:
-            if not isinstance(job, dict): continue
-            if visible_name and str(job.get("visible_name") or "") != visible_name: continue
-            if project and str(job.get("project") or "") != project: continue
-            if user and str(job.get("user") or "") != user: continue
+            if not isinstance(job, dict):
+                continue
+            if visible_name and str(job.get("visible_name") or "") != visible_name:
+                continue
+            if project and str(job.get("project") or "") != project:
+                continue
+            if user and str(job.get("user") or "") != user:
+                continue
             created_at = self._parse_datetime(job.get("created_at"))
-            if submitted_after is not None and created_at is not None and created_at < submitted_after: continue
+            if submitted_after is not None and created_at is not None and created_at < submitted_after:
+                continue
             candidates.append(job)
-        if not candidates: return {}
-        candidates.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+
+        if not candidates:
+            return {}
+
+        candidates.sort(
+            key=lambda item: str(item.get("created_at") or ""),
+            reverse=True,
+        )
+
+        # API 0.2.0 documents POST /api/jobs/ as returning JobCreate, which
+        # does not contain a Job id. When that happens, use the unique Maya
+        # task_uid persisted in Layer.scene_info to identify the exact created
+        # job instead of relying only on a potentially duplicated display name.
+        if task_uid:
+            for candidate in candidates:
+                job_id = candidate.get("id") or candidate.get("job_id") or candidate.get("uid")
+                if not job_id:
+                    continue
+                try:
+                    detail = self.get_job_status(job_id)
+                except Exception as error:
+                    LOGGER.warning(
+                        "Could not inspect submitted Job %s while resolving request: %s",
+                        job_id,
+                        error,
+                    )
+                    continue
+                if self._job_task_uid(detail) == task_uid:
+                    return dict(detail)
+
         return dict(candidates[0])
 
     def submit_job(self, payload):
@@ -398,5 +462,10 @@ class RenderHiveApiClient(object):
     def delete_job(self, job_id): return self.request("DELETE", "job_delete", endpoint_values={"job_id": job_id})
     def list_job_layers(self, job_id): return self._list_all_pages("job_layers", ("results", "layers", "items", "data"), endpoint_values={"job_id": job_id})
     def get_job_layer(self, job_id, layer_id): return self.request("GET", "job_layer_detail", endpoint_values={"job_id": job_id, "layer_id": layer_id}).get("data", {})
-    def list_layer_frames(self, job_id, layer_id): return self._list_all_pages("job_layer_frames", ("results", "frames", "items", "data"), endpoint_values={"job_id": job_id, "layer_id": layer_id})
-    def get_layer_frame(self, job_id, layer_id, frame_id): return self.request("GET", "job_layer_frame_detail", endpoint_values={"job_id": job_id, "layer_id": layer_id, "frame_id": frame_id}).get("data", {})
+    def list_layer_tasks(self, job_id, layer_id): return self._list_all_pages("job_layer_tasks", ("results", "tasks", "items", "data"), endpoint_values={"job_id": job_id, "layer_id": layer_id})
+    def get_layer_task(self, job_id, layer_id, task_id): return self.request("GET", "job_layer_task_detail", endpoint_values={"job_id": job_id, "layer_id": layer_id, "task_id": task_id}).get("data", {})
+
+    # Compatibility aliases for callers from pre-0.2.0 plugin builds. New code
+    # must use the Task terminology used by the backend contract.
+    def list_layer_frames(self, job_id, layer_id): return self.list_layer_tasks(job_id, layer_id)
+    def get_layer_frame(self, job_id, layer_id, frame_id): return self.get_layer_task(job_id, layer_id, frame_id)

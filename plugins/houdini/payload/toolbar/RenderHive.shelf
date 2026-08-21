@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <toolshelf name="renderhive" label="RenderHive">
+    <memberTool name="renderhive_open"/>
+  </toolshelf>
+  <tool name="renderhive_open" label="RenderHive" icon="renderhive">
+    <script scriptType="python"><![CDATA[
+from renderhive_houdini.bootstrap import show
+show()
+    ]]></script>
+    <helpText><![CDATA[
+Open the RenderHive Houdini submitter.
+    ]]></helpText>
+  </tool>
+</shelfDocument>

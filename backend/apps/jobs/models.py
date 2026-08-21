@@ -334,6 +334,12 @@ class Task(models.Model):
     started_at = DateTimeField(null=True, blank=True)
     stopped_at = DateTimeField(null=True, blank=True)
     updated_at = DateTimeField(auto_now=True)
+    
+    last_score_breakdown = JSONField(
+        null=True, 
+        blank=True,
+        help_text="Observability field containing the breakdown of the dispatch score and AI adjustments."
+    )
 
     class Meta:
         verbose_name = "task"

@@ -14,8 +14,10 @@ COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 # Install dependencies
 RUN pnpm install
 
-# We don't copy the source code here because we will mount it 
-# as a volume in docker-compose.yml for hot-reloading during dev.
-# For production, you would COPY . . and run pnpm build.
+# Copy source code into the image.
+# On local dev, docker-compose.override.yml mounts the host source over /app,
+# so this baked copy is shadowed and hot-reload works as normal.
+# On cloud deployments (no volume mount), this baked copy is used directly.
+COPY . .
 
 CMD ["pnpm", "dev"]

@@ -2,7 +2,7 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Layers, Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +26,7 @@ interface CreatePoolFormProps {
 
 export function CreatePoolForm({ onSubmit, onCancel, isSubmitting }: CreatePoolFormProps) {
   const form = useForm<CreatePoolFormValues>({
-    resolver: zodResolver(createPoolSchema as any),
+    resolver: zodResolver(createPoolSchema as never) as unknown as import("react-hook-form").Resolver<CreatePoolFormValues>,
     mode: "onChange",
     defaultValues: {
       name: "",
@@ -43,14 +43,7 @@ export function CreatePoolForm({ onSubmit, onCancel, isSubmitting }: CreatePoolF
         className="flex flex-col h-full"
       >
         <div className="flex-1 space-y-6">
-          {/* Identity Section */}
           <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-                <Layers size={16} />
-              </div>
-              <h3 className="text-sm font-semibold text-foreground">Pool Information</h3>
-            </div>
             <div className="grid gap-4">
               <FormField
                 control={form.control}
@@ -97,11 +90,14 @@ export function CreatePoolForm({ onSubmit, onCancel, isSubmitting }: CreatePoolF
           </Button>
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? (
-              <Loader2 className="animate-spin" size={16} />
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Creating...
+              </>
             ) : (
-              <Plus size={16} />
+              <Plus size={15} className="mr-2" />
             )}
-            {isSubmitting ? "Creating..." : "Create Pool"}
+            Create Pool
           </Button>
         </div>
       </form>

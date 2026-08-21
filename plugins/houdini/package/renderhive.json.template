@@ -1,0 +1,19 @@
+{
+  "enable": true,
+  "load_package_once": true,
+  "process_order": 50,
+  "env": [
+    {
+      "RENDERHIVE_HOUDINI_ROOT": "__RENDERHIVE_HOUDINI_ROOT__"
+    },
+    {
+      "var": "PYTHONPATH",
+      "value": "$RENDERHIVE_HOUDINI_ROOT/python_libs",
+      "method": "prepend"
+    },
+    {
+      "RENDERHIVE_HOUDINI_VERSION": "2.0.5"
+    }
+  ],
+  "hpath": "$RENDERHIVE_HOUDINI_ROOT"
+}

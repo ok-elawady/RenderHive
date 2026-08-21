@@ -31,7 +31,7 @@ export function CreateUserForm({ onSubmit, onCancel, isSubmitting }: CreateUserF
   const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<CreateUserFormValues>({
-    resolver: zodResolver(createUserSchema as any),
+    resolver: zodResolver(createUserSchema as never) as unknown as import("react-hook-form").Resolver<CreateUserFormValues>,
     mode: "onChange",
     defaultValues: {
       fullName: "",
@@ -42,7 +42,6 @@ export function CreateUserForm({ onSubmit, onCancel, isSubmitting }: CreateUserF
       password: "",
     },
   });
-  const { errors } = form.formState;
 
   const handleGeneratePassword = () => {
     const pwd = generateSecurePassword();

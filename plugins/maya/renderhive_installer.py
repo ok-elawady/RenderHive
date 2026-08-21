@@ -1,6 +1,5 @@
 from __future__ import print_function
 
-import importlib
 import datetime
 import json
 import os
@@ -76,7 +75,27 @@ def _validate_staged_package(path):
         "renderhive_maya_submitter.py",
         os.path.join("api", "version.py"),
         os.path.join("ui", "qt_submitter_window.py"),
+        os.path.join("ui", "common_widgets.py"),
+        os.path.join("ui", "font_loader.py"),
+        os.path.join("ui", "icons.py"),
+        os.path.join("ui", "targeting_widgets.py"),
+        os.path.join("ui", "icons", "check_mark.png"),
+        os.path.join("ui", "worker_data.py"),
+        os.path.join("ui", "runtime_registry.py"),
+        os.path.join("ui", "controllers", "__init__.py"),
+        os.path.join("ui", "controllers", "api_controller.py"),
+        os.path.join("ui", "controllers", "targeting_controller.py"),
+        os.path.join("ui", "controllers", "dependency_controller.py"),
+        os.path.join("ui", "job_dependency_widgets.py"),
+        os.path.join("submission", "__init__.py"),
+        os.path.join("submission", "task_builder.py"),
+        os.path.join("submission", "task_validation.py"),
+        os.path.join("ui", "pages", "job_page.py"),
+        os.path.join("ui", "pages", "render_page.py"),
+        os.path.join("ui", "pages", "validation_page.py"),
+        os.path.join("ui", "pages", "tools_page.py"),
         os.path.join("validation", "validator.py"),
+        os.path.join("validation", "submission_checks.py"),
     )
     missing = [item for item in required if not os.path.isfile(os.path.join(path, item))]
     if missing:
