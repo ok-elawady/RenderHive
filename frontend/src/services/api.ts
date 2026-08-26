@@ -660,7 +660,6 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
     user: job.user || "System",
     status: mapStatus(job.state),
     backendState: job.state,
-    progress: getProgress(job),
     taskCounts: `${job.succeeded_tasks + job.skipped_tasks}/${job.total_tasks}`,
     total_tasks: job.total_tasks,
     succeeded_tasks: job.succeeded_tasks,
@@ -671,6 +670,8 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
     skipped_tasks: job.skipped_tasks,
     depend_tasks: job.depend_tasks,
     created_at: job.created_at,
+    started_at: (job as any).started_at,
+    finished_at: (job as any).finished_at,
     included_pools: job.included_pools || [],
     excluded_pools: job.excluded_pools || [],
     project: job.project || "Unknown Project",
@@ -1078,7 +1079,7 @@ export function deriveLogsFromJobs(jobs: RenderJob[]): LogEntry[] {
         : job.status === "Completed"
           ? "INFO"
           : "ROUTE",
-    msg: `${job.displayId} is ${job.backendState.toLowerCase()} at ${job.progress}% for ${job.user}.`,
+    msg: `${job.displayId} is ${job.backendState.toLowerCase()} at ${Math.round(((job.succeeded_tasks + job.skipped_tasks) / Math.max(1, job.total_tasks)) * 100)}% for ${job.user}.`,
   }));
 }
 
@@ -1405,8 +1406,8 @@ export async function fetchJobExecutionLogs(
 
 // ── AI Scheduler Health ────────────────────────────────────────────────────────
 
-export const AI_SCHEDULER_URL = (
-  process.env.NEXT_PUBLIC_AI_SCHEDULER_URL || "http://localhost:8001"
+export const AI_SERVICE_URL = (
+  process.env.NEXT_PUBLIC_AI_SERVICE_URL || "http://localhost:8001"
 ).replace(/\/+$/, "");
 
 export interface AiHealthStatus {
@@ -1420,7 +1421,7 @@ export interface AiHealthStatus {
 
 export async function fetchAiHealth(): Promise<AiHealthStatus> {
   try {
-    const response = await fetch(`${AI_SCHEDULER_URL}/health`, {
+    const response = await fetch(`${AI_SERVICE_URL}/health`, {
       cache: "no-store",
       signal: AbortSignal.timeout(4000),
     });
@@ -1469,7 +1470,7 @@ export interface DownloadProgress {
 }
 
 async function aiFetch(endpoint: string, options?: RequestInit): Promise<Response> {
-  const res = await fetch(`${AI_SCHEDULER_URL}${endpoint}`, {
+  const res = await fetch(`${AI_SERVICE_URL}${endpoint}`, {
     cache: "no-store",
     ...options,
     headers: {
@@ -1597,4 +1598,32 @@ export async function pingBackendLatency(): Promise<number> {
   return Math.max(1, Math.round(performance.now() - start));
 }
 
+export async function fetchTaskLogs(taskId: string): Promise<TaskLogList[]> {
+  const { data, error } = await client.GET("/api/telemetry/tasks/{task_pk}/logs/", {
+    params: { path: { task_pk: taskId } },
+  });
+  if (error) throw new Error(JSON.stringify(error));
+  return data?.results || [];
+}
 
+export async function fetchTaskLogDetail(logId: string): Promise<TaskLogDetail> {
+  const { data, error } = await client.GET("/api/telemetry/logs/{id}/", {
+    params: { path: { id: logId } },
+  });
+  if (error) throw new Error(JSON.stringify(error));
+  return data as unknown as TaskLogDetail;
+}
+
+export async function explainTaskLog(logText: string, logId?: string, forceRefresh?: boolean): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/api/logs/explain/`, {
+    method: "POST",
+    headers: getApiHeaders(),
+    body: JSON.stringify({ log_text: logText, log_id: logId, force_refresh: forceRefresh }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to explain log: ${res.statusText}`);
+  }
+  const data = await res.json();
+  return data.explanation;
+}

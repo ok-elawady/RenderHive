@@ -27,7 +27,7 @@ export function ClusterConnectionStatus() {
         render={
           <button
             type="button"
-            className="flex items-center gap-2 rounded-full border border-border/80 bg-surface/80 px-2.5 py-1 text-xs font-mono transition-all hover:bg-accent/60 hover:border-border cursor-pointer shadow-xs group"
+            className="flex items-center gap-1.5 h-7 px-2 text-xs font-semibold transition-colors text-muted-foreground hover:text-foreground cursor-pointer group bg-transparent border-0 shadow-none"
             title="Cluster Connection Status (Click to inspect)"
             aria-label="Cluster Connection Status"
           />
@@ -35,32 +35,33 @@ export function ClusterConnectionStatus() {
       >
         {isOffline ? (
           <>
-            <span className="relative flex size-2">
+            <span className="relative flex size-2 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
               <span className="relative inline-flex size-2 rounded-full bg-destructive" />
             </span>
-            <span className="text-destructive font-semibold">Disconnected</span>
+            <span>Disconnected</span>
           </>
         ) : isDegraded ? (
           <>
-            <span className="size-2 rounded-full bg-warning shadow-xs shadow-warning/50" />
-            <span className="text-foreground font-medium hidden sm:inline">Cluster Online</span>
-            <span className="text-warning font-bold">{latencyMs}ms</span>
+            <span className="size-1.5 rounded-full bg-warning shadow-xs shadow-warning/50 shrink-0" />
+            <span className="hidden sm:inline">Cluster Online</span>
+            <span className="text-warning ml-0.5 font-mono">{latencyMs}ms</span>
           </>
         ) : (
           <>
-            <span className="relative flex size-2">
+            <span className="relative flex size-1.5 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-40" />
-              <span className="relative inline-flex size-2 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500 shadow-xs shadow-emerald-500/50" />
             </span>
-            <span className="text-foreground font-medium hidden sm:inline">Cluster Online</span>
-            <span className="text-muted-foreground group-hover:text-foreground transition-colors">{latencyMs}ms</span>
+            <span className="hidden sm:inline">Cluster Online</span>
+            <span className="opacity-70 group-hover:opacity-100 transition-opacity ml-0.5 font-mono">{latencyMs}ms</span>
           </>
         )}
       </PopoverTrigger>
 
       <PopoverContent
-        align="start"
+        align="end"
+        side="top"
         sideOffset={8}
         className="w-80 p-4 bg-surface border border-border shadow-2xl rounded-xl space-y-3 font-mono text-xs"
       >
@@ -81,7 +82,7 @@ export function ClusterConnectionStatus() {
           </Button>
         </div>
 
-        <div className="space-y-2 text-[11px]">
+        <div className="space-y-2 text-xs">
           {/* Host address */}
           <div className="flex items-center justify-between bg-surface-deep border border-input rounded-md px-2.5 py-1.5">
             <span className="text-muted-foreground">Host:</span>

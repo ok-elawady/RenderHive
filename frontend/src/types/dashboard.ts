@@ -35,7 +35,6 @@ export interface RenderJob {
   user: string;
   status: JobStatus;
   backendState: BackendJobState;
-  progress: number;
   taskCounts: string;
   total_tasks: number;
   succeeded_tasks: number;
@@ -46,6 +45,8 @@ export interface RenderJob {
   skipped_tasks: number;
   depend_tasks: number;
   created_at: string;
+  started_at?: string;
+  finished_at?: string;
   included_pools: string[];
   excluded_pools: string[];
   project: string;

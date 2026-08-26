@@ -197,7 +197,7 @@ export function ModelManager({ onModelChanged }: { onModelChanged: () => void })
               value={progress.total_bytes ? (progress.bytes_downloaded / progress.total_bytes) * 100 : 0}
               className="h-2"
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+            <div className="flex justify-between text-[11px] text-muted-foreground font-mono">
               <span>
                 {formatBytes(progress.bytes_downloaded)} / {formatBytes(progress.total_bytes)}
               </span>
@@ -230,7 +230,7 @@ export function ModelManager({ onModelChanged }: { onModelChanged: () => void })
                           {isActive && (
                             <Badge
                               variant="outline"
-                              className="text-[10px] h-5 border-success text-success bg-success/10 px-1"
+                              className="text-[11px] h-5 border-success text-success bg-success/10 px-1"
                             >
                               Active
                             </Badge>
@@ -317,13 +317,13 @@ export function ModelManager({ onModelChanged }: { onModelChanged: () => void })
                         {isActive && (
                           <Badge
                             variant="outline"
-                            className="text-[10px] h-5 border-success text-success bg-success/10 px-1"
+                            className="text-[11px] h-5 border-success text-success bg-success/10 px-1"
                           >
                             Active
                           </Badge>
                         )}
                       </div>
-                      <div className="text-[10px] text-muted-foreground font-mono mt-1">
+                      <div className="text-[11px] text-muted-foreground font-mono mt-1">
                         Size: {m.size} &bull; Template: {m.template}
                       </div>
                     </div>

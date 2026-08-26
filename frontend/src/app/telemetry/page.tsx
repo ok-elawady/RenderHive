@@ -56,7 +56,7 @@ export default function TelemetryPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-background font-sans text-foreground">
+    <div className="flex h-full flex-col bg-background font-sans text-foreground overflow-hidden">
       {/* 1. Standard Page Header matching other pages */}
       <PageHeader
         title="Telemetry & Logs"
@@ -74,7 +74,7 @@ export default function TelemetryPage() {
       </PageHeader>
 
       {/* 2. Main Streamlined Content */}
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {/* Hardware Timeseries Stream */}
         <TelemetryTimeseriesChart
           telemetryData={telemetryData}

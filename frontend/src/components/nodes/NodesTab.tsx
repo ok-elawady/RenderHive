@@ -135,7 +135,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
             <TableHeader className="bg-card sticky top-0 z-10 border-b border-border/50">
               <TableRow className="hover:bg-transparent bg-muted/30">
                 {/* 1. Hostname & IP */}
-                <TableHead className="w-[20%] pl-6">
+                <TableHead className="w-[20%] pl-6 text-[11px] uppercase tracking-wider h-8">
                   <TableSortHeader
                     label="Node / IP"
                     sortKey="hostname"
@@ -147,7 +147,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                 </TableHead>
 
                 {/* 2. Status */}
-                <TableHead className="w-[11%]">
+                <TableHead className="w-[11%] text-[11px] uppercase tracking-wider h-8">
                   <TableSortHeader
                     label="Status"
                     sortKey="status"
@@ -159,14 +159,14 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                 </TableHead>
 
                 {/* 3. Worker Pools */}
-                <TableHead className="w-[13%]">
+                <TableHead className="w-[13%] text-[11px] uppercase tracking-wider h-8">
                   <div className="flex justify-center w-full">
-                    <span className="font-semibold text-xs text-muted-foreground">Pools</span>
+                    <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">Pools</span>
                   </div>
                 </TableHead>
 
                 {/* 4. CPU & RAM (Hardware) */}
-                <TableHead className="w-[17%]">
+                <TableHead className="w-[17%] text-[11px] uppercase tracking-wider h-8">
                   <TableSortHeader
                     label="CPU / Memory"
                     sortKey="cores"
@@ -178,7 +178,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                 </TableHead>
 
                 {/* 5. GPU Acceleration */}
-                <TableHead className="w-[18%]">
+                <TableHead className="w-[18%] text-[11px] uppercase tracking-wider h-8">
                   <TableSortHeader
                     label="GPU Hardware"
                     sortKey="gpu_models"
@@ -190,14 +190,14 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                 </TableHead>
 
                 {/* 6. Tags */}
-                <TableHead className="w-[10%]">
+                <TableHead className="w-[10%] text-[11px] uppercase tracking-wider h-8">
                   <div className="flex justify-start w-full">
-                    <span className="font-semibold text-xs text-muted-foreground">Tags</span>
+                    <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">Tags</span>
                   </div>
                 </TableHead>
 
                 {/* 7. Last Ping / Heartbeat */}
-                <TableHead className="w-[11%] pr-6">
+                <TableHead className="w-[11%] pr-6 text-[11px] uppercase tracking-wider h-8">
                   <TableSortHeader
                     label="Last Ping"
                     sortKey="last_ping"
@@ -227,24 +227,24 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                 sortedNodes.map((item) => (
                   <TableRow key={item.id} className="group transition-colors hover:bg-muted/40">
                     {/* 1. Hostname & IP */}
-                    <TableCell className="pl-6 py-3 text-left">
+                    <TableCell className="pl-6 py-2 text-left">
                       <div className="flex flex-col gap-0.5 min-w-0">
                         <span className="font-bold text-foreground font-mono text-xs truncate" title={item.hostname}>
                           {item.hostname}
                         </span>
-                        <span className="text-[11px] text-muted-foreground font-mono truncate">
+                        <span className="text-xs text-muted-foreground font-mono truncate">
                           {item.ip_address || "—"}
                         </span>
                       </div>
                     </TableCell>
 
                     {/* 2. Status */}
-                    <TableCell className="py-3 text-center">
+                    <TableCell className="py-2 text-center">
                       <div className="flex justify-center">
                         {item.status === "ONLINE" && (
                           <Badge
                             variant="secondary"
-                            className="bg-success/15 text-success border border-success/30 gap-1.5 font-medium text-xs h-5 px-2.5"
+                            className="bg-success/10 text-success border border-success/30 gap-1.5 font-semibold text-[10px] uppercase h-5 px-2"
                           >
                             <div className="size-1.5 rounded-full bg-success animate-pulse" />
                             Online
@@ -253,7 +253,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                         {item.status === "RENDERING" && (
                           <Badge
                             variant="secondary"
-                            className="bg-primary/15 text-primary border border-primary/30 gap-1.5 font-medium text-xs h-5 px-2.5"
+                            className="bg-primary/10 text-primary border border-primary/30 gap-1.5 font-semibold text-[10px] uppercase h-5 px-2"
                           >
                             <Loader2 className="size-2.5 animate-spin" />
                             Rendering
@@ -262,7 +262,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                         {item.status === "OFFLINE" && (
                           <Badge
                             variant="secondary"
-                            className="bg-destructive/15 text-destructive border border-destructive/30 gap-1.5 font-medium text-xs h-5 px-2.5"
+                            className="bg-destructive/10 text-destructive border border-destructive/30 gap-1.5 font-semibold text-[10px] uppercase h-5 px-2"
                           >
                             <div className="size-1.5 rounded-full bg-destructive" />
                             Offline
@@ -272,7 +272,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                     </TableCell>
 
                     {/* 3. Pools */}
-                    <TableCell className="py-3 text-center">
+                    <TableCell className="py-2 text-center">
                       {item.pools && item.pools.length > 0 ? (
                         <div className="flex flex-wrap justify-center gap-1.5">
                           {item.pools.map((pool: { id: string; name: string }) => (
@@ -301,7 +301,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                     </TableCell>
 
                     {/* 4. CPU & RAM (Hardware) */}
-                    <TableCell className="py-3 text-center">
+                    <TableCell className="py-2 text-center">
                       <Tooltip>
                         <TooltipTrigger className="cursor-default inline-block">
                           <div className="flex items-center justify-center gap-1.5 text-xs text-foreground font-mono">
@@ -321,7 +321,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                           <div className="space-y-1.5 w-full text-xs font-mono">
                             {typeof (item.system_info as Record<string, unknown> | undefined)?.cpu_name === "string" && (
                               <div className="flex flex-col gap-0.5">
-                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-sans font-semibold">Processor</span>
+                                <span className="text-[11px] text-muted-foreground uppercase tracking-wider font-sans font-semibold">Processor</span>
                                 <span className="text-foreground text-xs leading-snug">{String((item.system_info as Record<string, unknown>).cpu_name)}</span>
                               </div>
                             )}
@@ -339,7 +339,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                     </TableCell>
 
                     {/* 5. GPU Acceleration & VRAM */}
-                    <TableCell className="py-3 text-left">
+                    <TableCell className="py-2 text-left">
                       {item.gpu_models && item.gpu_models.length > 0 ? (
                         <Tooltip>
                           <TooltipTrigger className="cursor-default text-left block">
@@ -348,7 +348,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                                 {item.gpu_models.join(", ")}
                               </span>
                               {typeof (item.system_info as Record<string, unknown> | undefined)?.gpu_vram_mb === "number" && (
-                                <span className="text-[11px] font-mono text-muted-foreground shrink-0">
+                                <span className="text-xs font-mono text-muted-foreground shrink-0">
                                   ({formatMemory((item.system_info as Record<string, unknown>).gpu_vram_mb as number)})
                                 </span>
                               )}
@@ -371,7 +371,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                                       <span className="truncate">{String(g.name || item.gpu_models?.[idx] || "GPU")}</span>
                                     </div>
                                     {typeof g.vram_mb === "number" && (
-                                      <div className="flex items-center justify-between text-[11px] text-muted-foreground pl-3 font-sans">
+                                      <div className="flex items-center justify-between text-xs text-muted-foreground pl-3 font-sans">
                                         <span>Total VRAM:</span>
                                         <span className="font-mono text-foreground">{formatMemory(g.vram_mb as number)}</span>
                                       </div>
@@ -379,7 +379,7 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                                     {item.status !== "OFFLINE" ? (
                                       <>
                                         {typeof g.vram_used_mb === "number" && typeof g.vram_mb === "number" && (
-                                          <div className="flex items-center justify-between text-[11px] text-muted-foreground pl-3 font-sans">
+                                          <div className="flex items-center justify-between text-xs text-muted-foreground pl-3 font-sans">
                                             <span>VRAM In Use:</span>
                                             <span className="font-mono text-foreground">
                                               {formatMemory(g.vram_used_mb as number)} ({Math.round(((g.vram_used_mb as number) / (g.vram_mb as number)) * 100)}%)
@@ -387,14 +387,14 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                                           </div>
                                         )}
                                         {typeof g.utilization_percent === "number" && (
-                                          <div className="flex items-center justify-between text-[11px] text-muted-foreground pl-3 font-sans">
+                                          <div className="flex items-center justify-between text-xs text-muted-foreground pl-3 font-sans">
                                             <span>Core Utilization:</span>
                                             <span className="font-mono text-foreground">{g.utilization_percent}%</span>
                                           </div>
                                         )}
                                       </>
                                     ) : (
-                                      <div className="text-[11px] text-muted-foreground/80 pl-3 font-sans italic pt-0.5">
+                                      <div className="text-xs text-muted-foreground/80 pl-3 font-sans italic pt-0.5">
                                         Offline — Telemetry unavailable
                                       </div>
                                     )}
@@ -419,14 +419,14 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                     </TableCell>
 
                     {/* 6. Tags */}
-                    <TableCell className="py-3 text-left">
+                    <TableCell className="py-2 text-left">
                       {item.tags && item.tags.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {item.tags.map((tag) => (
                             <Badge
                               key={tag}
                               variant="outline"
-                              className="text-[11px] px-2 py-0.5 h-5 bg-muted/40 text-foreground font-mono"
+                              className="text-xs px-2 py-0.5 h-5 bg-muted/40 text-foreground font-mono"
                             >
                               {tag}
                             </Badge>
@@ -438,13 +438,13 @@ export function NodesTab({ nodes, isLoading }: NodesTabProps) {
                     </TableCell>
 
                     {/* 7. Last Ping / Heartbeat */}
-                    <TableCell className="pr-6 py-3 text-right">
+                    <TableCell className="pr-6 py-2 text-right">
                       <div className="flex flex-col items-end gap-0.5">
                         <span className="text-xs font-semibold text-foreground flex items-center gap-1">
                           <Clock size={12} className="text-muted-foreground shrink-0" />
                           {formatRelativeTime(item.last_ping)}
                         </span>
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {new Intl.DateTimeFormat("en", {
                             dateStyle: "short",
                             timeStyle: "short",

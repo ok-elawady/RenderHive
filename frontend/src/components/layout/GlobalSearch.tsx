@@ -9,6 +9,7 @@ import {
   Loader2,
   ListOrdered
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 import {
   Command,
@@ -52,18 +53,16 @@ export function GlobalSearch() {
 
   return (
     <>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={() => setOpen(true)}
         aria-label="Search the render farm (Ctrl+K)"
-        className="flex h-9 w-full cursor-pointer items-center gap-2 rounded-md border border-transparent bg-input/40 px-3 text-sm text-muted-foreground transition-all hover:bg-input/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group"
+        title="Search (Ctrl+K)"
+        className="group hover:bg-accent/50"
       >
-        <Search className="h-4 w-4 shrink-0 opacity-50 transition-colors group-hover:text-primary group-hover:opacity-100" />
-        <span className="flex-1 text-left transition-colors group-hover:text-foreground">Search...</span>
-        <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border-transparent bg-background/50 px-1.5 font-mono text-[10px] font-medium text-muted-foreground/70 transition-colors group-hover:text-primary">
-          <span className="text-xs">⌘</span>K
-        </kbd>
-      </button>
+        <Search size={18} className="text-muted-foreground group-hover:text-primary transition-colors" />
+      </Button>
 
       <CommandDialog open={open} onOpenChange={setOpen}>
         <Command shouldFilter={false} className="bg-transparent">

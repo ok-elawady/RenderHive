@@ -274,7 +274,7 @@ export default function LayerInspectorPage() {
                           <TableCell className="pl-6 text-xs font-medium text-foreground py-2.5">
                             <DependencyFlow dep={blocker} currentJobId={params.jobId} isInbound={true} />
                           </TableCell>
-                          <TableCell className="text-center text-[11px] font-medium text-muted-foreground tracking-wide uppercase">
+                          <TableCell className="text-center text-xs font-medium text-muted-foreground tracking-wide uppercase">
                             {blocker.type === "TASK_ON_TASK" ? "Task → Task" : "Layer → Layer"}
                           </TableCell>
                           <TableCell className="text-center">

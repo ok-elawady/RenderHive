@@ -8,11 +8,11 @@ import {
   Bot,
   ChevronRight,
   LayoutDashboard,
-  ListOrdered,
   LogOut,
   Server,
   Settings,
   UsersRound,
+  User,
 } from "lucide-react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import {
@@ -28,6 +28,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   Collapsible,
@@ -39,6 +40,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 export default function AppSidebar() {
   const pathname = usePathname();
   const { logout, user } = useAuth();
+  const { setOpen } = useSidebar();
 
   const isWorkersActive = pathname.startsWith("/nodes") || pathname.startsWith("/pools");
 
@@ -47,36 +49,13 @@ export default function AppSidebar() {
   const initials = user?.initials ?? "RH";
 
   return (
-    <Sidebar className="border-r-0">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              render={<Link href="/" className="cursor-pointer" />}
-            >
-              <div className="relative flex aspect-square size-10 items-center justify-center shrink-0 mr-1">
-                <Image
-                  src="/Logo2.png"
-                  alt="RenderHive Logo"
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  loading="eager"
-                  fill
-                  className="object-contain"
-                />
-              </div>
-              <div className="flex flex-col gap-0.5 leading-none font-mono">
-                <span className="font-black tracking-wider bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
-                  Render<span className="text-primary">Hive</span>
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  RENDER MANAGEMENT
-                </span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+    <Sidebar 
+      collapsible="icon" 
+      className="border-r-0 group/sidebar transition-all duration-150 z-50 overlay-on-hover"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <SidebarHeader className="hidden" />
 
       <SidebarContent>
         <SidebarGroup>
@@ -94,17 +73,7 @@ export default function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-            {/* Job Queue */}
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                isActive={pathname.startsWith("/jobs")}
-                render={<Link href="/jobs" />}
-                tooltip="Job Queue"
-              >
-                <ListOrdered size={18} />
-                <span>Job Queue</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+
 
             {/* Workers Collapsible (Expanded by default) */}
             <Collapsible
@@ -156,15 +125,15 @@ export default function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
 
-            {/* AI Scheduler */}
+            {/* AI Service */}
             <SidebarMenuItem>
               <SidebarMenuButton
                 isActive={pathname.startsWith("/ai")}
                 render={<Link href="/ai" />}
-                tooltip="AI Scheduler"
+                tooltip="AI Service"
               >
                 <Bot size={18} />
-                <span>AI Scheduler</span>
+                <span>AI Service</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
 
@@ -200,27 +169,30 @@ export default function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              render={<Link href="/settings" className="cursor-pointer" />}
-              tooltip="Account Settings"
-            >
-              <Avatar className="size-8 rounded-full">
-                <AvatarFallback className="rounded-full bg-gradient-to-br from-[#d01fc7] to-primary text-xs font-bold text-white">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-semibold text-foreground text-sm">{displayName}</span>
-                <span className="text-xs text-primary font-mono">{role}</span>
+            <div className="flex items-center justify-between group-data-[collapsible=icon]:justify-center p-2 rounded-md hover:bg-sidebar-accent transition-colors">
+              <div className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:hidden">
+                <div className="flex items-center justify-center size-8 rounded-full bg-muted border border-border/50 shrink-0">
+                  <User className="size-5 text-muted-foreground" />
+                </div>
+                <div className="flex flex-col gap-0.5 leading-none min-w-0">
+                  <span className="font-semibold text-foreground text-sm truncate">{displayName}</span>
+                  <span className="text-xs text-primary font-mono truncate">{role}</span>
+                </div>
               </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={logout}>
-              <LogOut size={16} />
-              <span>Sign Out</span>
-            </SidebarMenuButton>
+              
+              {/* Show only icon when collapsed */}
+              <div className="hidden group-data-[collapsible=icon]:flex items-center justify-center size-8 rounded-full bg-muted border border-border/50 shrink-0">
+                <User className="size-5 text-muted-foreground" />
+              </div>
+
+              <button
+                onClick={logout}
+                className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors rounded-md shrink-0 group-data-[collapsible=icon]:hidden"
+                title="Sign Out"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

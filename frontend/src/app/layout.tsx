@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, Roboto_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import "@/styles/globals.css";
 import { AuthProvider } from "@/components/auth/AuthProvider";
@@ -38,7 +38,7 @@ const inter = Inter({
   variable: "--font-sans",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const robotoMono = Roboto_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
 });
@@ -49,7 +49,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans flex min-h-screen bg-background text-foreground`}>
+      <body className={`${inter.variable} ${robotoMono.variable} font-sans flex min-h-screen bg-background text-foreground`}>
         <ThemeProvider>
           <AuthProvider>
             <TooltipProvider>

@@ -59,7 +59,7 @@ export function PageControlBar<T extends string = string>({
               {chip.count !== undefined && (
                 <span
                   className={cn(
-                    "ml-1.5 px-1.5 py-0.5 rounded-full text-[11px] font-mono leading-none",
+                    "ml-1.5 px-1.5 py-0.5 rounded-full text-xs font-mono leading-none",
                     isActive
                       ? "bg-primary-foreground/20 text-primary-foreground font-bold"
                       : hasAlert
@@ -78,7 +78,7 @@ export function PageControlBar<T extends string = string>({
       {/* Right: Standardized Search Input (Right-aligned across all pages), Extra Controls & Counter */}
       <div className="flex items-center gap-2 shrink-0 self-stretch lg:self-auto">
         {onSearchChange !== undefined && (
-          <div className="relative min-w-[360px] sm:w-64 flex-1 sm:flex-initial">
+          <div className="relative min-w-[220px] sm:w-64 flex-1 sm:flex-initial">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
             <Input
               value={search ?? ""}

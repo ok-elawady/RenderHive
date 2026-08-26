@@ -93,11 +93,19 @@ export default function LoginPage() {
           <div className="mx-auto flex flex-col items-center gap-3">
             <div className="relative size-16">
               <Image
-                src="/Logo2.png"
+                src="/logo.svg"
                 alt="RenderHive Logo"
                 fill
                 sizes="64px"
-                className="object-contain drop-shadow-[0_0_18px_rgba(90,31,166,0.45)]"
+                className="object-contain drop-shadow-[0_0_18px_rgba(90,31,166,0.45)] dark:hidden"
+                priority
+              />
+              <Image
+                src="/logo-dark.svg"
+                alt="RenderHive Logo"
+                fill
+                sizes="64px"
+                className="object-contain drop-shadow-[0_0_18px_rgba(90,31,166,0.45)] hidden dark:block"
                 priority
               />
             </div>

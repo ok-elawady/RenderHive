@@ -322,7 +322,7 @@ export default function HardwareTelemetry({ telemetry: liveTelemetry }: Hardware
           </div>
           <Badge
             variant="outline"
-            className="text-[10px] font-mono border-primary/30 text-primary bg-primary/5 px-1.5 py-0 font-medium"
+            className="text-[11px] font-mono border-primary/30 text-primary bg-primary/5 px-1.5 py-0 font-medium"
           >
             Live
           </Badge>
@@ -375,11 +375,11 @@ export default function HardwareTelemetry({ telemetry: liveTelemetry }: Hardware
             aria-label="Open telemetry history analytics"
           >
             <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[11px] font-mono text-muted-foreground group-hover:text-foreground transition-colors">
+              <p className="text-xs font-mono text-muted-foreground group-hover:text-foreground transition-colors">
                 Cluster Load Telemetry (1h)
               </p>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-xs font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 shrink-0 group">
+                <span className="text-[11px] text-xs font-medium text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 shrink-0 group">
                   <span className="text-primary group-hover:underline font-mono">Expand ↗</span>
                 </span>
               </div>
@@ -604,37 +604,37 @@ export default function HardwareTelemetry({ telemetry: liveTelemetry }: Hardware
                   <div className="flex items-center gap-2 font-mono text-xs animate-in fade-in">
                     <Badge
                       variant="outline"
-                      className="text-muted-foreground font-mono text-[11px] h-6 px-2 border-border/80 bg-surface-deep"
+                      className="text-muted-foreground font-mono text-xs h-6 px-2 border-border/80 bg-surface-deep"
                     >
                       {formatTooltipDate(hoveredPoint.timestamp, timeRange)}
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="text-info font-mono text-[11px] h-6 px-2 border-info/40 bg-info/10 font-bold"
+                      className="text-info font-mono text-xs h-6 px-2 border-info/40 bg-info/10 font-bold"
                     >
                       CPU: {hoveredPoint.cpu}%
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="text-emerald-400 font-mono text-[11px] h-6 px-2 border-emerald-500/40 bg-emerald-500/10 font-bold"
+                      className="text-emerald-400 font-mono text-xs h-6 px-2 border-emerald-500/40 bg-emerald-500/10 font-bold"
                     >
                       RAM: {hoveredPoint.ram ?? 0}%
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="text-primary font-mono text-[11px] h-6 px-2 border-primary/40 bg-primary/10 font-bold"
+                      className="text-primary font-mono text-xs h-6 px-2 border-primary/40 bg-primary/10 font-bold"
                     >
                       VRAM: {hoveredPoint.vram}%
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="text-warning font-mono text-[11px] h-6 px-2 border-warning/40 bg-warning/10 font-bold"
+                      className="text-warning font-mono text-xs h-6 px-2 border-warning/40 bg-warning/10 font-bold"
                     >
                       {hoveredPoint.active_tasks ?? 0} Tasks
                     </Badge>
                   </div>
                 ) : (
-                  <span className="text-muted-foreground text-[11px]">
+                  <span className="text-muted-foreground text-xs">
                     Hover along the {timeRange.toUpperCase()} timeline to inspect bucket metrics
                   </span>
                 )}
@@ -879,7 +879,7 @@ export default function HardwareTelemetry({ telemetry: liveTelemetry }: Hardware
                 </span>
               </div>
 
-              <div className="text-[11px] text-muted-foreground">Live Snapshots (10s auto-refresh)</div>
+              <div className="text-xs text-muted-foreground">Live Snapshots (10s auto-refresh)</div>
             </div>
           </div>
         </DialogContent>

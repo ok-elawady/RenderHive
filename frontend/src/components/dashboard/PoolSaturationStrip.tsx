@@ -119,7 +119,7 @@ export function PoolSaturationStrip({ pools, isLoading = false }: PoolSaturation
                         {pool.description || "General compute pool"}
                       </p>
                     </div>
-                    <Badge variant={badgeVariant} className={`text-[11px] px-2 py-0.5 h-5 shrink-0 font-mono ${badgeClass}`}>
+                    <Badge variant={badgeVariant} className={`text-xs px-2 py-0.5 h-5 shrink-0 font-mono ${badgeClass}`}>
                       {badgeText}
                     </Badge>
                   </div>

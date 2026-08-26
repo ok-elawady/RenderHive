@@ -173,7 +173,7 @@ export default function TaskLogViewerDialog({
                       ? "outline"
                       : "secondary"
                   }
-                  className={`text-[10px] font-mono px-2 py-0.5 shrink-0 ${
+                  className={`text-[11px] font-mono px-2 py-0.5 shrink-0 ${
                     taskState === "FAILED"
                       ? "border-destructive/40 text-destructive bg-destructive/10"
                       : taskState === "SUCCEEDED"
@@ -219,7 +219,7 @@ export default function TaskLogViewerDialog({
               ) : logDetail ? (
                 <Badge
                   variant={isSuccess ? "outline" : "destructive"}
-                  className={`text-[10px] font-mono px-2 py-0.5 shrink-0 ${
+                  className={`text-[11px] font-mono px-2 py-0.5 shrink-0 ${
                     isSuccess
                       ? "border-success/40 text-success bg-success/10"
                       : "border-destructive/40 text-destructive bg-destructive/10"
@@ -281,7 +281,7 @@ export default function TaskLogViewerDialog({
                       <Badge
                         variant={isAttSuccess ? "outline" : "destructive"}
                         className={cn(
-                          "text-[9px] px-1 py-0 h-4 font-mono font-normal",
+                          "text-[10px] px-1 py-0 h-4 font-mono font-normal",
                           isAttSuccess
                             ? "border-success/30 text-success bg-success/10"
                             : "border-destructive/30 text-destructive bg-destructive/10"
@@ -290,7 +290,7 @@ export default function TaskLogViewerDialog({
                         {isAttSuccess ? "Exit 0" : `Exit ${att.exit_status}`}
                       </Badge>
                       {att.worker_hostname && (
-                        <span className="text-[10px] text-muted-foreground opacity-70">
+                        <span className="text-[11px] text-muted-foreground opacity-70">
                           {att.worker_hostname}
                         </span>
                       )}
@@ -395,7 +395,7 @@ export default function TaskLogViewerDialog({
               <div className="flex items-center gap-2.5">
                 <Clock className="size-4 text-muted-foreground shrink-0" />
                 <div>
-                  <div className="text-[10px] text-muted-foreground uppercase">Duration</div>
+                  <div className="text-[11px] text-muted-foreground uppercase">Duration</div>
                   <div className="font-bold text-foreground">{logDetail.duration_seconds.toFixed(1)}s</div>
                 </div>
               </div>
@@ -403,7 +403,7 @@ export default function TaskLogViewerDialog({
               <div className="flex items-center gap-2.5">
                 <HardDrive className="size-4 text-primary shrink-0" />
                 <div>
-                  <div className="text-[10px] text-muted-foreground uppercase">Peak RAM</div>
+                  <div className="text-[11px] text-muted-foreground uppercase">Peak RAM</div>
                   <div className="font-bold text-foreground">
                     {logDetail.peak_memory_mb ? `${logDetail.peak_memory_mb} MB` : "N/A"}
                   </div>
@@ -413,7 +413,7 @@ export default function TaskLogViewerDialog({
               <div className="flex items-center gap-2.5">
                 <Server className="size-4 text-info shrink-0" />
                 <div>
-                  <div className="text-[10px] text-muted-foreground uppercase">Worker Node</div>
+                  <div className="text-[11px] text-muted-foreground uppercase">Worker Node</div>
                   <div className="font-bold text-foreground truncate max-w-[140px]" title={logDetail.worker_hostname}>
                     {logDetail.worker_hostname || "Unknown"}
                   </div>
@@ -423,7 +423,7 @@ export default function TaskLogViewerDialog({
               <div className="flex items-center gap-2.5">
                 <Cpu className="size-4 text-warning shrink-0" />
                 <div>
-                  <div className="text-[10px] text-muted-foreground uppercase">Attempt</div>
+                  <div className="text-[11px] text-muted-foreground uppercase">Attempt</div>
                   <div className="font-bold text-foreground">
                     {logDetail.attempt_number ? `#${logDetail.attempt_number}` : "#1"}
                   </div>
@@ -449,7 +449,7 @@ export default function TaskLogViewerDialog({
               </div>
             ) : activeTab === "full" ? (
               <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="p-2.5 px-4 bg-background/60 border-b border-border/60 text-[11px] text-muted-foreground flex justify-between items-center">
+                <div className="p-2.5 px-4 bg-background/60 border-b border-border/60 text-xs text-muted-foreground flex justify-between items-center">
                   <span>Console Standard Output & Errors</span>
                   <span>{logDetail.log_output ? `${logDetail.log_output.length.toLocaleString()} characters` : "Empty output"}</span>
                 </div>
@@ -469,7 +469,7 @@ export default function TaskLogViewerDialog({
                       <span className="flex items-center gap-2">
                         <AlertTriangle className="size-4" /> Failure Excerpt (Error Tail)
                       </span>
-                      <span className="font-mono text-[11px] text-destructive/80 font-normal">
+                      <span className="font-mono text-xs text-destructive/80 font-normal">
                         Exit Code {logDetail.exit_status}
                       </span>
                     </div>
@@ -506,7 +506,7 @@ export default function TaskLogViewerDialog({
                       </div>
                       <div className="flex justify-between py-1 border-b border-border/30">
                         <span className="text-muted-foreground">Task ID:</span>
-                        <span className="font-mono text-[11px] text-foreground truncate max-w-[180px]" title={logDetail.task}>
+                        <span className="font-mono text-xs text-foreground truncate max-w-[180px]" title={logDetail.task}>
                           {logDetail.task}
                         </span>
                       </div>
@@ -516,7 +516,7 @@ export default function TaskLogViewerDialog({
                       </div>
                       <div className="flex justify-between py-1">
                         <span className="text-muted-foreground">Job ID:</span>
-                        <span className="font-mono text-[11px] text-foreground truncate max-w-[180px]" title={logDetail.job}>
+                        <span className="font-mono text-xs text-foreground truncate max-w-[180px]" title={logDetail.job}>
                           {logDetail.job}
                         </span>
                       </div>
@@ -557,7 +557,7 @@ export default function TaskLogViewerDialog({
                     <h4 className="font-bold text-foreground flex items-center gap-2 mb-2">
                       <ImageIcon className="size-4 text-warning" /> Output Image Artifact
                     </h4>
-                    <span className="font-mono text-[11px] text-muted-foreground bg-surface-deep px-2 py-1 rounded block truncate">
+                    <span className="font-mono text-xs text-muted-foreground bg-surface-deep px-2 py-1 rounded block truncate">
                       {logDetail.output_image_path}
                     </span>
                   </div>

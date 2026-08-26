@@ -28,7 +28,7 @@ export function PageHeader({ title, description, backTo, onBack, children }: Pag
   const showBackButton = !!backTo || !!onBack;
 
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4">
+    <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-3">
       <div className="flex items-center gap-4">
         {showBackButton && (
           <Button variant="ghost" size="icon" onClick={handleBack} aria-label="Go back" className="shrink-0">
@@ -36,7 +36,7 @@ export function PageHeader({ title, description, backTo, onBack, children }: Pag
           </Button>
         )}
         <div>
-          <h1 className="text-xl font-bold tracking-tight">{title}</h1>
+          <h1 className="text-lg font-black tracking-tight">{title}</h1>
           {description && <p className="text-xs text-muted-foreground">{description}</p>}
         </div>
       </div>

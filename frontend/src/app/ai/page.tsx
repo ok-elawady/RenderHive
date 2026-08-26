@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   AlertTriangle,
+  Bot,
   BrainCircuit,
   CheckCircle2,
   Cpu,
@@ -39,7 +40,7 @@ import { StatChip } from "@/components/ui/stat-chip";
 import useSWR from "swr";
 import { fetchAiHealth, type AiHealthStatus } from "@/services/api";
 
-// ── Default system prompt (mirrors the one in services/ai_scheduler/prompts.py) ─
+// ── Default system prompt (mirrors the one in services/ai_service/prompts.py) ─
 const DEFAULT_SYSTEM_PROMPT = `You are an AI task scheduler for a distributed rendering farm.
 Your job is to act as a tie-breaker for rendering tasks that have very similar base scores.
 Given a worker node's current hardware capabilities and a list of candidate tasks, evaluate how well each task fits the worker.
@@ -117,7 +118,7 @@ export default function AiSchedulerPage() {
   return (
     <div className="flex h-full flex-col bg-background font-sans text-foreground overflow-hidden">
       <PageHeader
-        title="AI Scheduler & Dispatches"
+        title="AI Service & Dispatches"
         description="Monitor the local LLM service and review candidate task dispatch traces."
       >
         <div className="flex items-center gap-2">
@@ -129,7 +130,7 @@ export default function AiSchedulerPage() {
               {rulesChanged && (
                 <Badge
                   variant="outline"
-                  className="text-[10px] h-4 px-1.5 border-amber-500/40 text-amber-400 bg-amber-500/10 font-medium ml-0.5"
+                  className="text-[11px] h-4 px-1.5 border-amber-500/40 text-amber-400 bg-amber-500/10 font-medium ml-0.5"
                 >
                   Unsaved
                 </Badge>
@@ -163,12 +164,12 @@ export default function AiSchedulerPage() {
                   />
                 </div>
 
-                <div className="text-[11px] text-muted-foreground leading-relaxed bg-muted/20 p-3 rounded-lg border border-border/40 space-y-1">
+                <div className="text-xs text-muted-foreground leading-relaxed bg-muted/20 p-3 rounded-lg border border-border/40 space-y-1">
                   <p className="font-semibold text-foreground">Note on Cluster Execution:</p>
                   <p>
                     Saved rules are stored in your browser. To permanently apply them to the backend AI service, update{" "}
-                    <code className="font-mono text-[10px] bg-muted/60 px-1 py-0.5 rounded">
-                      services/ai_scheduler/prompts.py
+                    <code className="font-mono text-[11px] bg-muted/60 px-1 py-0.5 rounded">
+                      services/ai_service/prompts.py
                     </code>{" "}
                     and restart the container.
                   </p>
@@ -222,12 +223,12 @@ export default function AiSchedulerPage() {
       </PageHeader>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {/* ── Service Status Card Matching Dashboard Standard ───────────── */}
+        {/* ── AI Service Configuration ───────────────────────────────────── */}
         <Card className="bg-card border-border p-0 gap-0 overflow-hidden font-sans">
           <CardHeader className="p-3.5 pb-2.5 border-b border-border/50 flex flex-row items-center justify-between bg-muted/10">
             <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
-              <Server size={16} className="text-primary" />
-              <span>Service Status</span>
+              <Bot className="w-4 h-4 text-primary" />
+              AI Service Configuration
             </CardTitle>
 
             <div className="flex items-center gap-2">
@@ -238,18 +239,18 @@ export default function AiSchedulerPage() {
                 </Badge>
               ) : isOnline ? (
                 modelLoaded ? (
-                  <Badge variant="outline" className="gap-1.5 border-success/40 text-success bg-success/5 font-mono text-[10px] h-5">
+                  <Badge variant="outline" className="gap-1.5 border-success/40 text-success bg-success/5 font-mono text-[11px] h-5">
                     <StatusDot online={true} />
                     Online
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="gap-1.5 border-amber-500/40 text-amber-500 bg-amber-500/5 font-mono text-[10px] h-5">
+                  <Badge variant="outline" className="gap-1.5 border-amber-500/40 text-amber-500 bg-amber-500/5 font-mono text-[11px] h-5">
                     <StatusDot online={true} warning={true} />
                     Mock Mode
                   </Badge>
                 )
               ) : (
-                <Badge variant="outline" className="gap-1.5 border-destructive/40 text-destructive bg-destructive/5 font-mono text-[10px] h-5">
+                <Badge variant="outline" className="gap-1.5 border-destructive/40 text-destructive bg-destructive/5 font-mono text-[11px] h-5">
                   <WifiOff size={10} />
                   Unreachable
                 </Badge>
@@ -257,7 +258,7 @@ export default function AiSchedulerPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="p-4 space-y-4">
+          <CardContent className="p-3 space-y-4">
             {!isHealthLoading && !isOnline && (
               <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
                 <AlertTriangle size={16} className="text-destructive mt-0.5 shrink-0" />
@@ -280,7 +281,7 @@ export default function AiSchedulerPage() {
             <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 p-3">
               <BrainCircuit size={18} className={modelLoaded ? "text-primary" : "text-muted-foreground"} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground">
+                <p className="text-xs font-semibold text-foreground">
                   {isHealthLoading ? "Checking model..." : modelLoaded ? "LLM Model Loaded" : "Running in Mock Mode"}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">
