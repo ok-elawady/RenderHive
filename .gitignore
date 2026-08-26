@@ -130,3 +130,5 @@ test_ai_inference.py
 # AI Scheduler local data
 services/ai_scheduler/config.json
 services/ai_scheduler/models/
+
+*.gguf

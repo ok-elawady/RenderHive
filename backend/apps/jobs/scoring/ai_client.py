@@ -86,7 +86,7 @@ class AIScoreAdjuster:
         self.worker = worker
         # IMPORTANT: Set SCHEDULER_AI_URL in your environment for production.
         # Defaults to localhost:8001 — the AI service port, not Django (8000).
-        self.ai_url = getattr(settings, "SCHEDULER_AI_URL", "http://localhost:8001/api/v1/rank-tasks")
+        self.ai_url = getattr(settings, "AI_SERVICE_URL", "http://localhost:8001/api/v1/rank-tasks")
         # Default timeout of 2.5 seconds to prevent Django worker thread starvation.
         # Set SCHEDULER_AI_TIMEOUT in settings to override.
         self.timeout = getattr(settings, "SCHEDULER_AI_TIMEOUT", 2.5)

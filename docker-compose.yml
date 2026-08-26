@@ -47,10 +47,10 @@ services:
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-admin@renderhive.local}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-admin}
-      # AI Scheduler — points Django at the ai_scheduler service.
+      # AI Service — points Django at the ai_service service.
       # Set SCHEDULER_AI_ENABLED=False to disable the AI path entirely.
       SCHEDULER_AI_ENABLED: ${SCHEDULER_AI_ENABLED:-True}
-      SCHEDULER_AI_URL: ${SCHEDULER_AI_URL:-http://ai_scheduler:8001/api/v1/rank-tasks}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai_service:8001/api/v1/rank-tasks}
       SCHEDULER_AI_TIMEOUT: ${SCHEDULER_AI_TIMEOUT:-2.5}
     depends_on:
       postgres:
@@ -109,10 +109,10 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  ai_scheduler:
+  ai_service:
     profiles: ["ai"]
     build:
-      context: ./services/ai_scheduler
+      context: ./services/ai_service
       dockerfile: Dockerfile
       args:
         USE_CUDA: ${AI_USE_CUDA:-0}
@@ -179,7 +179,7 @@ services:
 
 volumes:
   postgres_data:
-  # Named volume for GGUF model files used by the ai_scheduler service.
+  # Named volume for GGUF model files used by the ai_service service.
   # To pre-populate it, copy your .gguf files into this volume or bind-mount
-  # a local directory instead (see the ai_scheduler service volumes comment).
+  # a local directory instead (see the ai_service service volumes comment).
   models:

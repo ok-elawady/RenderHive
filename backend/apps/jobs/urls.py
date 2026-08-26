@@ -17,7 +17,7 @@ reach them with a single UUID, without needing to know the layer/job hierarchy.
 from django.urls import path
 from rest_framework_nested import routers
 
-from .views import DependencyViewSet, JobViewSet, LayerViewSet, RecentDispatchesView, TaskDispatchView, TaskViewSet
+from .views import DependencyViewSet, JobViewSet, LayerViewSet, RecentDispatchesView, TaskDispatchView, TaskViewSet, explain_log_view
 
 # ── Top-level router ──────────────────────────────────────────────────────────
 router = routers.DefaultRouter()
@@ -38,6 +38,7 @@ urlpatterns = (
     [
         path("tasks/dispatch/", TaskDispatchView.as_view(), name="task-dispatch"),
         path("tasks/recent-dispatches/", RecentDispatchesView.as_view(), name="task-recent-dispatches"),
+        path("logs/explain/", explain_log_view, name="log-explain"),
     ]
     + router.urls
     + jobs_router.urls

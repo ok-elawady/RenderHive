@@ -1,0 +1,5 @@
+{
+    "model_path": "D:\\Projects\\RenderHive\\services\\ai_scheduler\\models\\mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+    "prompt_template": "mistral",
+    "n_ctx": 4096
+}
