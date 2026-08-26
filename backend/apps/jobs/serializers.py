@@ -253,6 +253,7 @@ class LayerListSerializer(serializers.ModelSerializer):
         failed_tasks: Counter cache.
         skipped_tasks: Counter cache.
         depend_tasks: Counter cache.
+        command: Base command template.
     """
 
     class Meta:
@@ -271,6 +272,7 @@ class LayerListSerializer(serializers.ModelSerializer):
             "failed_tasks",
             "skipped_tasks",
             "depend_tasks",
+            "command",
         ]
         read_only_fields = fields
 

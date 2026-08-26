@@ -54,7 +54,7 @@ function getSeverityBadge(severity: string) {
       return (
         <Badge
           variant="destructive"
-          className="bg-rose-600/20 text-rose-400 border-rose-500/40 text-[10px] font-mono h-5 px-1.5 inline-flex items-center gap-1"
+          className="bg-rose-600/20 text-rose-400 border-rose-500/40 text-[11px] font-mono h-5 px-1.5 inline-flex items-center gap-1"
         >
           <AlertOctagon className="size-3" /> CRIT
         </Badge>
@@ -63,7 +63,7 @@ function getSeverityBadge(severity: string) {
       return (
         <Badge
           variant="destructive"
-          className="bg-destructive/15 text-destructive border-destructive/30 text-[10px] font-mono h-5 px-1.5 inline-flex items-center gap-1"
+          className="bg-destructive/15 text-destructive border-destructive/30 text-[11px] font-mono h-5 px-1.5 inline-flex items-center gap-1"
         >
           <AlertCircle className="size-3" /> ERR
         </Badge>
@@ -72,7 +72,7 @@ function getSeverityBadge(severity: string) {
       return (
         <Badge
           variant="outline"
-          className="bg-warning/15 text-warning border-warning/30 text-[10px] font-mono h-5 px-1.5 inline-flex items-center gap-1"
+          className="bg-warning/15 text-warning border-warning/30 text-[11px] font-mono h-5 px-1.5 inline-flex items-center gap-1"
         >
           <AlertTriangle className="size-3" /> WARN
         </Badge>
@@ -81,7 +81,7 @@ function getSeverityBadge(severity: string) {
       return (
         <Badge
           variant="outline"
-          className="bg-info/10 text-info border-info/30 text-[10px] font-mono h-5 px-1.5 inline-flex items-center gap-1"
+          className="bg-info/10 text-info border-info/30 text-[11px] font-mono h-5 px-1.5 inline-flex items-center gap-1"
         >
           <Info className="size-3" /> INFO
         </Badge>
@@ -411,13 +411,13 @@ export function FarmActivityTable() {
                       <TableCell className="py-3.5 text-muted-foreground align-middle whitespace-nowrap text-left">
                         <div className="flex flex-col">
                           <span className="font-semibold text-foreground font-mono">{formatEventTime(evt.created_at)}</span>
-                          <span className="text-[10px] opacity-70">{formatEventDate(evt.created_at)}</span>
+                          <span className="text-[11px] opacity-70">{formatEventDate(evt.created_at)}</span>
                         </div>
                       </TableCell>
 
                       {/* 3. Event Type */}
                       <TableCell className="py-3.5 text-left align-middle truncate font-semibold text-foreground">
-                        <span className="bg-muted/60 px-2 py-0.5 rounded border border-border/60 text-[11px] font-mono">
+                        <span className="bg-muted/60 px-2 py-0.5 rounded border border-border/60 text-xs font-mono">
                           {String(evt.event_type)}
                         </span>
                       </TableCell>
@@ -429,7 +429,7 @@ export function FarmActivityTable() {
                             {targetInfo.label}
                           </span>
                           {Boolean(evt.actor_username) && (
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[11px] text-muted-foreground">
                               @{String(evt.actor_username)}
                             </span>
                           )}
@@ -605,7 +605,7 @@ export function FarmActivityTable() {
                         {getTargetDisplayName(selectedEvent).label}
                       </p>
                       {Boolean(selectedEvent.target_type) && (
-                        <p className="text-[11px] text-muted-foreground capitalize mt-0.5">
+                        <p className="text-xs text-muted-foreground capitalize mt-0.5">
                           Type: {String(selectedEvent.target_type)}
                         </p>
                       )}
@@ -669,7 +669,7 @@ export function FarmActivityTable() {
                     </div>
 
                     <div className="p-3.5 bg-surface-deep rounded-lg border border-border text-xs text-foreground/90 font-mono overflow-x-auto select-text max-h-60 leading-relaxed">
-                      <pre className="text-[11px]">
+                      <pre className="text-xs">
                         {JSON.stringify(selectedEvent.payload, null, 2)}
                       </pre>
                     </div>

@@ -27,11 +27,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <NavigationProvider>
-      <SidebarProvider>
+      <SidebarProvider defaultOpen={false} className="h-svh overflow-hidden">
         <AppSidebar />
-        <main className="flex flex-1 flex-col min-w-0">
+        <main className="flex flex-1 flex-col min-w-0 h-full overflow-hidden">
           <TopNav />
-          {children}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {children}
+          </div>
         </main>
         {isLoggingOut && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/90 text-foreground backdrop-blur-md">

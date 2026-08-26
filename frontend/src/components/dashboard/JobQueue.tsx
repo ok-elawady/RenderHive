@@ -364,7 +364,7 @@ export default function JobQueue({ jobs, searchQuery, onJobRemoved }: JobQueuePr
                             return (
                               <>
                                 <div className="text-xs font-semibold text-foreground">{dt.relative}</div>
-                                <div className="text-[10px] text-muted-foreground">{dt.absolute}</div>
+                                <div className="text-[11px] text-muted-foreground">{dt.absolute}</div>
                               </>
                             );
                           })()}

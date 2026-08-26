@@ -1239,3 +1239,63 @@ class RecentDispatchesView(generics.GenericAPIView):
 
         return Response(results)
 
+from rest_framework.decorators import api_view, permission_classes
+import requests
+from apps.telemetry.models import TaskExecutionLog
+
+@extend_schema(
+    summary="Explain task log with AI",
+    description="Send a task log to the local AI scheduler to get a human-readable explanation of errors.",
+    request={"application/json": {"type": "object", "properties": {"log_text": {"type": "string"}, "log_id": {"type": "string"}}}},
+    responses={200: {"type": "object", "properties": {"explanation": {"type": "string"}}}},
+)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def explain_log_view(request):
+    log_text = request.data.get("log_text")
+    log_id = request.data.get("log_id")
+    force_refresh = request.data.get("force_refresh", False)
+
+    if not log_text and not log_id:
+        return Response({"error": "No log text or log ID provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+    execution_log = None
+    if log_id:
+        try:
+            execution_log = TaskExecutionLog.objects.get(id=log_id)
+            if execution_log.ai_explanation and not force_refresh:
+                return Response({"explanation": execution_log.ai_explanation})
+            
+            if not log_text:
+                log_text = execution_log.error_tail or execution_log.log_output
+                if not log_text:
+                    return Response({"error": "Log is empty, cannot explain"}, status=status.HTTP_400_BAD_REQUEST)
+        except TaskExecutionLog.DoesNotExist:
+            pass
+
+    if not log_text:
+        return Response({"error": "No log text provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+    from urllib.parse import urlparse, urlunparse
+    ai_url = getattr(settings, "AI_SERVICE_URL", "http://ai_service:8001/api/v1/rank-tasks")
+    parsed = urlparse(ai_url)
+    # Derive base (scheme + netloc) and build the explain endpoint independently
+    base = urlunparse((parsed.scheme, parsed.netloc, "/api/v1/explain-log", "", "", ""))
+    explain_url = base
+
+    try:
+        resp = requests.post(explain_url, json={"log_text": log_text}, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        if execution_log and "explanation" in data:
+            execution_log.ai_explanation = data["explanation"]
+            execution_log.save(update_fields=["ai_explanation"])
+            
+        return Response(data)
+    except requests.exceptions.RequestException as e:
+        return Response(
+            {"error": f"Failed to contact AI service: {str(e)}"},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+

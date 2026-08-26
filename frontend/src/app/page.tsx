@@ -1,15 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import AgenticLogs from "@/components/dashboard/AgenticLogs";
-import FarmActivityFeed from "@/components/dashboard/FarmActivityFeed";
-import HardwareTelemetry from "@/components/dashboard/HardwareTelemetry";
-import JobQueue from "@/components/dashboard/JobQueue";
-import KpiCards from "@/components/dashboard/KpiCards";
-import { PoolSaturationStrip } from "@/components/dashboard/PoolSaturationStrip";
+import { JobTreePanel } from "@/components/dashboard/JobTreePanel";
+import { TaskDetailPanel } from "@/components/dashboard/TaskDetailPanel";
+import { BottomTabsPanel } from "@/components/dashboard/BottomTabsPanel";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { PageSkeleton } from "@/components/ui/SkeletonLoaders";
 import {
-  computeClusterTelemetry,
   computeFarmEfficiency,
   fetchJobs,
   getNodes,
@@ -19,23 +16,31 @@ import {
   type WorkerPool,
 } from "@/services/api";
 import { useClusterHealth } from "@/hooks/useClusterHealth";
-import type { RenderJob, TelemetryMetrics } from "@/types/dashboard";
-
-const emptyTelemetry: TelemetryMetrics = {
-  cpuLoad: 0,
-  memoryUsage: 0,
-  vramUsage: 0,
-  points: [],
-};
+import type { RenderJob } from "@/types/dashboard";
 
 export default function DashboardPage() {
   const { latencyMs, isOffline: isClusterOffline } = useClusterHealth();
   const [jobs, setJobs] = useState<RenderJob[]>([]);
   const [nodes, setNodes] = useState<WorkerNode[]>([]);
   const [pools, setPools] = useState<WorkerPool[]>([]);
-  const [telemetry, setTelemetry] = useState<TelemetryMetrics>(emptyTelemetry);
   const [isFetchOffline, setIsFetchOffline] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Layout persistence state
+  const [layoutV, setLayoutV] = useState<any>(null);
+  const [layoutH, setLayoutH] = useState<any>(null);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+    const v = localStorage.getItem("dashboard-layout-v");
+    if (v) { try { setLayoutV(JSON.parse(v)); } catch {} }
+    const h = localStorage.getItem("dashboard-layout-h");
+    if (h) { try { setLayoutH(JSON.parse(h)); } catch {} }
+  }, []);
+
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
 
   const initialFetchTimerRef = useRef<number | null>(null);
   const pollingTimerRef = useRef<number | null>(null);
@@ -81,10 +86,6 @@ export default function DashboardPage() {
       setNodes(backendNodes);
       setPools(backendPools);
       setIsFetchOffline(false);
-
-      setTelemetry((prev) =>
-        computeClusterTelemetry(mappedJobs, backendNodes, prev.points)
-      );
     } catch {
       setIsFetchOffline(true);
     } finally {
@@ -109,7 +110,6 @@ export default function DashboardPage() {
       if (initialFetchTimerRef.current !== null) {
         window.clearTimeout(initialFetchTimerRef.current);
       }
-
       if (pollingTimerRef.current !== null) {
         window.clearInterval(pollingTimerRef.current);
       }
@@ -120,42 +120,103 @@ export default function DashboardPage() {
     return <PageSkeleton />;
   }
 
+  if (!isClient) {
+    return <PageSkeleton />;
+  }
+
+  // Helper to extract layout values correctly since they might be number arrays (v1) or objects (v4)
+  const getLayoutSize = (layout: any, key: string, index: number, defaultVal: number) => {
+    if (!layout) return defaultVal;
+    if (Array.isArray(layout)) return layout[index] ?? defaultVal;
+    if (typeof layout === "object") return layout[key] ?? defaultVal;
+    return defaultVal;
+  };
+
   return (
-    <div className="flex-1 flex flex-col p-6 space-y-6 font-mono min-h-screen">
-      <KpiCards
-        totalNodes={totalNodes}
-        onlineNodes={onlineNodes}
-        totalCores={totalCores}
-        activeJobs={activeJobCount}
-        activeTasks={activeTaskCount}
-        farmEfficiency={efficiency}
-        completedJobs={completedJobs}
-        failedJobs={failedJobs}
-        latencyMs={latencyMs}
-        isOffline={isClusterOffline || isFetchOffline}
-      />
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+      <ResizablePanelGroup 
+        orientation="vertical" 
+        id="dashboard-vertical"
+        onLayoutChange={(sizes) => localStorage.setItem("dashboard-layout-v", JSON.stringify(sizes))}
+      >
+        <ResizablePanel 
+          id="top"
+          defaultSize={getLayoutSize(layoutV, "top", 0, 66)} 
+          minSize={20}
+        >
+          <ResizablePanelGroup 
+            orientation="horizontal" 
+            id="dashboard-horizontal"
+            onLayoutChange={(sizes) => localStorage.setItem("dashboard-layout-h", JSON.stringify(sizes))}
+          >
+            {/* Left Pane: Job Tree */}
+            <ResizablePanel 
+              id="job-tree"
+              defaultSize={getLayoutSize(layoutH, "job-tree", 0, 65)} 
+              minSize={20} 
+              className="bg-surface-deep flex flex-col"
+            >
+              <JobTreePanel
+                jobs={jobs}
+                selectedJobId={selectedJobId}
+                selectedLayerId={selectedLayerId}
+                onSelectJob={(id) => {
+                  setSelectedJobId(id);
+                  setSelectedLayerId(null);
+                }}
+                onSelectLayer={(jid, lid) => {
+                  setSelectedJobId(jid);
+                  setSelectedLayerId(lid);
+                }}
+                onJobRemoved={refreshDashboardData}
+              />
+            </ResizablePanel>
 
-      <PoolSaturationStrip pools={pools} />
+            <ResizableHandle />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 lg:relative min-h-[400px] lg:min-h-0">
-          <div className="lg:absolute lg:inset-0 h-full w-full">
-            <JobQueue jobs={jobs} searchQuery="" onJobRemoved={refreshDashboardData} />
-          </div>
-        </div>
-        <div>
-          <HardwareTelemetry telemetry={telemetry} />
-        </div>
-      </div>
+            {/* Right Pane: Task Details */}
+            <ResizablePanel 
+              id="task-details"
+              defaultSize={getLayoutSize(layoutH, "task-details", 1, 35)} 
+              minSize={20} 
+              className="bg-background flex flex-col min-w-0"
+            >
+              <TaskDetailPanel
+                selectedJobId={selectedJobId}
+                selectedLayerId={selectedLayerId}
+                jobs={jobs}
+                nodes={nodes}
+                pools={pools}
+                onSelectLayer={(jid, lid) => {
+                  setSelectedJobId(jid);
+                  setSelectedLayerId(lid);
+                }}
+              />
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </ResizablePanel>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:h-[420px]">
-        <div className="h-[420px] lg:h-full min-h-0">
-          <FarmActivityFeed />
-        </div>
-        <div className="h-[420px] lg:h-full min-h-0">
-          <AgenticLogs searchQuery="" showDetails={false} />
-        </div>
-      </div>
+        <ResizableHandle />
+
+        {/* Bottom Split (Unified Bottom Panel) */}
+        <ResizablePanel 
+          id="bottom"
+          defaultSize={getLayoutSize(layoutV, "bottom", 1, 34)} 
+          minSize={10} 
+          className="flex flex-col min-h-0"
+        >
+          <BottomTabsPanel 
+            nodes={nodes}
+            totalNodes={totalNodes}
+            onlineNodes={onlineNodes}
+            totalCores={totalCores}
+            farmEfficiency={efficiency}
+            latencyMs={latencyMs}
+            isOffline={isClusterOffline || isFetchOffline}
+            errorCount={failedJobs}
+          />
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }

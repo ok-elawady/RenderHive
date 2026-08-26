@@ -20,3 +20,8 @@ services:
       - ./frontend:/app
       - /app/node_modules # Prevent host node_modules from overriding container's
       - /app/.next # Prevent host .next from overriding container's
+
+  ai_service:
+    volumes:
+      - ./services/ai_service:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload

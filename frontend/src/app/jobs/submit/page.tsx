@@ -770,8 +770,8 @@ export default function SubmitJobPage() {
                                 <FormControl>
                                   <Input placeholder="1001-1120 or 1-100" className="font-mono text-xs bg-surface-deep" {...field} />
                                 </FormControl>
-                                <FormDescription className="text-[11px] text-muted-foreground leading-snug">
-                                  Specify frames to dispatch (e.g. <code className="font-mono text-[10px] text-foreground/80">1-100</code>, <code className="font-mono text-[10px] text-foreground/80">1001-1120</code>, or step <code className="font-mono text-[10px] text-foreground/80">1-100x2</code>).
+                                <FormDescription className="text-xs text-muted-foreground leading-snug">
+                                  Specify frames to dispatch (e.g. <code className="font-mono text-[11px] text-foreground/80">1-100</code>, <code className="font-mono text-[11px] text-foreground/80">1001-1120</code>, or step <code className="font-mono text-[11px] text-foreground/80">1-100x2</code>).
                                 </FormDescription>
                                 <FormMessage />
                               </FormItem>

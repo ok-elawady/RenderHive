@@ -166,6 +166,36 @@ def _format_prompt(user_prompt: str) -> str:
         )
 
 
+def _format_explain_prompt(user_prompt: str) -> str:
+    template = active_config["prompt_template"]
+    system = "You are an expert VFX Pipeline TD. Read the following render farm log. Provide a VERY BRIEF summary of what went wrong. Highlight only the MOST CRUCIAL problems using 1-3 bullet points. CRITICAL INSTRUCTION: Your advice must be strictly for a VFX artist. DO NOT output any code blocks, scripts, or programming solutions. Focus ONLY on DCC software settings, scene configuration, file paths, or farm job parameters. Keep it as short and concise as possible."
+    if template == "llama3":
+        return (
+            "<|begin_of_text|>"
+            "<|start_header_id|>system<|end_header_id|>\n\n"
+            f"{system}"
+            "<|eot_id|>"
+            "<|start_header_id|>user<|end_header_id|>\n\n"
+            f"{user_prompt}"
+            "<|eot_id|>"
+            "<|start_header_id|>assistant<|end_header_id|>\n\n"
+        )
+    elif template == "chatml":
+        return (
+            "<|im_start|>system\n"
+            f"{system}<|im_end|>\n"
+            "<|im_start|>user\n"
+            f"{user_prompt}<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
+    else:
+        return (
+            f"<|system|>\n{system}</s>\n"
+            f"<|user|>\n{user_prompt}</s>\n"
+            "<|assistant|>\n"
+        )
+
+
 def _extract_json_array(text: str) -> str:
     import re
     import json
@@ -230,9 +260,40 @@ class LoadModelRequest(BaseModel):
     filename: str
     prompt_template: str
 
+class LogExplainRequest(BaseModel):
+    log_text: str
+
 # ---------------------------------------------------------------------------
 # Endpoints: AI Dispatch
 # ---------------------------------------------------------------------------
+
+@app.post("/api/v1/explain-log")
+def explain_log(req: LogExplainRequest):
+    if not req.log_text:
+        return {"explanation": "No log text provided."}
+
+    if LLM is None:
+        return {"explanation": "[MOCK MODE] If this were production, the AI would explain the log here. The AI is currently offline or running in mock mode."}
+
+    # Limit log text to prevent blowing up the context window
+    truncated_log = req.log_text[-3000:] 
+    prompt = _format_explain_prompt(truncated_log)
+
+    with _llm_lock:
+        try:
+            res = LLM(
+                prompt,
+                max_tokens=256,
+                stop=["<|eot_id|>", "<|im_end|>", "</s>"],
+                echo=False,
+                temperature=0.2,
+            )
+            explanation = res["choices"][0]["text"].strip()
+            return {"explanation": explanation}
+        except Exception as e:
+            logger.error(f"LLM inference error during explain_log: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/v1/rank-tasks", response_model=List[RankedTask])
 def rank_tasks(req: RankRequest):

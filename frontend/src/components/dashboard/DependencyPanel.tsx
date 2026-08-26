@@ -316,7 +316,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
             {inbound.length > 0 && (
               <Badge
                 variant="destructive"
-                className="px-1.5 py-0 text-[10px] rounded-full h-4 min-w-4 justify-center font-normal"
+                className="px-1.5 py-0 text-[11px] rounded-full h-4 min-w-4 justify-center font-normal"
               >
                 {inbound.length}
               </Badge>
@@ -327,7 +327,7 @@ export function DependencyPanel({ jobId, isStaff = false }: DependencyPanelProps
             {outbound.length > 0 && (
               <Badge
                 variant="secondary"
-                className="px-1.5 py-0 text-[10px] rounded-full h-4 min-w-4 justify-center font-normal"
+                className="px-1.5 py-0 text-[11px] rounded-full h-4 min-w-4 justify-center font-normal"
               >
                 {outbound.length}
               </Badge>

@@ -82,6 +82,17 @@ class TaskLogViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin, viewsets.
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+        if log_instance.exit_status != 0:
+            from apps.telemetry.tasks import generate_ai_explanation_for_log
+            
+            # Check if this is the first failed task log for this job
+            previous_failures = TaskExecutionLog.objects.filter(
+                job_id=task.job_id
+            ).exclude(exit_status=0).exclude(id=log_instance.id).exists()
+            
+            if not previous_failures:
+                generate_ai_explanation_for_log.delay(str(log_instance.id))
+
         return Response(TaskLogDetailSerializer(log_instance).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="latest")

@@ -86,7 +86,7 @@ function getModeBadge(trace: DispatchTrace) {
     return (
       <Badge
         variant="outline"
-        className="gap-1 border-primary/40 text-primary bg-primary/10 text-[10px] font-mono h-5 px-1.5 inline-flex items-center font-semibold"
+        className="gap-1 border-primary/40 text-primary bg-primary/10 text-[11px] font-mono h-5 px-1.5 inline-flex items-center font-semibold"
       >
         <Brain className="size-3" /> AI OPT
       </Badge>
@@ -96,7 +96,7 @@ function getModeBadge(trace: DispatchTrace) {
     return (
       <Badge
         variant="outline"
-        className="gap-1 border-amber-500/30 text-amber-400 bg-amber-500/10 text-[10px] font-mono h-5 px-1.5 inline-flex items-center font-medium"
+        className="gap-1 border-amber-500/30 text-amber-400 bg-amber-500/10 text-[11px] font-mono h-5 px-1.5 inline-flex items-center font-medium"
       >
         <Cpu className="size-3" /> MOCK
       </Badge>
@@ -105,7 +105,7 @@ function getModeBadge(trace: DispatchTrace) {
   return (
     <Badge
       variant="outline"
-      className="gap-1 text-muted-foreground border-border text-[10px] font-mono h-5 px-1.5 inline-flex items-center"
+      className="gap-1 text-muted-foreground border-border text-[11px] font-mono h-5 px-1.5 inline-flex items-center"
     >
       <Cpu className="size-3" /> HEUR
     </Badge>
@@ -419,7 +419,7 @@ export function DispatchTracesTable() {
                           <span className="font-semibold text-foreground font-mono">
                             {formatEventTime(trace.dispatched_at)}
                           </span>
-                          <span className="text-[10px] opacity-70">
+                          <span className="text-[11px] opacity-70">
                             {formatEventDate(trace.dispatched_at)}
                           </span>
                         </div>
@@ -434,7 +434,7 @@ export function DispatchTracesTable() {
                           >
                             {trace.job_visible_name || trace.job_name}
                           </span>
-                          <span className="text-[10px] font-mono text-muted-foreground truncate">
+                          <span className="text-[11px] font-mono text-muted-foreground truncate">
                             {trace.task_name}
                           </span>
                         </div>
@@ -447,7 +447,7 @@ export function DispatchTracesTable() {
                             {trace.worker_hostname}
                           </span>
                           {trace.candidate_count > 1 && (
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-[11px] text-muted-foreground">
                               {trace.candidate_count} candidates
                             </span>
                           )}
@@ -463,7 +463,7 @@ export function DispatchTracesTable() {
                           {!isMock && aiAdj !== 0 && (
                             <span
                               className={cn(
-                                "text-[10px] font-semibold",
+                                "text-[11px] font-semibold",
                                 aiAdj > 0 ? "text-emerald-400" : "text-rose-400"
                               )}
                             >
@@ -515,7 +515,7 @@ export function DispatchTracesTable() {
               </span>
 
               <div className="flex items-center gap-1.5 ml-2">
-                <span className="text-[11px] hidden sm:inline">Rows per page:</span>
+                <span className="text-xs hidden sm:inline">Rows per page:</span>
                 <select
                   aria-label="Rows per page"
                   value={pageSize}
@@ -616,21 +616,21 @@ export function DispatchTracesTable() {
                     {selectedTrace.ai_invoked && !isMockTrace(selectedTrace) ? (
                       <Badge
                         variant="outline"
-                        className="gap-1 border-primary/40 text-primary bg-primary/10 font-semibold text-[10px] font-mono h-5 px-1.5 inline-flex items-center"
+                        className="gap-1 border-primary/40 text-primary bg-primary/10 font-semibold text-[11px] font-mono h-5 px-1.5 inline-flex items-center"
                       >
                         <Brain className="size-3" /> AI OPTIMIZED
                       </Badge>
                     ) : isMockTrace(selectedTrace) ? (
                       <Badge
                         variant="outline"
-                        className="gap-1 border-amber-500/30 text-amber-400 bg-amber-500/10 text-[10px] font-mono h-5 px-1.5 inline-flex items-center font-medium"
+                        className="gap-1 border-amber-500/30 text-amber-400 bg-amber-500/10 text-[11px] font-mono h-5 px-1.5 inline-flex items-center font-medium"
                       >
                         <Cpu className="size-3" /> MOCK AI
                       </Badge>
                     ) : (
                       <Badge
                         variant="outline"
-                        className="font-mono text-[10px] h-5 px-1.5 inline-flex items-center gap-1 text-muted-foreground"
+                        className="font-mono text-[11px] h-5 px-1.5 inline-flex items-center gap-1 text-muted-foreground"
                       >
                         <Cpu className="size-3" /> HEURISTIC
                       </Badge>
@@ -666,7 +666,7 @@ export function DispatchTracesTable() {
                         {selectedTrace.task_name}
                       </p>
                       {selectedTrace.task && (
-                        <p className="text-[11px] font-mono text-muted-foreground mt-0.5 break-all">
+                        <p className="text-xs font-mono text-muted-foreground mt-0.5 break-all">
                           Task ID: {selectedTrace.task}
                         </p>
                       )}
@@ -680,7 +680,7 @@ export function DispatchTracesTable() {
                       <p className="mt-1 text-sm font-bold text-foreground font-mono">
                         {selectedTrace.worker_hostname}
                       </p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         {selectedTrace.candidate_count} candidate node{selectedTrace.candidate_count !== 1 ? "s" : ""} evaluated
                       </p>
                     </div>
@@ -706,7 +706,7 @@ export function DispatchTracesTable() {
 
                   <div className="rounded-lg border border-border overflow-hidden bg-surface-deep">
                     <table className="w-full text-xs font-mono">
-                      <thead className="bg-muted/40 border-b border-border text-muted-foreground text-[11px]">
+                      <thead className="bg-muted/40 border-b border-border text-muted-foreground text-xs">
                         <tr>
                           <th className="text-left px-3 py-2 font-semibold">Factor</th>
                           <th className="text-right px-3 py-2 font-semibold">Contribution</th>
@@ -777,7 +777,7 @@ export function DispatchTracesTable() {
                     </div>
 
                     <div className="p-3.5 bg-surface-deep rounded-lg border border-border text-xs text-foreground/90 font-mono overflow-x-auto select-text max-h-60 leading-relaxed">
-                      <pre className="text-[11px]">
+                      <pre className="text-xs">
                         {JSON.stringify(selectedTrace.score_breakdown, null, 2)}
                       </pre>
                     </div>

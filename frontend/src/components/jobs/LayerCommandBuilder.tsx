@@ -357,8 +357,8 @@ export function LayerCommandBuilder({ form, layerIndex }: LayerCommandBuilderPro
             <HardDrive size={14} className="text-primary" />
             <span>Scene / Script File Path</span>
           </FormLabel>
-          <span className="text-[11px] font-normal text-muted-foreground leading-snug">
-            Network UNC or shared drive path (e.g. <code className="font-mono text-[10px] text-foreground/80">P:/...</code> or <code className="font-mono text-[10px] text-foreground/80">\\nas\...</code>)
+          <span className="text-xs font-normal text-muted-foreground leading-snug">
+            Network UNC or shared drive path (e.g. <code className="font-mono text-[11px] text-foreground/80">P:/...</code> or <code className="font-mono text-[11px] text-foreground/80">\\nas\...</code>)
           </span>
         </div>
 
@@ -387,13 +387,13 @@ export function LayerCommandBuilder({ form, layerIndex }: LayerCommandBuilderPro
                 </FormControl>
                 {field.value && detectedExt && (
                   <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-                    <Badge variant="outline" className="text-[10px] uppercase font-mono py-0 px-1.5 border-primary/40 bg-primary/10 text-primary">
+                    <Badge variant="outline" className="text-[11px] uppercase font-mono py-0 px-1.5 border-primary/40 bg-primary/10 text-primary">
                       .{detectedExt}
                     </Badge>
                   </div>
                 )}
               </div>
-              <FormDescription className="text-[11px] text-muted-foreground leading-snug">
+              <FormDescription className="text-xs text-muted-foreground leading-snug">
                 Pasting or typing the scene path automatically detects the DCC engine and generates the worker command.
               </FormDescription>
               <FormMessage />
@@ -576,7 +576,7 @@ export function LayerCommandBuilder({ form, layerIndex }: LayerCommandBuilderPro
               variant="ghost"
               size="sm"
               onClick={() => setIsRawCommandMode(!isRawCommandMode)}
-              className="h-7 text-[11px] gap-1 px-2 text-muted-foreground hover:text-foreground"
+              className="h-7 text-xs gap-1 px-2 text-muted-foreground hover:text-foreground"
             >
               <Code2 size={12} />
               {isRawCommandMode ? "Switch to Visual Builder" : "Edit Raw CLI"}
@@ -586,7 +586,7 @@ export function LayerCommandBuilder({ form, layerIndex }: LayerCommandBuilderPro
               variant="ghost"
               size="sm"
               onClick={handleCopyCommand}
-              className="h-7 text-[11px] gap-1 px-2 text-muted-foreground hover:text-foreground"
+              className="h-7 text-xs gap-1 px-2 text-muted-foreground hover:text-foreground"
             >
               {copiedCommand ? (
                 <>
@@ -620,15 +620,15 @@ export function LayerCommandBuilder({ form, layerIndex }: LayerCommandBuilderPro
                   {...field}
                 />
               </FormControl>
-              <FormDescription className="text-[11px] flex items-center gap-1.5 text-muted-foreground/80 mt-1.5">
+              <FormDescription className="text-xs flex items-center gap-1.5 text-muted-foreground/80 mt-1.5">
                 <HelpCircle size={12} className="shrink-0 text-primary" />
                 <span>
                   Worker Adapters dynamically resolve tokens like{" "}
-                  <code className="text-primary font-mono text-[10px] bg-muted/60 px-1 py-0.5 rounded">
+                  <code className="text-primary font-mono text-[11px] bg-muted/60 px-1 py-0.5 rounded">
                     &#123;SCENE_PATH&#125;
                   </code>{" "}
                   and{" "}
-                  <code className="text-primary font-mono text-[10px] bg-muted/60 px-1 py-0.5 rounded">
+                  <code className="text-primary font-mono text-[11px] bg-muted/60 px-1 py-0.5 rounded">
                     &#123;FRAME&#125;
                   </code>{" "}
                   at dispatch time.

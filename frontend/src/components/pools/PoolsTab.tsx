@@ -215,7 +215,7 @@ export function PoolsTab({
           <Table className="table-fixed">
             <TableHeader className="bg-card sticky top-0 z-10 border-b border-border/50">
               <TableRow className="hover:bg-transparent bg-muted/30">
-                <TableHead className="w-[28%] pl-6">
+                <TableHead className="w-[28%] pl-6 text-[11px] uppercase tracking-wider h-8">
                   <TableSortHeader
                     label="Pool Name"
                     sortKey="name"
@@ -225,7 +225,7 @@ export function PoolsTab({
                     align="left"
                   />
                 </TableHead>
-                <TableHead className="w-[36%]">
+                <TableHead className="w-[36%] text-[11px] uppercase tracking-wider h-8">
                   <TableSortHeader
                     label="Description"
                     sortKey="description"
@@ -235,7 +235,7 @@ export function PoolsTab({
                     align="left"
                   />
                 </TableHead>
-                <TableHead className="w-[16%]">
+                <TableHead className="w-[16%] text-[11px] uppercase tracking-wider h-8">
                   <TableSortHeader
                     label="Created"
                     sortKey="created_at"
@@ -245,7 +245,7 @@ export function PoolsTab({
                     align="center"
                   />
                 </TableHead>
-                <TableHead className="w-[12%]">
+                <TableHead className="w-[12%] text-[11px] uppercase tracking-wider h-8">
                   <TableSortHeader
                     label="Nodes"
                     sortKey="worker_count"
@@ -255,7 +255,7 @@ export function PoolsTab({
                     align="center"
                   />
                 </TableHead>
-                <TableHead className="font-semibold pr-6 text-right w-[8%] text-xs text-muted-foreground align-middle">Actions</TableHead>
+                <TableHead className="font-semibold pr-6 text-right w-[8%] text-[11px] uppercase tracking-wider h-8 align-middle">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="text-xs">
@@ -282,24 +282,24 @@ export function PoolsTab({
                     onKeyDown={(event) => handleRowKeyDown(event, item)}
                     aria-label={`View ${item.name}`}
                   >
-                    <TableCell className="pl-6 py-3 text-left">
+                    <TableCell className="pl-6 py-2 text-left">
                       <span className="font-bold text-foreground">
                         {item.name}
                       </span>
                     </TableCell>
-                    <TableCell className="py-3 text-muted-foreground truncate max-w-[240px]">
+                    <TableCell className="py-2 text-muted-foreground truncate max-w-[240px]">
                       {item.description || "No description provided"}
                     </TableCell>
-                    <TableCell className="py-3 text-muted-foreground text-center">
+                    <TableCell className="py-2 text-muted-foreground text-center">
                       {new Intl.DateTimeFormat("en", { dateStyle: "short" }).format(new Date(item.created_at))}
                     </TableCell>
-                    <TableCell className="py-3 text-center">
-                      <Badge variant="secondary" className="font-mono gap-1.5 px-2 bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 text-[11px] h-5">
+                    <TableCell className="py-2 text-center">
+                      <Badge variant="secondary" className="font-mono gap-1.5 px-2 bg-primary/10 text-primary hover:bg-primary/20 border-primary/20 text-xs h-5">
                         <Server size={11} />
                         {item.worker_count ?? 0} Nodes
                       </Badge>
                     </TableCell>
-                    <TableCell className="pr-6 py-3 text-right">
+                    <TableCell className="pr-6 py-2 text-right">
                       <ChevronRight className="ml-auto text-muted-foreground group-hover:text-foreground transition-colors" size={16} />
                     </TableCell>
                   </TableRow>
@@ -333,38 +333,42 @@ export function PoolsTab({
                     isSubmitting={isUpdating}
                   />
                 ) : (
-                  <div className="space-y-5 flex flex-col flex-1">
-                    <div className="grid gap-4 pt-1">
-                      <div className="flex items-start gap-3">
-                        <Layers className="mt-0.5 text-primary" size={16} />
-                        <div>
-                          <p className="text-xs text-muted-foreground">Description</p>
-                          <p className="mt-1 break-words text-sm text-foreground leading-relaxed">
-                            {selectedPool.description || "No description provided"}
-                          </p>
+                  <div className="space-y-6 flex flex-col flex-1">
+                    <div className="grid gap-4 pt-2">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          <Layers size={13} className="text-primary" />
+                          <span>Description</span>
                         </div>
+                        <span className="text-xs text-foreground bg-muted/30 p-2.5 rounded-md border border-border/50">
+                          {selectedPool.description || "No description provided"}
+                        </span>
                       </div>
-                      <div className="flex items-start gap-3">
-                        <CalendarDays className="mt-0.5 text-primary" size={16} />
-                        <div>
-                          <p className="text-xs text-muted-foreground">Date Created</p>
-                          <p className="mt-1 text-sm text-foreground">{formatDate(selectedPool.created_at)}</p>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          <CalendarDays size={13} className="text-primary" />
+                          <span>Date Created</span>
                         </div>
+                        <span className="text-xs font-mono text-foreground bg-muted/30 p-2.5 rounded-md border border-border/50">
+                          {formatDate(selectedPool.created_at)}
+                        </span>
                       </div>
-                      <div className="flex items-start gap-3 border-t border-border pt-4">
-                        <Server className="mt-0.5 text-primary" size={16} />
-                        <div className="w-full">
-                          <p className="text-xs text-muted-foreground mb-2">Worker Nodes ({selectedPool.worker_count ?? 0})</p>
+                      <div className="flex flex-col gap-1 mt-2">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          <Server size={13} className="text-primary" />
+                          <span>Worker Nodes ({selectedPool.worker_count ?? 0})</span>
+                        </div>
+                        <div className="bg-muted/30 p-3 rounded-md border border-border/50 min-h-[60px]">
                           {selectedPool.workers && selectedPool.workers.length > 0 ? (
                             <div className="flex flex-wrap gap-1.5">
                               {selectedPool.workers.map((workerName: string) => (
-                                <Badge key={workerName} variant="secondary" className="font-mono text-xs px-2 py-0.5">
+                                <Badge key={workerName} variant="secondary" className="font-mono text-[11px] px-2 h-5">
                                   {workerName}
                                 </Badge>
                               ))}
                             </div>
                           ) : (
-                            <p className="text-sm text-muted-foreground">No worker nodes assigned to this pool.</p>
+                            <p className="text-xs text-muted-foreground italic">No worker nodes assigned to this pool.</p>
                           )}
                         </div>
                       </div>

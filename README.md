@@ -13,7 +13,7 @@ This repository is organized as a monorepo containing the following main compone
 | **Frontend**      | [`frontend/`](./frontend)                     | Web dashboard for monitoring jobs, workers, and user settings.           | Next.js 16 (App Router), React 19, Tailwind CSS v4, Shadcn UI |
 | **Backend**       | [`backend/`](./backend)                       | Central orchestration API server and task scheduler.                     | Django REST Framework, Celery, Redis                          |
 | **Worker**        | [`worker/`](./worker)                         | Desktop application that runs on each render node.                       | Python, PySide6 (Qt), psutil                                  |
-| **AI Scheduler**  | [`services/ai_scheduler/`](./services/ai_scheduler) | LLM-powered tie-breaker service for intelligent task dispatch.     | FastAPI, llama-cpp-python                                     |
+| **AI Service**  | [`services/ai_service/`](./services/ai_service) | LLM-powered service for intelligent task dispatch and log explanation.     | FastAPI, llama-cpp-python                                     |
 | **Plugins**       | [`plugins/`](./plugins)                       | DCC Integrations. Currently hosts Autodesk Maya integration.             | Python, PySide, MEL, Maya Commands                            |
 
 ---
@@ -21,7 +21,7 @@ This repository is organized as a monorepo containing the following main compone
 ## 🎨 Key Features
 
 - **Distributed Orchestration**: Manage render workers, assign priorities, and balance render loads dynamically.
-- **AI-Augmented Scheduling**: An optional local LLM service ([`services/ai_scheduler/`](./services/ai_scheduler)) acts as a tie-breaker when multiple tasks are equally viable, using live worker capabilities (CPU load, GPU VRAM, memory) to make the best dispatch decision. Falls back to deterministic scoring when the AI service is unavailable.
+- **AI-Augmented Scheduling**: An optional local LLM service ([`services/ai_service/`](./services/ai_service)) acts as a tie-breaker when multiple tasks are equally viable, using live worker capabilities (CPU load, GPU VRAM, memory) to make the best dispatch decision. Falls back to deterministic scoring when the AI service is unavailable.
 - **Next-Gen Web Dashboard**: Clean, modern interface designed with Tailwind CSS v4 and Shadcn UI.
 - **Autodesk Maya Plugin Integration**:
   - Drag-and-drop installation (`drag_to_maya_install.mel`).
@@ -73,7 +73,7 @@ docker compose --profile frontend --profile ai up --build
 | Nginx (reverse proxy) | [http://localhost:80](http://localhost:80) | `frontend` |
 | AI Scheduler | [http://localhost:8001](http://localhost:8001) | `ai` |
 
-> **AI Scheduler note:** Requires a GGUF model file. Without one it runs in mock mode (useful for dev). See [`services/ai_scheduler/README.md`](./services/ai_scheduler/README.md) for model setup.
+> **AI Service note:** Requires a GGUF model file. Without one it runs in mock mode (useful for dev). See [`services/ai_service/README.md`](./services/ai_service/README.md) for model setup.
 
 ### 💻 Running the Frontend Locally (without Docker)
 

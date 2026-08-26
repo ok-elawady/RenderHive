@@ -79,3 +79,46 @@ def prune_old_telemetry(days: Optional[int] = None) -> Dict[str, Any]:
 
     logger.info("Telemetry pruning finished: %s", result)
     return result
+
+
+@shared_task(bind=True, name="apps.telemetry.tasks.generate_ai_explanation_for_log", rate_limit="5/m")
+def generate_ai_explanation_for_log(self, log_id: str) -> Optional[str]:
+    """Asynchronously generate an AI explanation for a failed task log.
+    Includes load-aware pausing to avoid hogging resources.
+    """
+    import psutil
+    import requests
+    from django.conf import settings
+    from apps.telemetry.models import TaskExecutionLog
+
+    # Check host system load (avoid running AI inference if CPU is pegged)
+    cpu_usage = psutil.cpu_percent(interval=1.0)
+    if cpu_usage > 85.0:
+        logger.warning(f"Host CPU usage at {cpu_usage}%. Pausing AI explanation for log {log_id}. Retrying in 60s.")
+        raise self.retry(countdown=60)
+
+    try:
+        log = TaskExecutionLog.objects.get(id=log_id)
+    except TaskExecutionLog.DoesNotExist:
+        logger.error(f"TaskExecutionLog {log_id} not found.")
+        return None
+
+    log_text = log.error_tail or log.log_output
+    if not log_text:
+        return None
+
+    ai_url = getattr(settings, "AI_SERVICE_URL", "http://ai_service:8001/api/v1/rank-tasks")
+    explain_url = ai_url.replace("/rank-tasks", "/explain-log")
+
+    try:
+        resp = requests.post(explain_url, json={"log_text": log_text}, timeout=120)
+        resp.raise_for_status()
+        explanation = resp.json().get("explanation", "")
+        
+        log.ai_explanation = explanation
+        log.save(update_fields=["ai_explanation"])
+        return explanation
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to generate AI explanation for log {log_id}: {e}")
+        # Could retry here, but we'll just fail silently to avoid endless retries on broken AI service.
+        return None

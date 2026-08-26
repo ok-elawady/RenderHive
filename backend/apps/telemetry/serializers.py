@@ -24,6 +24,7 @@ class TaskLogListSerializer(serializers.ModelSerializer):
             "peak_memory_mb",
             "output_image_path",
             "error_tail",
+            "ai_explanation",
             "created_at",
         ]
         read_only_fields = fields
@@ -51,6 +52,7 @@ class TaskLogDetailSerializer(serializers.ModelSerializer):
             "output_image_path",
             "error_tail",
             "log_output",
+            "ai_explanation",
             "created_at",
         ]
         read_only_fields = fields

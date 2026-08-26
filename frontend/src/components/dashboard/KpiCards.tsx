@@ -3,6 +3,7 @@
 import { AlertTriangle, ArrowUpRight, Cpu, Layers, Server, ShieldAlert, ShieldCheck, Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 
 interface KpiCardsProps {
   totalNodes: number;
@@ -48,102 +49,80 @@ export default function KpiCards({
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      {/* 1. Total Nodes */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-            <span>Total Nodes</span>
-            <Server size={14} className="opacity-50" />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          <p className="text-3xl font-bold tracking-tight text-foreground">{totalNodes}</p>
-          <div className="text-xs font-mono flex items-center gap-1.5">
-            {onlineNodes > 0 ? (
-              <span className="text-success flex items-center gap-1 font-medium">
-                <ArrowUpRight size={14} /> {onlineNodes} online
-              </span>
-            ) : totalNodes === 0 ? (
-              <span className="text-muted-foreground">0 registered</span>
-            ) : (
-              <span className="text-warning flex items-center gap-1 font-medium">
-                <AlertTriangle size={12} /> 0 online
-              </span>
-            )}
-            {totalCores > 0 && (
-              <span className="text-muted-foreground text-xs">
-                &bull; {totalCores} cores
-              </span>
-            )}
+    <Card className="border-border p-0 rounded-none border-t-0 border-x-0 bg-background/50 backdrop-blur-md sticky top-0 z-10 shadow-sm shrink-0">
+      <CardContent className="p-0">
+        <div className="flex flex-wrap items-center justify-between px-4 h-12 text-sm font-mono overflow-x-auto no-scrollbar">
+          
+          <div className="flex items-center gap-6 text-xs whitespace-nowrap min-w-max pr-4">
+            
+            {/* Total Nodes */}
+            <dl className="flex items-center gap-2">
+              <dt className="text-muted-foreground font-semibold uppercase tracking-wider flex items-center gap-1">
+                <Server size={12} className="opacity-50" />
+                Nodes
+              </dt>
+              <dd className="font-bold flex items-center gap-1.5">
+                <span className="text-foreground text-sm">{totalNodes}</span>
+                <span className="text-muted-foreground/40 font-normal">/</span>
+                {onlineNodes > 0 ? (
+                  <span className="text-success">{onlineNodes} online</span>
+                ) : (
+                  <span className={totalNodes === 0 ? "text-muted-foreground" : "text-warning"}>
+                    0 online
+                  </span>
+                )}
+                {totalCores > 0 && (
+                  <span className="text-muted-foreground opacity-60">({totalCores}c)</span>
+                )}
+              </dd>
+            </dl>
+
+            <div className="w-px h-5 bg-border/60" />
+
+            {/* Active Jobs / Tasks */}
+            <dl className="flex items-center gap-2">
+              <dt className="text-muted-foreground font-semibold uppercase tracking-wider flex items-center gap-1">
+                <Zap size={12} className="opacity-50 text-primary" />
+                Active Work
+              </dt>
+              <dd className="font-bold flex items-center gap-1.5">
+                <span className="text-foreground text-sm">{activeJobs}</span> <span className="text-muted-foreground font-normal">jobs</span>
+                {activeTasks > 0 && (
+                  <>
+                    <span className="text-muted-foreground/40 font-normal">/</span>
+                    <span className="text-primary">{activeTasks} tasks</span>
+                  </>
+                )}
+              </dd>
+            </dl>
+
+            <div className="w-px h-5 bg-border/60" />
+
+            {/* Farm Efficiency */}
+            <dl className="flex items-center gap-2 w-48">
+              <dt className="text-muted-foreground font-semibold uppercase tracking-wider">
+                Efficiency
+              </dt>
+              <dd className="font-bold flex items-center gap-2 flex-1 w-full">
+                <span className="text-foreground w-9 text-right text-sm">{farmEfficiency}%</span>
+                <Progress value={farmEfficiency} className="h-1.5 flex-1" />
+              </dd>
+            </dl>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* 2. Active Jobs */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-            <span>Active Jobs</span>
-            <Zap size={14} className="opacity-50 text-primary" />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          <p className="text-3xl font-bold tracking-tight text-foreground">{activeJobs}</p>
-          <p className="text-xs font-mono text-primary flex items-center gap-1.5">
-            {activeTasks > 0 ? (
-              <>
-                <Layers size={13} /> {activeTasks} {activeTasks === 1 ? "task" : "tasks"} rendering
-              </>
-            ) : activeJobs > 0 ? (
-              <>
-                <Zap size={13} /> Processing
-              </>
-            ) : (
-              <span className="text-muted-foreground">Queue idle</span>
-            )}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* 3. Farm Efficiency */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-            <span>Farm Efficiency</span>
-            <span className="text-xs font-mono text-muted-foreground lowercase font-normal">
-              {completedJobs} ok / {failedJobs} fail
+          {/* System Status (Right aligned) */}
+          <div className="flex items-center gap-2 text-xs min-w-max ml-auto pl-4 border-l border-border/60">
+            <span className="text-muted-foreground">
+              {isOffline ? "API Disconnected" : latencyMs !== null ? `${latencyMs}ms ping` : "..."}
             </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-3xl font-bold tracking-tight text-foreground">{farmEfficiency}%</p>
-          <Progress value={farmEfficiency} className="h-1.5" />
-        </CardContent>
-      </Card>
-
-      {/* 4. System Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-            <span>Cluster Health</span>
-            <Cpu size={14} className="opacity-50" />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          <div className={`flex items-center gap-2 text-xl font-bold ${systemStatusColor}`}>
-            <SystemStatusIcon size={20} />
-            {systemStatusText}
+            <Badge variant="outline" className={`px-2 py-0.5 h-6 font-mono font-bold border-${systemStatusColor}/30 bg-${systemStatusColor}/5 ${systemStatusColor} gap-1.5`}>
+              <SystemStatusIcon size={12} />
+              {systemStatusText}
+            </Badge>
           </div>
-          <p className="text-xs font-mono text-muted-foreground">
-            {isOffline
-              ? "API Disconnected"
-              : latencyMs !== null
-              ? `Lat: ${latencyMs}ms / API: OK`
-              : "Connecting..."}
-          </p>
-        </CardContent>
-      </Card>
-    </div>
+
+        </div>
+      </CardContent>
+    </Card>
   );
 }

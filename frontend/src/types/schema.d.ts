@@ -1727,6 +1727,7 @@ export interface components {
             readonly failed_tasks: number;
             readonly skipped_tasks: number;
             readonly depend_tasks: number;
+            readonly command: string;
         };
         /**
          * @description * `RENDER` - Render
@@ -2141,6 +2142,8 @@ export interface components {
             readonly error_tail: string;
             /** @description Full stdout/stderr text, TOAST-compressed. */
             readonly log_output: string;
+            /** @description Pre-computed AI explanation of the error. */
+            readonly ai_explanation: string;
             /** Format: date-time */
             readonly created_at: string;
         };

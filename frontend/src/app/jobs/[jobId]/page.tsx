@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { Pencil, RefreshCw, Trash2, Server, Layers, CheckCircle2, Clock, PlayCircle, PauseCircle, XCircle } from "lucide-react";
+import { Pencil, RefreshCw, Trash2, Server, Layers, CheckCircle2, Clock, PlayCircle, PauseCircle, XCircle, Activity } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { DependencyPanel } from "@/components/dashboard/DependencyPanel";
+import { TaskDetailPanel } from "@/components/dashboard/TaskDetailPanel";
+import { SegmentedProgressBar } from "@/components/ui/segmented-progress";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -39,51 +41,24 @@ function formatRuntimeDuration(createdAt: string | null | undefined, stoppedAt: 
   return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 }
 
-const COUNTER_CONFIG = {
-  ready_tasks: { label: "Ready Tasks", icon: Clock, color: "text-muted-foreground", bg: "bg-muted/30" },
-  running_tasks: { label: "Running Tasks", icon: PlayCircle, color: "text-info", bg: "bg-info/10" },
-  succeeded_tasks: { label: "Succeeded", icon: CheckCircle2, color: "text-success", bg: "bg-success/10" },
-  failed_tasks: { label: "Failed", icon: XCircle, color: "text-destructive", bg: "bg-destructive/10" },
-} as const;
 
 function StateBadge({ state, className }: { state: string; className?: string }) {
+  const baseClasses = "text-[10px] font-black uppercase tracking-wider";
   switch (state) {
     case "FINISHED":
-      return (
-        <Badge variant="success" className={`gap-1.5 pr-2.5 ${className || ""}`}>
-          <CheckCircle2 className="size-3.5 fill-success/20" /> Finished
-        </Badge>
-      );
+    case "SUCCEEDED":
+      return <span className={cn(baseClasses, "text-success", className)}>{state}</span>;
     case "FAILED":
-      return (
-        <Badge variant="destructive" className={`gap-1.5 pr-2.5 ${className || ""}`}>
-          <XCircle className="size-3.5 fill-destructive/20" /> Failed
-        </Badge>
-      );
+      return <span className={cn(baseClasses, "text-destructive", className)}>{state}</span>;
     case "RUNNING":
-      return (
-        <Badge variant="info" className={`gap-1.5 pr-2.5 ${className || ""}`}>
-          <PlayCircle className="size-3.5 fill-info/20 animate-pulse" /> Running
-        </Badge>
-      );
+      return <span className={cn(baseClasses, "text-info animate-pulse", className)}>{state}</span>;
     case "PAUSED":
-      return (
-        <Badge variant="secondary" className={`gap-1.5 pr-2.5 text-muted-foreground ${className || ""}`}>
-          <PauseCircle className="size-3.5 fill-muted" /> Paused
-        </Badge>
-      );
+      return <span className={cn(baseClasses, "text-muted-foreground", className)}>{state}</span>;
     case "PENDING":
-      return (
-        <Badge variant="warning" className={`gap-1.5 pr-2.5 ${className || ""}`}>
-          <Clock className="size-3.5 fill-warning/20" /> Pending
-        </Badge>
-      );
+    case "READY":
+      return <span className={cn(baseClasses, "text-warning", className)}>{state}</span>;
     default:
-      return (
-        <Badge variant="secondary" className={`gap-1.5 pr-2.5 text-muted-foreground ${className || ""}`}>
-          <Clock className="size-3.5" /> {state.charAt(0) + state.slice(1).toLowerCase()}
-        </Badge>
-      );
+      return <span className={cn(baseClasses, "text-muted-foreground", className)}>{state}</span>;
   }
 }
 
@@ -93,6 +68,7 @@ export default function JobDetailPage() {
   const jobId = params.jobId;
   const [job, setJob] = useState<JobDetail | null>(null);
   const [layers, setLayers] = useState<LayerList[]>([]);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isEditOpen, setIsEditOpen] = useState<boolean>(false);
   const [isAbortConfirmOpen, setIsAbortConfirmOpen] = useState<boolean>(false);
@@ -111,6 +87,9 @@ export default function JobDetailPage() {
       const [jobData, layerData] = await Promise.all([getJob(jobId), getJobLayers(jobId)]);
       setJob(jobData);
       setLayers(layerData);
+      if (layerData.length > 0) {
+        setSelectedLayerId(prev => prev || layerData[0].id);
+      }
       setDraft({
         visible_name: jobData.visible_name,
         priority: jobData.priority,
@@ -186,7 +165,7 @@ export default function JobDetailPage() {
       <PageHeader
         title={job?.visible_name || job?.name || "Job Detail"}
         description={job ? `${job.project} / ${job.department} / ${job.user}` : "Fetching details..."}
-        backTo="/jobs"
+        backTo="/"
       >
         <Button variant="outline" onClick={() => void loadJob()} className="gap-2">
           <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
@@ -228,192 +207,220 @@ export default function JobDetailPage() {
             </Card>
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-                <Card className="border-border md:col-span-1 relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
-                  <CardHeader>
-                    <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">State</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <StateBadge state={job.state} />
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">{completedTasks}</span> of {job.total_tasks} tasks completed
-                    </p>
-                    <div className="w-full h-1.5 rounded-full bg-muted mt-2 overflow-hidden">
-                      <div 
-                         className="h-full bg-primary transition-all duration-500" 
-                         style={{ width: `${job.total_tasks > 0 ? (completedTasks / job.total_tasks) * 100 : 0}%` }}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {(Object.entries(COUNTER_CONFIG) as [keyof typeof COUNTER_CONFIG, typeof COUNTER_CONFIG[keyof typeof COUNTER_CONFIG]][]).map(([key, config]) => {
-                  const Icon = config.icon;
-                  return (
-                    <Card key={key} className="border-border relative overflow-hidden group">
-                      <div className={`absolute inset-0 ${config.bg} opacity-50 pointer-events-none transition-opacity group-hover:opacity-100`} />
-                      <CardHeader className="relative z-10 pb-2">
-                        <CardTitle className={`text-xs uppercase tracking-wider flex items-center gap-1.5 ${config.color}`}>
-                          <Icon size={14} className="opacity-80" />
-                          {config.label}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="relative z-10">
-                        <p className="text-3xl font-black text-foreground">{job[key]}</p>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-
-              {/* Job Context Panel */}
-              <Card className="border-border p-0 gap-0">
-                <CardHeader className="p-4 pb-3 border-b border-border/50">
-                  <CardTitle className="flex items-center gap-2 text-sm font-bold">
-                    <Server size={16} className="text-info" />
-                    Job Context
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 flex flex-col gap-5">
-                  <div className="flex flex-col gap-1.5 px-2">
-                    <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-                      System Name
-                    </div>
-                    <div className="font-semibold font-mono text-xs break-all text-foreground/90" title={job.name}>
-                      {job.name || "—"}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5 px-2">
-                    <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-                      Log Directory
-                    </div>
-                    <div className="font-semibold font-mono text-xs break-all text-foreground/90" title={job.log_directory}>
-                      {job.log_directory || "—"}
-                    </div>
-                  </div>
-
-                  <div className="h-px bg-border/40 mx-2" />
-
-                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-                        Priority
-                      </div>
-                      <div className="font-semibold">
-                        <Badge variant="outline" className="rounded-md px-2 py-0.5 text-xs font-medium border-warning/30 bg-warning/5 text-warning">
-                          {job.priority}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-                        Max Tasks
-                      </div>
-                      <div className="font-semibold text-sm text-foreground/90 flex items-center gap-1.5">
-                        <span className="text-xl font-black">{job.max_tasks_per_worker}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-                        Submit Time
-                      </div>
-                      <div className="font-semibold text-xs text-foreground/80">
-                        {new Date(job.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-                        Runtime
-                      </div>
-                      <div className="font-semibold text-xs text-foreground/80">
-                        {formatRuntimeDuration(job.created_at, job.stopped_at)}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5 px-2">
-                      <div className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
-                        Target Pools
-                      </div>
-                      <div className="font-semibold text-xs flex flex-wrap gap-1">
-                        {job.included_pools?.length > 0 ? (
-                          job.included_pools.map((pool) => (
-                            <Badge key={pool} variant="secondary" className="px-2 py-0.5 text-xs font-medium">
-                              {pool}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-muted-foreground">Any</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Layers Table */}
-              <Card className="border-border p-0 gap-0">
-                <CardHeader className="p-4 pb-3 border-b border-border/50">
-                  <CardTitle className="flex items-center gap-2 text-sm font-bold">
-                    <Layers size={16} className="text-primary" />
-                    Execution Layers
-                  </CardTitle>
-                </CardHeader>
+              {/* Job Header Overview */}
+              <Card className="border-border overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
                 <CardContent className="p-0">
-                  <Table>
-                    <TableHeader className="bg-muted/30">
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead className="pl-6 font-semibold w-[25%]">Name</TableHead>
-                        <TableHead className="font-semibold text-center w-[15%]">Type</TableHead>
-                        <TableHead className="font-semibold text-center w-[15%]">State</TableHead>
-                        <TableHead className="font-semibold text-center w-[20%]">Frame Range</TableHead>
-                        <TableHead className="font-semibold text-right pr-6 w-[25%]">Progress</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {layers.map((layer) => (
-                        <TableRow key={layer.id} className="hover:bg-muted/40 transition-colors group">
-                          <TableCell className="pl-6">
-                            <Link
-                              href={`/jobs/${job.id}/layers/${layer.id}`}
-                              className="font-bold text-primary hover:underline"
-                            >
-                              {layer.name}
-                            </Link>
-                          </TableCell>
-                          <TableCell className="text-center">{layer.layer_type}</TableCell>
-                          <TableCell className="text-center">
-                            <StateBadge state={layer.state} />
-                          </TableCell>
-                          <TableCell className="text-center font-mono text-xs text-muted-foreground">
-                            {layer.frame_range || "—"}
-                          </TableCell>
-                          <TableCell className="text-right pr-6">
-                            <div className="flex items-center gap-3 justify-end">
-                              <div className="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
-                                <div 
-                                  className="h-full bg-primary transition-all duration-500" 
-                                  style={{ width: `${Math.round(((layer.succeeded_tasks + layer.skipped_tasks) / Math.max(1, layer.total_tasks)) * 100)}%` }}
-                                />
-                              </div>
-                              <span className="text-muted-foreground tabular-nums text-xs font-medium w-12 text-right">
-                                {layer.succeeded_tasks + layer.skipped_tasks}/{layer.total_tasks}
-                              </span>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-border/50">
+                    
+                    {/* Context Side */}
+                    <div className="flex-1 p-5 flex flex-col gap-6">
+                      <div className="flex items-center justify-between">
+                         <h2 className="text-xl font-black tracking-tight">{job.visible_name || job.name}</h2>
+                         <StateBadge state={job.state} />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">System Name</span>
+                          <span className="font-mono text-xs truncate" title={job.name}>{job.name || "—"}</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">Log Directory</span>
+                          <span className="font-mono text-xs truncate" title={job.log_directory}>{job.log_directory || "—"}</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">Priority</span>
+                          <div>
+                            <Badge variant="outline" className="px-1.5 py-0 text-[11px] font-medium border-warning/30 bg-warning/5 text-warning">
+                              {job.priority}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">Target Pools</span>
+                          <div className="flex flex-wrap gap-1">
+                            {job.included_pools?.length > 0 ? (
+                              job.included_pools.map((pool) => (
+                                <Badge key={pool} variant="secondary" className="px-1.5 py-0 text-[11px] font-medium">
+                                  {pool}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Any</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">Max Tasks</span>
+                          <span className="font-mono text-sm font-bold">{job.max_tasks_per_worker}</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">Submit Time</span>
+                          <span className="font-mono text-xs">{new Date(job.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider">Runtime</span>
+                          <span className="font-mono text-xs">{formatRuntimeDuration(job.created_at, job.stopped_at)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress Side */}
+                    <div className="md:w-[380px] xl:w-[480px] p-5 flex flex-col justify-center bg-muted/5 shrink-0">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <Layers size={14} className="text-primary" /> Task Progress
+                        </span>
+                        <span className="font-mono text-lg font-black">{Math.round(((job.succeeded_tasks + job.skipped_tasks) / Math.max(1, job.total_tasks)) * 100)}%</span>
+                      </div>
+                      
+                      <SegmentedProgressBar
+                        className="h-2.5 rounded-full mb-5"
+                        total={job.total_tasks}
+                        succeeded={job.succeeded_tasks}
+                        failed={job.failed_tasks}
+                        running={job.running_tasks}
+                        ready={job.ready_tasks}
+                        waiting={job.waiting_tasks}
+                        skipped={job.skipped_tasks}
+                        showCounts={false}
+                      />
+                      
+                      <div className="grid grid-cols-3 gap-2">
+                         <div className="flex flex-col bg-surface-deep p-2 rounded border border-border/50">
+                           <span className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Total</span>
+                           <span className="font-mono text-sm font-bold">{job.total_tasks}</span>
+                         </div>
+                         <div className="flex flex-col bg-success/10 p-2 rounded border border-success/20">
+                           <span className="text-[10px] text-success uppercase tracking-wider mb-0.5">Succeeded</span>
+                           <span className="font-mono text-sm font-bold text-success">{job.succeeded_tasks}</span>
+                         </div>
+                         <div className="flex flex-col bg-info/10 p-2 rounded border border-info/20">
+                           <span className="text-[10px] text-info uppercase tracking-wider mb-0.5">Running</span>
+                           <span className="font-mono text-sm font-bold text-info">{job.running_tasks}</span>
+                         </div>
+                         <div className="flex flex-col bg-warning/10 p-2 rounded border border-warning/20">
+                           <span className="text-[10px] text-warning uppercase tracking-wider mb-0.5">Ready</span>
+                           <span className="font-mono text-sm font-bold text-warning">{job.ready_tasks}</span>
+                         </div>
+                         <div className="flex flex-col bg-destructive/10 p-2 rounded border border-destructive/20">
+                           <span className="text-[10px] text-destructive uppercase tracking-wider mb-0.5">Failed</span>
+                           <span className="font-mono text-sm font-bold text-destructive">{job.failed_tasks}</span>
+                         </div>
+                         <div className="flex flex-col bg-muted/50 p-2 rounded border border-border/50">
+                           <span className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Waiting</span>
+                           <span className="font-mono text-sm font-bold text-muted-foreground">{job.waiting_tasks}</span>
+                         </div>
+                      </div>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
               {/* Dependencies Panel (Full Width Expandable) */}
               <DependencyPanel jobId={job.id} isStaff={isStaff} />
+
+              {/* Unified Layers & Tasks View */}
+              <Card className="border-border p-0 overflow-hidden mt-4 h-[700px] flex flex-col shadow-sm">
+                <div className="flex-1 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-border/50 min-h-0">
+                  
+                  {/* Left side: Layers Table */}
+                  <div className="lg:w-[40%] xl:w-[35%] flex flex-col h-full bg-surface relative shrink-0">
+                    <div className="p-3 border-b border-border/50 shrink-0 flex items-center gap-2 bg-muted/10">
+                      <Layers size={16} className="text-primary" />
+                      <span className="text-sm font-bold">Execution Layers</span>
+                    </div>
+                    <div className="flex-1 overflow-auto bg-surface-deep/20">
+                      <Table>
+                        <TableHeader className="bg-muted/30 sticky top-0 z-10 shadow-sm">
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead className="pl-4 font-semibold w-[30%] text-[11px] uppercase tracking-wider h-8">Name</TableHead>
+                            <TableHead className="font-semibold text-center w-[15%] text-[11px] uppercase tracking-wider h-8">Type</TableHead>
+                            <TableHead className="font-semibold text-center w-[15%] text-[11px] uppercase tracking-wider h-8">State</TableHead>
+                            <TableHead className="font-semibold text-right pr-4 w-[40%] text-[11px] uppercase tracking-wider h-8">Progress</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {layers.map((layer) => (
+                            <TableRow 
+                              key={layer.id} 
+                              className={`cursor-pointer transition-colors group ${selectedLayerId === layer.id ? "bg-muted/60" : "hover:bg-muted/40"}`}
+                              onClick={() => setSelectedLayerId(layer.id)}
+                            >
+                              <TableCell className="pl-4 py-2 text-[11px]">
+                                <span className="font-bold text-primary group-hover:underline">
+                                  {layer.name}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center py-2 text-[11px]">{layer.layer_type}</TableCell>
+                              <TableCell className="text-center py-2">
+                                <StateBadge state={layer.state} />
+                              </TableCell>
+                              <TableCell className="text-right pr-4 py-2">
+                                <SegmentedProgressBar
+                                  className="h-2 rounded-full"
+                                  total={layer.total_tasks}
+                                  succeeded={layer.succeeded_tasks}
+                                  failed={layer.failed_tasks}
+                                  running={layer.running_tasks}
+                                  ready={layer.ready_tasks}
+                                  waiting={layer.waiting_tasks}
+                                  skipped={layer.skipped_tasks}
+                                  showCounts={false}
+                                />
+                                <div className="text-[11px] text-muted-foreground mt-1 tabular-nums w-full text-right">
+                                  {Math.round(((layer.succeeded_tasks + layer.skipped_tasks) / Math.max(1, layer.total_tasks)) * 100)}% ({layer.succeeded_tasks + layer.skipped_tasks}/{layer.total_tasks})
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+
+                  {/* Right side: Tasks View */}
+                  <div className="flex-1 flex flex-col h-full bg-surface relative min-w-0">
+                    {selectedLayerId ? (
+                      <TaskDetailPanel
+                        selectedJobId={job.id}
+                        selectedLayerId={selectedLayerId}
+                        jobs={[{
+                           id: job.id, 
+                           displayId: job.visible_name || job.name, 
+                           user: job.user, 
+                           status: job.state, 
+                           backendState: job.state,
+                           total_tasks: job.total_tasks,
+                           succeeded_tasks: job.succeeded_tasks,
+                           failed_tasks: job.failed_tasks,
+                           running_tasks: job.running_tasks,
+                           ready_tasks: job.ready_tasks,
+                           waiting_tasks: job.waiting_tasks,
+                           skipped_tasks: job.skipped_tasks,
+                           depend_tasks: job.depend_tasks,
+                           created_at: job.created_at,
+                           started_at: (job as any).started_at || job.created_at,
+                           finished_at: job.stopped_at,
+                           project: job.project,
+                           department: job.department,
+                           priority: job.priority,
+                           included_pools: job.included_pools
+                        } as any]}
+                        nodes={[]}
+                        pools={[]}
+                        onSelectLayer={(jid, lid) => setSelectedLayerId(lid)}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                        <Activity className="size-10 text-muted-foreground/30 mb-4" />
+                        <p>Select a layer to view its tasks.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
             </>
           )}
         </div>

@@ -75,7 +75,7 @@ export function SegmentedProgressBar({
           arrowClassName="bg-popover fill-popover"
         >
           <div className="flex flex-col justify-center pr-3.5 border-r border-border/60 mr-3.5 shrink-0">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5 whitespace-nowrap">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5 whitespace-nowrap">
               Total Tasks
             </span>
             <span className="font-mono text-lg text-foreground font-bold leading-none">{total}</span>

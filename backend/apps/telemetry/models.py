@@ -51,6 +51,7 @@ class TaskExecutionLog(models.Model):
 
     error_tail = models.TextField(blank=True, help_text="Fast-access failure excerpt.")
     log_output = models.TextField(blank=True, help_text="Full stdout/stderr text, TOAST-compressed.")
+    ai_explanation = models.TextField(blank=True, help_text="Pre-computed AI explanation of the error.")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

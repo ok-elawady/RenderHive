@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Eye, EyeOff, Loader2, Lock, LockKeyhole, ShieldCheck, UserCog } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock, LockKeyhole, ShieldCheck, UserCog, User } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/components/auth/AuthProvider";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -133,32 +132,28 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-y-auto p-6 font-mono">
         <div className="space-y-6">
           <Card className="border-border bg-card/95">
-            <CardHeader className="border-b border-border pb-4">
-              <CardTitle className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-base font-black">
-                  <UserCog className="text-primary" size={18} />
-                  Personal Information
-                </div>
-                <Badge
-                  variant="outline"
-                  className="border-border bg-muted/30 px-3 py-1 font-normal text-muted-foreground"
-                >
-                  Managed by Admin
-                </Badge>
+            <CardHeader className="p-3 border-b border-border/50 flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-sm font-bold">
+                <UserCog className="text-primary" size={16} />
+                Personal Information
               </CardTitle>
+              <Badge
+                variant="outline"
+                className="border-border bg-muted/30 px-2 py-0.5 font-normal text-muted-foreground text-[10px] uppercase h-5"
+              >
+                Managed by Admin
+              </Badge>
             </CardHeader>
             <CardContent className="flex flex-col gap-6 p-6">
-              <div className="flex items-center gap-5">
-                <Avatar className="size-16 shrink-0 shadow-inner rounded-full">
-                  <AvatarFallback className="rounded-full bg-gradient-to-br from-[#d01fc7] to-primary text-xl font-bold text-white">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center justify-center size-12 shrink-0 shadow-inner rounded-full bg-muted border border-border/50">
+                  <User className="size-6 text-muted-foreground" />
+                </div>
                 <div>
-                  <h2 className="text-xl font-black tracking-tight text-foreground">
+                  <h2 className="text-lg font-black tracking-tight text-foreground">
                     {isLoadingProfile ? "Loading profile..." : fullName}
                   </h2>
-                  <p className="mt-1 text-sm font-semibold text-muted-foreground">{role}</p>
+                  <p className="text-xs font-semibold text-muted-foreground">{role}</p>
                 </div>
               </div>
 
@@ -177,9 +172,9 @@ export default function SettingsPage() {
           </Card>
 
           <Card className="border-border bg-card/95">
-            <CardHeader className="border-b border-border pb-4">
-              <CardTitle className="flex items-center gap-3 text-base font-black">
-                <ShieldCheck className="text-primary" size={18} />
+            <CardHeader className="p-3 border-b border-border/50 flex flex-row items-center">
+              <CardTitle className="flex items-center gap-2 text-sm font-bold">
+                <ShieldCheck className="text-primary" size={16} />
                 Security Settings
               </CardTitle>
             </CardHeader>
@@ -294,21 +289,14 @@ function ReadOnlyField({ label, value }: { label: string; value: string | null |
   const displayValue = getDisplayValue(value);
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label>{label}</Label>
-        <span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
-          <Lock size={11} />
-          Read-only
-        </span>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        <Lock size={10} className="text-primary/70" />
+        <span>{label}</span>
       </div>
-      <Input
-        value={displayValue}
-        readOnly
-        tabIndex={-1}
-        aria-label={`${label} (Read-only)`}
-        className="bg-muted/40 text-muted-foreground border-border/50 cursor-not-allowed select-none focus-visible:ring-0"
-      />
+      <span className="text-xs font-mono text-foreground bg-muted/30 p-2.5 rounded-md border border-border/50">
+        {displayValue}
+      </span>
     </div>
   );
 }
