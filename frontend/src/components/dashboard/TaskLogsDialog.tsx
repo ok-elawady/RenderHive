@@ -10,7 +10,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ReactMarkdown from "react-markdown";
 import useSWR from "swr";
-import { fetchTaskLogs, fetchTaskLogDetail, explainTaskLog, fetchAiHealth, type AiHealthStatus } from "@/services/api";
+import { fetchTaskExecutionLogs, fetchTaskExecutionLogById, explainTaskLog, fetchAiHealth, type AiHealthStatus } from "@/services/api";
 import type { TaskLogList, TaskLogDetail } from "@/types/dashboard";
 import { Loader2, Terminal, AlertCircle, Clock, Server, Monitor, Sparkles, X, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -71,7 +71,7 @@ export function TaskLogsDialog({ taskId, taskName, isOpen, onClose }: TaskLogsDi
     const loadLogs = async () => {
       setIsLoadingList(true);
       try {
-        const data = await fetchTaskLogs(taskId);
+        const data = await fetchTaskExecutionLogs(taskId);
         setLogs(data);
         if (data.length > 0) {
           setSelectedLogId(data[data.length - 1].id); // Select latest by default
@@ -93,9 +93,15 @@ export function TaskLogsDialog({ taskId, taskName, isOpen, onClose }: TaskLogsDi
     const loadDetail = async () => {
       setIsLoadingDetail(true);
       try {
-        const detail = await fetchTaskLogDetail(selectedLogId);
-        setLogDetail(detail);
-        setExplanation(detail.ai_explanation || null);
+        const detail = await fetchTaskExecutionLogById(selectedLogId);
+        if (detail) {
+          setLogDetail(detail);
+          setExplanation(detail.ai_explanation || null);
+        } else {
+          setLogDetail(null);
+          setExplanation(null);
+          toast.error("Log detail not found.");
+        }
       } catch (err: any) {
         toast.error("Failed to load full log", { description: err.message });
       } finally {
