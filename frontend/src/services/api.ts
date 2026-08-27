@@ -1598,21 +1598,7 @@ export async function pingBackendLatency(): Promise<number> {
   return Math.max(1, Math.round(performance.now() - start));
 }
 
-export async function fetchTaskLogs(taskId: string): Promise<TaskLogList[]> {
-  const { data, error } = await client.GET("/api/telemetry/tasks/{task_pk}/logs/", {
-    params: { path: { task_pk: taskId } },
-  });
-  if (error) throw new Error(JSON.stringify(error));
-  return data?.results || [];
-}
 
-export async function fetchTaskLogDetail(logId: string): Promise<TaskLogDetail> {
-  const { data, error } = await client.GET("/api/telemetry/logs/{id}/", {
-    params: { path: { id: logId } },
-  });
-  if (error) throw new Error(JSON.stringify(error));
-  return data as unknown as TaskLogDetail;
-}
 
 export async function explainTaskLog(logText: string, logId?: string, forceRefresh?: boolean): Promise<string> {
   const res = await fetch(`${API_BASE_URL}/api/logs/explain/`, {
