@@ -216,9 +216,10 @@ def remove_main_menu():
 
 
 def ensure_main_menu(install_dir=None):
-    install_dir = os.path.abspath(
-        install_dir or get_installed_package_dir()
-    )
+    if not install_dir:
+        install_dir = os.path.dirname(os.path.abspath(__file__))
+    else:
+        install_dir = os.path.abspath(install_dir)
 
     remove_main_menu()
 
@@ -351,23 +352,35 @@ def remove_startup_hook():
 
 def ensure_shelf():
     shelf_top = get_shelf_top_level()
-    shelves = cmds.tabLayout(
-        shelf_top,
-        query=True,
-        childArray=True
-    ) or []
+    try:
+        shelves = cmds.tabLayout(
+            shelf_top,
+            query=True,
+            childArray=True
+        ) or []
+    except Exception:
+        shelves = []
 
     if SHELF_NAME not in shelves:
-        cmds.shelfLayout(
-            SHELF_NAME,
-            parent=shelf_top
-        )
+        try:
+            mel.eval('addNewShelfTab("%s");' % SHELF_NAME)
+        except Exception:
+            try:
+                cmds.shelfLayout(
+                    SHELF_NAME,
+                    parent=shelf_top
+                )
+            except Exception:
+                pass
 
-    cmds.tabLayout(
-        shelf_top,
-        edit=True,
-        selectTab=SHELF_NAME
-    )
+    try:
+        cmds.tabLayout(
+            shelf_top,
+            edit=True,
+            selectTab=SHELF_NAME
+        )
+    except Exception:
+        pass
 
     return SHELF_NAME
 
@@ -399,7 +412,7 @@ def _is_renderhive_button(
     ).lower()
 
 
-def remove_renderhive_shelf_buttons():
+def remove_renderhive_shelf_buttons(delete_shelf_tab=False):
     try:
         shelf_top = get_shelf_top_level()
         shelves = cmds.tabLayout(
@@ -409,19 +422,30 @@ def remove_renderhive_shelf_buttons():
         ) or []
 
         for shelf_name in shelves:
-            children = cmds.shelfLayout(
-                shelf_name,
-                query=True,
-                childArray=True
-            ) or []
+            try:
+                children = cmds.shelfLayout(
+                    shelf_name,
+                    query=True,
+                    childArray=True
+                ) or []
 
-            for child in children:
-                if _is_renderhive_button(
-                    child
-                ):
-                    cmds.deleteUI(
+                for child in children:
+                    if _is_renderhive_button(
                         child
-                    )
+                    ):
+                        try:
+                            cmds.deleteUI(
+                                child
+                            )
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        if delete_shelf_tab:
+            # If the RenderHive shelf tab layout exists, delete the shelf tab itself
+            if cmds.shelfLayout(SHELF_NAME, exists=True):
+                cmds.deleteUI(SHELF_NAME, layout=True)
 
         try:
             mel.eval(
@@ -437,34 +461,42 @@ def remove_renderhive_shelf_buttons():
 def create_shelf_button(
     install_dir
 ):
-    shelf_name = ensure_shelf()
-    remove_renderhive_shelf_buttons()
-
-    icon_path = os.path.join(
-        install_dir,
-        "icons",
-        "renderhive_shelf_icon.png"
-    ).replace(
-        "\\",
-        "/"
-    )
-
-    cmds.shelfButton(
-        parent=shelf_name,
-        label="",
-        annotation=BUTTON_ANNOTATION,
-        image=icon_path,
-        image1=icon_path,
-        imageOverlayLabel="",
-        style="iconOnly",
-        sourceType="python",
-        command=_python_open_command(install_dir),
-    )
-
     try:
-        mel.eval(
-            "saveAllShelves $gShelfTopLevel;"
+        shelf_name = ensure_shelf()
+
+        # Check if a RenderHive button already exists in the shelf
+        children = cmds.shelfLayout(shelf_name, query=True, childArray=True) or []
+        for child in children:
+            if _is_renderhive_button(child):
+                return
+
+        icon_path = os.path.join(
+            install_dir,
+            "icons",
+            "renderhive_shelf_icon.png"
+        ).replace(
+            "\\",
+            "/"
         )
+
+        cmds.shelfButton(
+            parent=shelf_name,
+            label="RenderHive",
+            annotation=BUTTON_ANNOTATION,
+            image=icon_path,
+            image1=icon_path,
+            imageOverlayLabel="",
+            style="iconOnly",
+            sourceType="python",
+            command=_python_open_command(install_dir),
+        )
+
+        try:
+            mel.eval(
+                "saveAllShelves $gShelfTopLevel;"
+            )
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -573,7 +605,16 @@ def close_renderhive_windows():
 def uninstall_renderhive(
     confirm=True
 ):
-    install_dir = get_installed_package_dir()
+    versioned_dir = get_installed_package_dir()
+    script_parent = os.path.dirname(cmds.internalVar(userScriptDir=True).rstrip("/\\"))
+    global_dir = os.path.join(os.path.dirname(script_parent), "scripts", "RenderHive")
+    current_pkg_dir = os.path.dirname(os.path.abspath(__file__))
+
+    candidate_dirs = [versioned_dir, global_dir]
+    if "RenderHive" in current_pkg_dir:
+        candidate_dirs.append(current_pkg_dir)
+
+    target_display = versioned_dir if os.path.isdir(versioned_dir) else (global_dir if os.path.isdir(global_dir) else versioned_dir)
 
     if confirm:
         result = cmds.confirmDialog(
@@ -583,7 +624,7 @@ def uninstall_renderhive(
                 "{}\n\n"
                 "The original source package will not be deleted."
             ).format(
-                install_dir
+                target_display
             ),
             button=["Uninstall", "Cancel"],
             defaultButton="Cancel",
@@ -596,27 +637,60 @@ def uninstall_renderhive(
             return False
 
     close_renderhive_windows()
-    remove_renderhive_shelf_buttons()
+    remove_renderhive_shelf_buttons(delete_shelf_tab=True)
     remove_main_menu()
     remove_startup_hook()
 
-    if os.path.isdir(
-        install_dir
-    ):
-        shutil.rmtree(
-            install_dir
-        )
+    # Remove startup hook from global scripts directory as well
+    global_user_setup = os.path.join(os.path.dirname(script_parent), "scripts", "userSetup.py")
+    if os.path.isfile(global_user_setup):
+        try:
+            with open(global_user_setup, "r", encoding="utf-8") as handle:
+                content = handle.read()
+            updated = _remove_startup_block(content)
+            with open(global_user_setup, "w", encoding="utf-8") as handle:
+                handle.write(updated)
+        except Exception:
+            pass
+
+    # Delete shelf_RenderHive.mel from prefs
+    try:
+        shelf_file = os.path.join(cmds.internalVar(userPrefDir=True), "shelves", "shelf_RenderHive.mel")
+        if os.path.isfile(shelf_file):
+            os.remove(shelf_file)
+    except Exception:
+        pass
+
+    # Delete RenderHive.mod module files
+    try:
+        maya_parent = os.path.dirname(script_parent)
+        mod_candidates = [
+            os.path.join(maya_parent, "modules", "RenderHive.mod"),
+            os.path.join(cmds.internalVar(userPrefDir=True), "..", "modules", "RenderHive.mod"),
+        ]
+        for mod_path in mod_candidates:
+            if os.path.isfile(mod_path):
+                try:
+                    os.remove(mod_path)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # Remove all candidate install directories
+    for directory in set(candidate_dirs):
+        if os.path.isdir(directory):
+            try:
+                shutil.rmtree(directory, ignore_errors=True)
+            except Exception:
+                pass
         
     # Clear the plugin from Maya's python memory cache
     import sys
     modules_to_remove = []
-    _normalized_path = install_dir.replace("\\\\", "/").replace("\\", "/").lower()
     for mod_name, mod in list(sys.modules.items()):
-        _mod_file = getattr(mod, "__file__", "") or ""
-        _mod_file = _mod_file.replace("\\\\", "/").replace("\\", "/").lower()
-        if _normalized_path in _mod_file:
-            modules_to_remove.append(mod_name)
-        elif mod_name.startswith("renderhive_"):
+        _mod_file = (getattr(mod, "__file__", "") or "").replace("\\\\", "/").replace("\\", "/").lower()
+        if "renderhive" in _mod_file or mod_name.startswith("renderhive_") or mod_name.startswith("renderhive.") or mod_name == "renderhive":
             modules_to_remove.append(mod_name)
             
     for mod_name in modules_to_remove:

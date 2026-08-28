@@ -66,7 +66,7 @@ class ApiContractTests(unittest.TestCase):
         }
 
     def test_plugin_and_contract_version(self):
-        self.assertEqual(PLUGIN_VERSION, "2.0.0")
+        self.assertEqual(PLUGIN_VERSION, "1.0.0")
         self.assertEqual(API_CONTRACT_VERSION, "0.2.0")
 
     def test_endpoint_configuration(self):

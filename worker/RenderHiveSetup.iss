@@ -3,32 +3,65 @@
 
 [Setup]
 AppName=RenderHive Worker
-AppVersion=1.3.1
+AppVersion=1.4.1
 AppPublisher=RenderHive
 DefaultDirName={autopf}\RenderHive\Worker
 DefaultGroupName=RenderHive
-UninstallDisplayIcon={app}\RenderHiveWorker.exe
+SetupIconFile=assets\icon.ico
+UninstallDisplayIcon={app}\RenderHive Worker.exe
 Compression=lzma2
 SolidCompression=yes
 OutputDir=Output
-OutputBaseFilename=RenderHiveWorkerSetup
+OutputBaseFilename=RenderHive Worker Setup
 ; Require admin rights to modify the hosts file
 PrivilegesRequired=admin
 
 [Files]
 ; Make sure you run build.bat (PyInstaller) before compiling this setup script
-Source: "dist\RenderHiveWorker\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\RenderHive Worker\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\RenderHive Worker"; Filename: "{app}\RenderHiveWorker.exe"
-Name: "{autodesktop}\RenderHive Worker"; Filename: "{app}\RenderHiveWorker.exe"; Tasks: desktopicon
+Name: "{group}\RenderHive Worker"; Filename: "{app}\RenderHive Worker.exe"
+Name: "{autodesktop}\RenderHive Worker"; Filename: "{app}\RenderHive Worker.exe"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional icons:"
 
+[UninstallRun]
+; Clean up the hosts file entries added during install
+Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -Command ""$h = '{sys}\drivers\etc\hosts'; $lines = [System.IO.File]::ReadAllLines($h); $lines = $lines | Where-Object {{ $_ -notmatch 'renderhive\.local' }; [System.IO.File]::WriteAllLines($h, $lines)"""; Flags: runhidden; RunOnceId: "CleanHosts"
+
 [Code]
 var
   ServerIPPage: TInputQueryWizardPage;
+
+// ---- IP address validation --------------------------------------------------
+
+function IsValidIP(const S: String): Boolean;
+var
+  Parts: TStringList;
+  I, N: Integer;
+begin
+  Result := False;
+  Parts := TStringList.Create;
+  try
+    Parts.Delimiter := '.';
+    Parts.StrictDelimiter := True;
+    Parts.DelimitedText := S;
+    if Parts.Count <> 4 then Exit;
+    for I := 0 to 3 do
+    begin
+      if Parts[I] = '' then Exit;
+      N := StrToIntDef(Parts[I], -1);
+      if (N < 0) or (N > 255) then Exit;
+    end;
+    Result := True;
+  finally
+    Parts.Free;
+  end;
+end;
+
+// ---- Wizard initialisation --------------------------------------------------
 
 procedure InitializeWizard;
 begin
@@ -51,6 +84,13 @@ begin
     if Trim(ServerIPPage.Values[0]) = '' then
     begin
       MsgBox('You must enter the Server IP Address to continue.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if not IsValidIP(Trim(ServerIPPage.Values[0])) then
+    begin
+      MsgBox('The IP address "' + Trim(ServerIPPage.Values[0]) + '" is not valid.' + #13#10 +
+             'Please enter an address in the form 192.168.x.x', mbError, MB_OK);
       Result := False;
       Exit;
     end;
