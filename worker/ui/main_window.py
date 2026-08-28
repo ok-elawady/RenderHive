@@ -19,10 +19,12 @@ import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+_PLUGINS_DIR = Path(__file__).resolve().parent.parent.parent / "plugins"
 import psutil
-from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPropertyAnimation, QRect, QSettings, QTimer, Qt, QUrl, Slot
+from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPropertyAnimation, QRect, QSettings, QTimer, Qt, QUrl, Slot, QThread, Signal
 from PySide6.QtGui import QAction, QColor, QCursor, QDesktopServices, QIcon, QMouseEvent, QPaintEvent, QPainter, QPalette, QResizeEvent, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -30,6 +32,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QDialog,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -181,18 +184,29 @@ class MainWindow(QMainWindow):
         self.tray_icon.show()
 
         QApplication.instance().aboutToQuit.connect(self.stop_worker)
-        self._build_ui(icon_path)
 
+        self._plugin_workers = {}
+        self._plugin_install_btns = {}
+        self._plugin_uninstall_btns = {}
+        self._plugin_alert_titles = {}
+        self._plugin_alert_descs = {}
+        self._plugin_alert_icons = {}
+        self._plugin_alert_frames = {}
+        self._dcc_path_inputs = {}
+
+        self._build_ui(icon_path)
+        # Populate plugin status chips immediately so they reflect reality on first launch
+        QTimer.singleShot(0, self._refresh_plugin_status)
         geometry = self.settings.value("studio_geometry_v141")
         if geometry:
             try:
                 self.restoreGeometry(geometry)
             except Exception:
                 pass
+        # Always start on the main Active Task dashboard
         try:
-            tab_index = max(0, min(2, int(self.settings.value("studio_tab_v141", 0) or 0)))
-            self._nav_group.buttons()[tab_index].setChecked(True)
-            self.main_stack.setCurrentIndex(tab_index)
+            self._nav_group.buttons()[0].setChecked(True)
+            self.main_stack.setCurrentIndex(0)
         except Exception:
             pass
 
@@ -265,6 +279,10 @@ class MainWindow(QMainWindow):
         self.nav_logs_btn.setFixedHeight(28)
         self._nav_group.addButton(self.nav_logs_btn, 2)
         nav_layout.addWidget(self.nav_logs_btn)
+        self.nav_dcc_btn = SegmentNavButton("package", "Integrations")
+        self.nav_dcc_btn.setFixedHeight(28)
+        self._nav_group.addButton(self.nav_dcc_btn, 3)
+        nav_layout.addWidget(self.nav_dcc_btn)
 
         self._nav_group.idClicked.connect(self._on_nav_tab_changed)
         top_layout.addWidget(nav_container)
@@ -341,6 +359,7 @@ class MainWindow(QMainWindow):
         self.main_stack.addWidget(self.build_job_page())
         self.main_stack.addWidget(self.build_telemetry_page())
         self.main_stack.addWidget(self.build_terminal_page())
+        self.main_stack.addWidget(self.build_plugins_page())
         body_layout.addWidget(self.main_stack, 1)
 
         outer.addWidget(body, 1)
@@ -399,7 +418,8 @@ class MainWindow(QMainWindow):
 
     def _on_nav_tab_changed(self, tab_id: int) -> None:
         self.main_stack.setCurrentIndex(tab_id)
-        self.settings.setValue("studio_tab_v141", tab_id)
+        if tab_id == 3:
+            self._refresh_plugin_status()
 
     def animate_minimize(self) -> None:
         """Minimize the window."""
@@ -804,6 +824,298 @@ class MainWindow(QMainWindow):
         return page
 
     # ── Page 2: Live Terminal Console ─────────────────────────
+
+    # ── Page 4: Integrations ──────────────────────────────────────
+    def build_plugins_page(self) -> QWidget:
+        page, layout = self.page_container()
+
+        horiz_layout = QHBoxLayout()
+        horiz_layout.setSpacing(12)
+        layout.addLayout(horiz_layout)
+
+        for dcc_key, dcc_label, install_path_fn, icon_name in [
+            ("maya",    "Maya",    self._maya_install_path, "maya"),
+            ("houdini", "Houdini", self._houdini_install_path, "houdini"),
+        ]:
+            card = SectionCard(f"{dcc_label}", f"RenderHive submitter for {dcc_label}", icon_name=icon_name)
+            card.setMinimumWidth(380)
+            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+            # Structured Info Alert Banner
+            alert_frame = QFrame()
+            alert_frame.setObjectName("InfoAlert")
+            alert_layout = QHBoxLayout(alert_frame)
+            alert_layout.setContentsMargins(14, 12, 14, 12)
+            alert_layout.setSpacing(12)
+            
+            alert_text_layout = QVBoxLayout()
+            alert_text_layout.setContentsMargins(0, 0, 0, 0)
+            alert_text_layout.setSpacing(3)
+            
+            title_lbl = QLabel("—")
+            title_lbl.setStyleSheet("font-weight: 600; font-size: 13px;")
+            self._plugin_alert_titles[dcc_key] = title_lbl
+            alert_text_layout.addWidget(title_lbl)
+            
+            desc_lbl = QLabel("—")
+            desc_lbl.setWordWrap(True)
+            desc_lbl.setStyleSheet("font-size: 12px;")
+            self._plugin_alert_descs[dcc_key] = desc_lbl
+            alert_text_layout.addWidget(desc_lbl)
+            
+            alert_layout.addLayout(alert_text_layout, 1)
+            
+            icon_lbl = QLabel()
+            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._plugin_alert_icons[dcc_key] = icon_lbl
+            alert_layout.addWidget(icon_lbl)
+            
+            self._plugin_alert_frames[dcc_key] = alert_frame
+            card.add_widget(alert_frame)
+
+            # DCC Exe Path config
+            path_form = QVBoxLayout()
+            path_form.setSpacing(4)
+            lbl = QLabel(f"{dcc_label} Directory")
+            lbl.setObjectName("FieldLabel")
+            path_form.addWidget(lbl)
+            
+            path_row = QHBoxLayout()
+            path_input = QLineEdit()
+            
+            detected = self.discovered.get(dcc_key)
+            if detected and len(detected) > 0:
+                path_input.setPlaceholderText(f"Auto-detected: {detected[0].root}")
+            else:
+                path_input.setPlaceholderText(f"Could not auto-detect {dcc_label} path...")
+                
+            path_input.setText(self.settings.value(f"{dcc_key}_custom_path", ""))
+            
+            browse_btn = QPushButton(" Browse")
+            browse_btn.setObjectName("SecondaryBtn")
+            browse_btn.setIcon(get_icon("folder", "#CBD5E1", 12))
+            
+            browse_btn.clicked.connect(lambda _=False, k=dcc_key, inp=path_input: self._browse_dcc_path(k, inp))
+            path_input.textChanged.connect(lambda text, k=dcc_key: self._save_dcc_path(k, text))
+            
+            self._dcc_path_inputs[dcc_key] = path_input
+            path_row.addWidget(path_input, 1)
+            path_row.addWidget(browse_btn)
+            path_form.addLayout(path_row)
+            
+            path_form.setContentsMargins(0, 8, 0, 8)
+            card.add_layout(path_form)
+
+            # Button row
+            btn_row = QHBoxLayout()
+            btn_row.setSpacing(8)
+            btn_row.addStretch()
+
+            open_btn = QPushButton("  Open Folder")
+            open_btn.setObjectName("SecondaryBtn")
+            open_btn.setIcon(get_icon("folder", "#FFFFFF", 12))
+            open_btn.setAccessibleName(f"Open {dcc_label} Plugin Folder")
+            _path_fn = install_path_fn
+            open_btn.clicked.connect(lambda _=False, fn=_path_fn: self._open_plugin_folder(fn()))
+            btn_row.addWidget(open_btn)
+
+            install_btn = QPushButton("  Install / Update")
+            install_btn.setIcon(get_icon("download", "#080A0F", 12))
+            install_btn.setAccessibleName(f"Install or Update {dcc_label} Plugin")
+            install_btn.clicked.connect(lambda _=False, k=dcc_key: self._run_plugin_install(k))
+            self._plugin_install_btns[dcc_key] = install_btn
+            btn_row.addWidget(install_btn)
+
+            uninstall_btn = QPushButton("  Uninstall")
+            uninstall_btn.setIcon(get_icon("trash", "#F87171", 12))
+            uninstall_btn.setAccessibleName(f"Uninstall {dcc_label} Plugin")
+            uninstall_btn.setStyleSheet("QPushButton { color: #F87171; background: transparent; border: 1px solid #451a20; } QPushButton:hover { background: #451a20; }")
+            uninstall_btn.clicked.connect(lambda _=False, k=dcc_key: self._run_plugin_uninstall(k))
+            self._plugin_uninstall_btns[dcc_key] = uninstall_btn
+            btn_row.addWidget(uninstall_btn)
+
+            card.add_layout(btn_row)
+            horiz_layout.addWidget(card)
+
+        layout.addStretch(1)
+
+        return page
+
+    def _browse_dcc_path(self, dcc_key: str, input_widget: QLineEdit) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Select DCC Installation Directory")
+        if folder:
+            input_widget.setText(folder)
+
+    def _save_dcc_path(self, dcc_key: str, text: str) -> None:
+        self.settings.setValue(f"{dcc_key}_custom_path", text)
+
+    def _maya_install_path(self) -> Optional[Path]:
+        """Return the expected Maya plugin install directory."""
+        if os.name == "nt":
+            base = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Documents" / "maya" / "scripts"
+        else:
+            base = Path.home() / "maya" / "scripts"
+        return base / "RenderHive"
+
+    def _houdini_install_path(self) -> Optional[Path]:
+        """Return the first detected Houdini runtime install directory, if any."""
+        local = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+        runtime_parent = local / "RenderHive" / "Houdini"
+        if runtime_parent.is_dir():
+            # Return first version sub-folder that exists
+            for child in sorted(runtime_parent.iterdir()):
+                if child.is_dir():
+                    return child
+        return runtime_parent  # not yet installed; return parent for display
+
+    def _refresh_plugin_status(self) -> None:
+        """Update the status chip and path label for each DCC plugin."""
+        import json as _json
+        
+        for dcc_key, path_fn in [
+            ("maya",    self._maya_install_path),
+            ("houdini", self._houdini_install_path),
+        ]:
+            path = path_fn()
+            title_lbl = self._plugin_alert_titles.get(dcc_key)
+            desc_lbl  = self._plugin_alert_descs.get(dcc_key)
+            icon_lbl  = self._plugin_alert_icons.get(dcc_key)
+            frame     = self._plugin_alert_frames.get(dcc_key)
+            
+            is_installed = False
+            version = ""
+            
+            if dcc_key == "maya":
+                if path and path.is_dir():
+                    info_file = path / "renderhive_install_info.json"
+                    if info_file.is_file():
+                        try:
+                            data = _json.loads(info_file.read_text(encoding="utf-8"))
+                            version = data.get("plugin_version") or data.get("installed_version") or ""
+                            is_installed = True
+                        except Exception:
+                            pass
+            elif dcc_key == "houdini":
+                # Houdini writes to ~/Documents/houdiniX.Y/packages/renderhive.json
+                docs = Path.home() / "Documents"
+                if docs.is_dir():
+                    for item in docs.glob("houdini*.*"):
+                        if item.is_dir():
+                            pkg = item / "packages" / "renderhive.json"
+                            if pkg.is_file():
+                                try:
+                                    data = _json.loads(pkg.read_text(encoding="utf-8"))
+                                    # the package points to the runtime root
+                                    for env in data.get("env", []):
+                                        if "RENDERHIVE_HOUDINI_ROOT" in env:
+                                            root_str = env["RENDERHIVE_HOUDINI_ROOT"]
+                                            if Path(root_str).is_dir():
+                                                is_installed = True
+                                                version = Path(root_str).name # the folder is the version
+                                            break
+                                except Exception:
+                                    pass
+                        if is_installed:
+                            break
+
+            dcc_name = "Maya" if dcc_key == "maya" else "Houdini"
+            if is_installed:
+                if title_lbl:
+                    title_lbl.setText(f"Plugin Installed{' (v' + version + ')' if version else ''}")
+                    title_lbl.setStyleSheet("color: #4ADE80; font-weight: 600; font-size: 13px;")
+                if desc_lbl:
+                    display_path = str(path).replace('\\', '\\\u200B')
+                    desc_lbl.setText(display_path)
+                    desc_lbl.setStyleSheet("color: #86EFAC; font-size: 12px;")
+                if icon_lbl:
+                    icon_lbl.setPixmap(get_icon("check", "#4ADE80", 20).pixmap(20, 20))
+                if frame:
+                    frame.setStyleSheet("QFrame#InfoAlert { background: rgba(74, 222, 128, 0.09); border: 1px solid rgba(74, 222, 128, 0.32); border-radius: 6px; }")
+            else:
+                if title_lbl:
+                    title_lbl.setText("Plugin Not Installed")
+                    title_lbl.setStyleSheet("color: #F1F5F9; font-weight: 600; font-size: 13px;")
+                if desc_lbl:
+                    desc_lbl.setText(f"Click Install below to enable direct scene submission from {dcc_name}.")
+                    desc_lbl.setStyleSheet("color: #94A3B8; font-size: 12px;")
+                if icon_lbl:
+                    icon_lbl.setPixmap(get_icon("help-circle", "#64748B", 20).pixmap(20, 20))
+                if frame:
+                    frame.setStyleSheet("QFrame#InfoAlert { background: #13161F; border: 1px solid #242936; border-radius: 6px; }")
+
+    def _open_plugin_folder(self, path) -> None:
+        if path is None:
+            return
+        path = Path(path)
+        target = path if path.is_dir() else path.parent
+        # Walk up to the first existing parent
+        while not target.exists():
+            parent = target.parent
+            if parent == target:
+                break
+            target = parent
+        if target.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+
+    def _run_plugin_install(self, dcc_key: str) -> None:
+        if dcc_key in self._plugin_workers and self._plugin_workers[dcc_key].isRunning():
+            return  # already in progress
+
+        btn = self._plugin_install_btns.get(dcc_key)
+        if btn:
+            btn.setEnabled(False)
+
+        worker = PluginInstallWorker(dcc_key, "", parent=self)
+        worker.progress.connect(lambda key, line: self.log(f"[{key.upper()} Install] {line}"))
+        worker.finished.connect(self._on_plugin_install_finished)
+        self._plugin_workers[dcc_key] = worker
+        worker.start()
+
+    def _run_plugin_uninstall(self, dcc_key: str) -> None:
+        if dcc_key in self._plugin_workers and self._plugin_workers[dcc_key].isRunning():
+            return
+            
+        dcc_label = "Maya" if dcc_key == "maya" else "Houdini"
+        
+        reply = QMessageBox.question(
+            self,
+            f"Uninstall {dcc_label} Plugin",
+            f"Are you sure you want to uninstall the RenderHive plugin for {dcc_label}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        btn = self._plugin_install_btns.get(dcc_key)
+        un_btn = self._plugin_uninstall_btns.get(dcc_key)
+        
+        if btn:
+            btn.setEnabled(False)
+        if un_btn:
+            un_btn.setEnabled(False)
+
+        worker = PluginUninstallWorker(dcc_key, parent=self)
+        worker.progress.connect(lambda key, line: self.log(f"[{key.upper()} Uninstall] {line}"))
+        worker.finished.connect(self._on_plugin_install_finished) # Reuse the same finish handler
+        self._plugin_workers[dcc_key] = worker
+        worker.start()
+
+    def _on_plugin_install_finished(self, dcc_key: str, success: bool, message: str) -> None:
+        btn = self._plugin_install_btns.get(dcc_key)
+        un_btn = self._plugin_uninstall_btns.get(dcc_key)
+        if btn:
+            btn.setEnabled(True)
+        if un_btn:
+            un_btn.setEnabled(True)
+        label = "Maya" if dcc_key == "maya" else "Houdini"
+        if success:
+            self.log(f"[{label} Install/Uninstall] ✓ {message}")
+        else:
+            self.log(f"[{label} Install/Uninstall] ✗ {message}")
+        self._refresh_plugin_status()
+
+
     def build_terminal_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -1939,7 +2251,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         self.settings.setValue("studio_geometry_v141", self.saveGeometry())
         self.settings.setValue("studio_tab_v141", self.main_stack.currentIndex())
-        if self.is_quitting:
+        if self.is_quitting or os.environ.get("RENDERHIVE_TESTING") == "1":
             event.accept()
             return
         event.ignore()
@@ -1972,3 +2284,362 @@ class MainWindow(QMainWindow):
                     QSystemTrayIcon.MessageIcon.Information,
                     3000,
                 )
+
+
+class PluginInstallWorker(QThread):
+    """Background thread that installs a DCC plugin without blocking the UI."""
+
+    finished = Signal(str, bool, str)   # dcc_key, success, message
+    progress = Signal(str, str)          # dcc_key, log_line
+
+    def __init__(self, dcc: str, target_dir: str, parent=None):
+        super().__init__(parent)
+        self._dcc = dcc          # "maya" or "houdini"
+        self._target_dir = target_dir
+
+    def run(self):
+        dcc = self._dcc
+        try:
+            if dcc == "maya":
+                self._install_maya()
+            elif dcc == "houdini":
+                self._install_houdini()
+            else:
+                raise RuntimeError(f"Unknown DCC: {dcc}")
+            self.finished.emit(dcc, True, "Plugin installed successfully.")
+        except Exception as exc:
+            self.finished.emit(dcc, False, str(exc))
+
+    def _install_maya(self):
+        """Copy the Maya plugin into Maya scripts and register native Maya Module (.mod)."""
+        import datetime
+        import json
+        import shutil
+
+        source_dir = _PLUGINS_DIR / "maya"
+        if not source_dir.is_dir():
+            raise RuntimeError(f"Maya plugin source not found at: {source_dir}")
+
+        if os.name == "nt":
+            maya_root = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Documents" / "maya"
+        else:
+            maya_root = Path.home() / "maya"
+
+        maya_scripts = maya_root / "scripts"
+        install_dir = maya_scripts / "RenderHive"
+
+        _IGNORED = {
+            "__pycache__", ".git", ".idea", ".vscode", ".venv", "venv",
+            "backup", "backups", "logs", "reports", "tests", "tools", "contracts",
+        }
+        def _ignore(directory, names):
+            result = []
+            for n in names:
+                low = n.lower()
+                if (n in _IGNORED or low.startswith("backup_")
+                        or low.endswith((".zip", ".pyc", ".md", ".yaml", ".yml"))):
+                    result.append(n)
+            return result
+
+        parent = install_dir.parent
+        parent.mkdir(parents=True, exist_ok=True)
+        import tempfile
+        stage_dir = Path(tempfile.mkdtemp(prefix="RenderHive_stage_", dir=str(parent)))
+        backup_dir = None
+        try:
+            shutil.rmtree(str(stage_dir))
+            shutil.copytree(str(source_dir), str(stage_dir), ignore=_ignore)
+
+            if install_dir.is_dir():
+                stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_dir = Path(str(install_dir) + f"_backup_{stamp}")
+                install_dir.rename(backup_dir)
+
+            stage_dir.rename(install_dir)
+        except Exception:
+            if install_dir.is_dir():
+                shutil.rmtree(str(install_dir), ignore_errors=True)
+            if backup_dir and backup_dir.is_dir():
+                backup_dir.rename(install_dir)
+            raise
+        finally:
+            if stage_dir.is_dir():
+                shutil.rmtree(str(stage_dir), ignore_errors=True)
+
+        self.progress.emit("maya", f"Copied plugin to: {install_dir}")
+
+        # 1. Clean any legacy userSetup.py entries (we no longer modify userSetup.py!)
+        BEGIN = "# >>> RenderHive Maya startup >>>"
+        END   = "# <<< RenderHive Maya startup <<<"
+        candidate_setups = [maya_scripts / "userSetup.py"]
+        for v_dir in maya_root.glob("*"):
+            if v_dir.is_dir() and (v_dir / "scripts" / "userSetup.py").is_file():
+                candidate_setups.append(v_dir / "scripts" / "userSetup.py")
+
+        for setup_path in candidate_setups:
+            if setup_path.is_file():
+                try:
+                    content = setup_path.read_text(encoding="utf-8")
+                    start = content.find(BEGIN)
+                    if start >= 0:
+                        end = content.find(END, start)
+                        if end >= 0:
+                            end += len(END)
+                            cleaned = (content[:start] + content[end:]).strip()
+                        else:
+                            cleaned = content[:start].rstrip()
+                        if cleaned:
+                            setup_path.write_text(cleaned + "\n", encoding="utf-8")
+                        else:
+                            setup_path.unlink()
+                        self.progress.emit("maya", f"Cleaned legacy userSetup: {setup_path}")
+                except Exception:
+                    pass
+
+        # 2. Register native Maya Module (.mod)
+        plugin_version = "1.0.0"
+        version_file = source_dir / "api" / "version.py"
+        if version_file.is_file():
+            for line in version_file.read_text(encoding="utf-8").splitlines():
+                if line.startswith("PLUGIN_VERSION"):
+                    plugin_version = line.split("=", 1)[1].strip().strip("\"'")
+                    break
+
+        norm_install_dir = str(install_dir).replace("\\", "/")
+        mod_content = (
+            f"+ RenderHive {plugin_version} {norm_install_dir}\n"
+            "icons: icons\n"
+            "scripts: .\n"
+        )
+        modules_dir = maya_root / "modules"
+        modules_dir.mkdir(parents=True, exist_ok=True)
+        mod_file = modules_dir / "RenderHive.mod"
+        mod_file.write_text(mod_content, encoding="utf-8")
+        self.progress.emit("maya", f"Registered module at: {mod_file}")
+
+        # 3. Generate native shelf_RenderHive.mel across all detected Maya versions
+        try:
+            icon_path_str = str(install_dir / "icons" / "renderhive_shelf_icon.png").replace("\\", "/")
+            shelf_command = (
+                f"import sys\\n"
+                f"_rh_path = '{norm_install_dir}'\\n"
+                f"if _rh_path not in sys.path: sys.path.insert(0, _rh_path)\\n"
+                f"import renderhive_maya_submitter\\n"
+                f"renderhive_maya_submitter.show_submitter()"
+            )
+            mel_content = f"""global proc shelf_RenderHive () {{
+    global string $gBuffStr;
+    global string $gBuffStr0;
+    global string $gBuffStr1;
+
+    shelfButton
+        -enableCommandRepeat 1
+        -flexibleWidthType 3
+        -flexibleWidthValue 32
+        -enable 1
+        -width 35
+        -height 34
+        -manage 1
+        -visible 1
+        -preventOverride 0
+        -annotation "Open RenderHive Maya Submitter"
+        -enableBackground 0
+        -backgroundColor 0 0 0 
+        -highlightColor 0.32549 0.317647 0.368627 
+        -align "center" 
+        -label "RenderHive" 
+        -labelOffset 0
+        -rotation 0
+        -flipX 0
+        -flipY 0
+        -useAlpha 1
+        -font "plainLabelFont" 
+        -imageOverlayLabel "" 
+        -overlayLabelColor 0.8 0.8 0.8 
+        -overlayLabelBackColor 0 0 0 0.5 
+        -image "{icon_path_str}" 
+        -image1 "{icon_path_str}" 
+        -style "iconOnly" 
+        -marginWidth 0
+        -marginHeight 1
+        -command "{shelf_command}" 
+        -sourceType "python" 
+        -commandRepeatable 1
+        -flat 1
+    ;
+}}
+"""
+            for version_dir in maya_root.glob("*"):
+                if version_dir.is_dir() and version_dir.name.isdigit():
+                    shelves_dir = version_dir / "prefs" / "shelves"
+                    shelves_dir.mkdir(parents=True, exist_ok=True)
+                    (shelves_dir / "shelf_RenderHive.mel").write_text(mel_content, encoding="utf-8")
+                    self.progress.emit("maya", f"Generated shelf file: {shelves_dir / 'shelf_RenderHive.mel'}")
+        except Exception as exc:
+            self.progress.emit("maya", f"Shelf generation warning: {exc}")
+
+        try:
+            info = {
+                "source_dir": str(source_dir),
+                "install_dir": str(install_dir),
+                "plugin_version": plugin_version,
+            }
+            (install_dir / "renderhive_install_info.json").write_text(
+                json.dumps(info, indent=4), encoding="utf-8"
+            )
+        except Exception:
+            pass
+
+    def _install_houdini(self):
+        """Delegate to the existing houdini installer module bundled in plugins/."""
+        import importlib.util
+        install_py = _PLUGINS_DIR / "houdini" / "installer" / "install.py"
+        if not install_py.is_file():
+            raise RuntimeError(f"Houdini installer not found at: {install_py}")
+
+        spec = importlib.util.spec_from_file_location("_rh_houdini_install", str(install_py))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        source = _PLUGINS_DIR / "houdini"
+        mod.assert_source(source)
+        pref_dirs = mod.detect_pref_dirs([])
+        if not pref_dirs:
+            raise RuntimeError(
+                "No supported Houdini preference folder was found.\n"
+                "Open Houdini once, close it, then try again."
+            )
+
+        runtime, written = mod.install(source, pref_dirs)
+        for path in written:
+            self.progress.emit("houdini", f"Registered: {path}")
+        self.progress.emit("houdini", f"Installed runtime to: {runtime}")
+
+
+class PluginUninstallWorker(QThread):
+    """Background thread that uninstalls a DCC plugin without blocking the UI."""
+
+    finished = Signal(str, bool, str)   # dcc_key, success, message
+    progress = Signal(str, str)          # dcc_key, log_line
+
+    def __init__(self, dcc: str, parent=None):
+        super().__init__(parent)
+        self._dcc = dcc
+
+    def run(self):
+        dcc = self._dcc
+        try:
+            if dcc == "maya":
+                self._uninstall_maya()
+            elif dcc == "houdini":
+                self._uninstall_houdini()
+            else:
+                raise RuntimeError(f"Unknown DCC: {dcc}")
+            self.finished.emit(dcc, True, "Plugin uninstalled successfully.")
+        except Exception as exc:
+            self.finished.emit(dcc, False, str(exc))
+
+    def _uninstall_maya(self):
+        import re
+        import shutil
+
+        if os.name == "nt":
+            maya_root = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Documents" / "maya"
+        else:
+            maya_root = Path.home() / "maya"
+
+        if not maya_root.is_dir():
+            return
+
+        # 1. Remove RenderHive.mod module files
+        for mod_file in list(maya_root.glob("**/modules/RenderHive.mod")) + [maya_root / "modules" / "RenderHive.mod"]:
+            if mod_file.is_file():
+                try:
+                    mod_file.unlink()
+                    self.progress.emit("maya", f"Removed module file: {mod_file}")
+                except Exception:
+                    pass
+
+        # 2. Remove RenderHive plugin directories and backups across global and all versioned folders
+        candidate_script_dirs = [maya_root / "scripts"]
+        for version_dir in maya_root.glob("*"):
+            if version_dir.is_dir() and (version_dir / "scripts").is_dir():
+                candidate_script_dirs.append(version_dir / "scripts")
+
+        for script_dir in candidate_script_dirs:
+            install_dir = script_dir / "RenderHive"
+            if install_dir.is_dir():
+                shutil.rmtree(str(install_dir), ignore_errors=True)
+                self.progress.emit("maya", f"Removed plugin from: {install_dir}")
+
+            # Clean any RenderHive_backup_* folders
+            for backup in script_dir.glob("RenderHive_backup_*"):
+                if backup.is_dir():
+                    shutil.rmtree(str(backup), ignore_errors=True)
+
+            # Clean legacy userSetup.py
+            user_setup = script_dir / "userSetup.py"
+            BEGIN = "# >>> RenderHive Maya startup >>>"
+            END   = "# <<< RenderHive Maya startup <<<"
+            if user_setup.is_file():
+                try:
+                    content = user_setup.read_text(encoding="utf-8")
+                    start = content.find(BEGIN)
+                    if start >= 0:
+                        end = content.find(END, start)
+                        if end >= 0:
+                            end += len(END)
+                            cleaned = (content[:start] + content[end:]).strip()
+                        else:
+                            cleaned = content[:start].rstrip()
+                        if cleaned:
+                            user_setup.write_text(cleaned + "\n", encoding="utf-8")
+                        else:
+                            user_setup.unlink()
+                        self.progress.emit("maya", f"Cleaned startup hook in: {user_setup}")
+                except Exception:
+                    pass
+
+        # 3. Clean Maya Shelves across all versions
+        # Delete shelf_RenderHive.mel files
+        for shelf_file in maya_root.glob("**/prefs/shelves/shelf_RenderHive.mel"):
+            try:
+                shelf_file.unlink()
+                self.progress.emit("maya", f"Removed shelf file: {shelf_file}")
+            except Exception:
+                pass
+
+        # In other shelves (e.g. shelf_Custom.mel), strip shelfButton blocks referencing RenderHive
+        button_pattern = re.compile(
+            r'[ \t]*shelfButton\b(?:(?!shelfButton\b|;\s*\n).)*?renderhive.*?;[ \t]*\r?\n?',
+            re.IGNORECASE | re.DOTALL
+        )
+        for shelf_file in maya_root.glob("**/prefs/shelves/shelf_*.mel"):
+            if not shelf_file.is_file():
+                continue
+            try:
+                content = shelf_file.read_text(encoding="utf-8", errors="ignore")
+                if "renderhive" in content.lower():
+                    cleaned = button_pattern.sub("", content)
+                    if cleaned != content:
+                        shelf_file.write_text(cleaned, encoding="utf-8")
+                        self.progress.emit("maya", f"Removed RenderHive shelf button from: {shelf_file}")
+            except Exception:
+                pass
+
+    def _uninstall_houdini(self):
+        import shutil
+        docs = Path.home() / "Documents"
+        if docs.is_dir():
+            for item in docs.glob("houdini*.*"):
+                if item.is_dir():
+                    pkg = item / "packages" / "renderhive.json"
+                    if pkg.is_file():
+                        pkg.unlink()
+                        self.progress.emit("houdini", f"Removed package descriptor: {pkg}")
+        
+        local = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+        runtime_parent = local / "RenderHive" / "Houdini"
+        if runtime_parent.is_dir():
+            shutil.rmtree(str(runtime_parent), ignore_errors=True)
+            self.progress.emit("houdini", f"Removed Houdini runtime from: {runtime_parent}")

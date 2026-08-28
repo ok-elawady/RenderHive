@@ -18,9 +18,12 @@ class FramelessWindowTests(unittest.TestCase):
 
     def setUp(self):
         self.window = MainWindow()
+        if hasattr(self.window, "tray_icon") and self.window.tray_icon:
+            self.window.tray_icon.setVisible(False)
         self.window.nav_dash_btn.click()
 
     def tearDown(self):
+        self.window.is_quitting = True
         self.window.close()
         self.window.deleteLater()
         QApplication.processEvents()

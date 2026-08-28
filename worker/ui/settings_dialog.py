@@ -413,80 +413,7 @@ class SettingsDialog(QDialog):
         sec_sched_layout.addLayout(sched_form)
         body_layout.addWidget(sec_sched)
 
-        # Divider
-        body_layout.addWidget(self._create_section_divider())
 
-        # ── Section 4: Detected Applications & Search Paths ──
-        sec_dcc = QWidget()
-        sec_dcc_layout = QVBoxLayout(sec_dcc)
-        sec_dcc_layout.setContentsMargins(0, 0, 0, 0)
-        sec_dcc_layout.setSpacing(8)
-        sec_dcc_layout.addWidget(
-            self._create_section_header(
-                "cube",
-                "DETECTED APPLICATIONS & SEARCH PATHS",
-                "Auto-discovered Maya and Houdini installations and optional custom directory paths.",
-            )
-        )
-
-        dcc_form = QFormLayout()
-        dcc_form.setHorizontalSpacing(16)
-        dcc_form.setVerticalSpacing(8)
-        dcc_form.setContentsMargins(0, 4, 0, 0)
-
-        # Maya Custom Path Row
-        maya_row = QHBoxLayout()
-        maya_row.setSpacing(6)
-        self.maya_path_input = QLineEdit()
-        self.maya_path_input.setPlaceholderText("Optional e.g. C:\\Program Files\\Autodesk\\Maya2025 (or D:\\Autodesk\\Maya)")
-        self.maya_path_input.setText(self.settings.value("maya_custom_path", ""))
-        self.maya_path_input.textChanged.connect(self.refresh_detection)
-        maya_row.addWidget(self.maya_path_input, 1)
-        maya_browse_btn = QPushButton("  Browse…")
-        maya_browse_btn.setObjectName("SecondaryBtn")
-        maya_browse_btn.setIcon(get_icon("folder", "#CBD5E1", 12))
-        maya_browse_btn.setFixedHeight(32)
-        maya_browse_btn.setCursor(Qt.PointingHandCursor)
-        maya_browse_btn.clicked.connect(self._browse_maya)
-        maya_row.addWidget(maya_browse_btn)
-        dcc_form.addRow("Maya Directory", maya_row)
-
-        # Houdini Custom Path Row
-        houdini_row = QHBoxLayout()
-        houdini_row.setSpacing(6)
-        self.houdini_path_input = QLineEdit()
-        self.houdini_path_input.setPlaceholderText("Optional e.g. C:\\Program Files\\Side Effects Software\\Houdini 21.0.440")
-        self.houdini_path_input.setText(self.settings.value("houdini_custom_path", ""))
-        self.houdini_path_input.textChanged.connect(self.refresh_detection)
-        houdini_row.addWidget(self.houdini_path_input, 1)
-        houdini_browse_btn = QPushButton("  Browse…")
-        houdini_browse_btn.setObjectName("SecondaryBtn")
-        houdini_browse_btn.setIcon(get_icon("folder", "#CBD5E1", 12))
-        houdini_browse_btn.setFixedHeight(32)
-        houdini_browse_btn.setCursor(Qt.PointingHandCursor)
-        houdini_browse_btn.clicked.connect(self._browse_houdini)
-        houdini_row.addWidget(houdini_browse_btn)
-        dcc_form.addRow("Houdini Directory", houdini_row)
-
-        sec_dcc_layout.addLayout(dcc_form)
-
-        # Modern DCC Cards Display Container (Replaces raw text edit)
-        self.dcc_cards_container = QWidget()
-        self.dcc_cards_layout = QVBoxLayout(self.dcc_cards_container)
-        self.dcc_cards_layout.setContentsMargins(0, 4, 0, 0)
-        self.dcc_cards_layout.setSpacing(10)
-        sec_dcc_layout.addWidget(self.dcc_cards_container)
-
-        refresh_btn = QPushButton("  Refresh Detection")
-        refresh_btn.setObjectName("SecondaryBtn")
-        refresh_btn.setIcon(get_icon("refresh", "#F5F7FA", 13))
-        refresh_btn.setCursor(Qt.PointingHandCursor)
-        refresh_btn.setFixedHeight(32)
-        refresh_btn.clicked.connect(self.refresh_detection)
-        sec_dcc_layout.addWidget(refresh_btn)
-
-        body_layout.addWidget(sec_dcc)
-        body_layout.addStretch()
 
         # ── Full-Width Divider above action buttons ──
         actions_divider = QFrame()
@@ -514,8 +441,6 @@ class SettingsDialog(QDialog):
         footer_layout.addWidget(cancel_btn)
         footer_layout.addWidget(save_btn)
         root.addWidget(footer_frame)
-
-        self.refresh_detection()
 
     def _create_section_header(self, icon_name: str, title_text: str, desc_text: str = "") -> QWidget:
         container = QWidget()
@@ -605,107 +530,7 @@ class SettingsDialog(QDialog):
                 "padding: 4px 10px; font-weight: 600; font-size: 12px;"
             )
 
-    def _build_dcc_card(
-        self,
-        dcc_name: str,
-        icon_name: str,
-        installations: List[DCCInstallation],
-    ) -> QFrame:
-        card = QFrame()
-        card.setObjectName("DCCCard")
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(14, 12, 14, 12)
-        card_layout.setSpacing(8)
 
-        # Header Row
-        hdr = QHBoxLayout()
-        hdr.setSpacing(10)
-        hdr.setContentsMargins(0, 0, 0, 0)
-
-        icon_badge = QFrame()
-        icon_badge.setObjectName("DCCIconBadge")
-        icon_badge.setFixedSize(28, 28)
-        ib_layout = QVBoxLayout(icon_badge)
-        ib_layout.setContentsMargins(0, 0, 0, 0)
-        ib_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ib_icon = QLabel()
-        ib_icon.setPixmap(get_icon(icon_name, "#9C73F2", 15).pixmap(15, 15))
-        ib_layout.addWidget(ib_icon)
-        hdr.addWidget(icon_badge)
-
-        name_lbl = QLabel(dcc_name)
-        name_lbl.setStyleSheet("color: #FFFFFF; font-size: 13px; font-weight: 700;")
-        hdr.addWidget(name_lbl)
-        hdr.addStretch()
-
-        status_badge = QLabel()
-        if installations:
-            v_str = ", ".join(i.version for i in installations)
-            status_badge.setText(f"✓  {v_str} Detected")
-            status_badge.setStyleSheet(
-                "color: #4ADE80; background-color: rgba(74, 222, 128, 0.12); "
-                "border: 1px solid rgba(74, 222, 128, 0.35); border-radius: 6px; "
-                "padding: 3px 9px; font-weight: 600; font-size: 11px;"
-            )
-        else:
-            status_badge.setText("Not Detected")
-            status_badge.setStyleSheet(
-                "color: #64748B; background-color: rgba(100, 116, 139, 0.12); "
-                "border: 1px solid rgba(100, 116, 139, 0.25); border-radius: 6px; "
-                "padding: 3px 9px; font-weight: 500; font-size: 11px;"
-            )
-        hdr.addWidget(status_badge)
-        card_layout.addLayout(hdr)
-
-        # Body Details
-        if installations:
-            for inst in installations:
-                path_lbl = QLabel(inst.root)
-                path_lbl.setStyleSheet("color: #94A3B8; font-family: 'JetBrains Mono', Consolas, monospace; font-size: 11px;")
-                path_lbl.setWordWrap(True)
-                card_layout.addWidget(path_lbl)
-
-                if inst.executables:
-                    exec_row = QHBoxLayout()
-                    exec_row.setSpacing(6)
-                    exec_row.setContentsMargins(0, 2, 0, 0)
-                    exec_title = QLabel("Binaries:")
-                    exec_title.setStyleSheet("color: #64748B; font-size: 11px; font-weight: 500;")
-                    exec_row.addWidget(exec_title)
-                    for exe_name, exe_path in inst.executables.items():
-                        if exe_path:
-                            badge = QLabel(f"{exe_name}.exe")
-                            badge.setObjectName("DCCExecBadge")
-                            badge.setToolTip(exe_path)
-                            exec_row.addWidget(badge)
-                    exec_row.addStretch()
-                    card_layout.addLayout(exec_row)
-        else:
-            not_found_lbl = QLabel("No installation found. You can specify a custom directory above.")
-            not_found_lbl.setStyleSheet("color: #64748B; font-size: 12px;")
-            card_layout.addWidget(not_found_lbl)
-
-        return card
-
-    def refresh_detection(self) -> None:
-        maya_raw = self.maya_path_input.text().strip() if hasattr(self, "maya_path_input") else ""
-        houdini_raw = self.houdini_path_input.text().strip() if hasattr(self, "houdini_path_input") else ""
-        maya_roots = [p.strip() for p in maya_raw.replace(";", ",").split(",") if p.strip()]
-        houdini_roots = [p.strip() for p in houdini_raw.replace(";", ",").split(",") if p.strip()]
-        discovered = discover_all(extra_maya_roots=maya_roots, extra_houdini_roots=houdini_roots)
-
-        # Rebuild DCC display cards
-        if hasattr(self, "dcc_cards_layout"):
-            while self.dcc_cards_layout.count():
-                item = self.dcc_cards_layout.takeAt(0)
-                widget = item.widget()
-                if widget:
-                    widget.deleteLater()
-
-            maya_card = self._build_dcc_card("Autodesk Maya", "maya", discovered.get("maya") or [])
-            houdini_card = self._build_dcc_card("SideFX Houdini", "houdini", discovered.get("houdini") or [])
-            self.dcc_cards_layout.addWidget(maya_card)
-            self.dcc_cards_layout.addWidget(houdini_card)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -742,21 +567,7 @@ class SettingsDialog(QDialog):
         except Exception:
             pass
 
-    def _browse_maya(self) -> None:
-        start_dir = self.maya_path_input.text().strip() or "C:\\Program Files\\Autodesk"
-        if not os.path.exists(start_dir):
-            start_dir = "C:\\Program Files"
-        folder = QFileDialog.getExistingDirectory(self, "Select Maya Installation Directory", start_dir)
-        if folder:
-            self.maya_path_input.setText(os.path.normpath(folder))
 
-    def _browse_houdini(self) -> None:
-        start_dir = self.houdini_path_input.text().strip() or "C:\\Program Files\\Side Effects Software"
-        if not os.path.exists(start_dir):
-            start_dir = "C:\\Program Files"
-        folder = QFileDialog.getExistingDirectory(self, "Select Houdini Installation Directory", start_dir)
-        if folder:
-            self.houdini_path_input.setText(os.path.normpath(folder))
 
     def save_settings(self) -> None:
         self.settings.setValue("api_url", self.api_url_input.text().strip())
@@ -770,8 +581,7 @@ class SettingsDialog(QDialog):
         self.settings.setValue("after_task", self.after_task_combo.currentData())
         self.settings.setValue("auto_start", self.auto_start_check.isChecked())
         self.settings.setValue("start_minimized", self.start_minimized_check.isChecked())
-        self.settings.setValue("maya_custom_path", self.maya_path_input.text().strip())
-        self.settings.setValue("houdini_custom_path", self.houdini_path_input.text().strip())
+
         self.accept()
 
 

@@ -4,16 +4,19 @@ from __future__ import annotations
 
 from typing import Any, Iterable, List, Mapping, Optional, Tuple
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRect, Qt, QSize, QPoint, QTimer
+from PySide6.QtGui import QColor, QFont, QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -43,10 +46,93 @@ class SegmentNavButton(QPushButton):
 NavButton = SegmentNavButton
 
 
+class FlowLayout(QLayout):
+    """A standard flow layout that wraps items to the next row when space runs out."""
+
+    def __init__(self, parent=None, margin=0, spacing=-1):
+        super().__init__(parent)
+        if parent is not None:
+            self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+        self.item_list = []
+
+    def __del__(self):
+        item = self.takeAt(0)
+        while item:
+            item = self.takeAt(0)
+
+    def addItem(self, item):
+        self.item_list.append(item)
+
+    def addWidget(self, widget):
+        super().addWidget(widget)
+
+    def count(self):
+        return len(self.item_list)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self.item_list):
+            return self.item_list[index]
+        return None
+
+    def takeAt(self, index):
+        if 0 <= index < len(self.item_list):
+            return self.item_list.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, width):
+        return self.doLayout(QRect(0, 0, width, 0), True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self.doLayout(rect, False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for item in self.item_list:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+        return size
+
+    def doLayout(self, rect, test_only):
+        x = rect.x()
+        y = rect.y()
+        line_height = 0
+        spacing = self.spacing()
+
+        for item in self.item_list:
+            space_x = spacing
+            space_y = spacing
+            next_x = x + item.sizeHint().width() + space_x
+            if next_x - space_x > rect.right() and line_height > 0:
+                x = rect.x()
+                y = y + line_height + space_y
+                next_x = x + item.sizeHint().width() + space_x
+                line_height = 0
+
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+
+            x = next_x
+            line_height = max(line_height, item.sizeHint().height())
+
+        return y + line_height - rect.y()
+
+
 class SectionCard(QFrame):
     """Shadcn Card with optional header divider and clean typography."""
 
-    def __init__(self, title: str = "", subtitle: str = "", parent=None):
+    def __init__(self, title: str = "", subtitle: str = "", icon_name: str = "", header_right_widget: QWidget = None, parent=None):
         super().__init__(parent)
         self.setObjectName("SectionCard")
         # Remove inner margins so CardHeader and CardContent can bleed to the edges
@@ -54,22 +140,43 @@ class SectionCard(QFrame):
         self.root.setContentsMargins(0, 0, 0, 0)
         self.root.setSpacing(0)
 
-        if title or subtitle:
+        if title or subtitle or header_right_widget:
             header_frame = QFrame()
             header_frame.setObjectName("CardHeader")
-            header = QVBoxLayout(header_frame)
+            header = QHBoxLayout(header_frame)
             header.setContentsMargins(16, 14, 16, 14)
-            header.setSpacing(4)
+            header.setSpacing(12)
+
+            # Left side (icon + text)
+            left_col = QVBoxLayout()
+            left_col.setSpacing(4)
+            
+            title_row = QHBoxLayout()
+            title_row.setSpacing(8)
+            if icon_name:
+                icon_lbl = QLabel()
+                icon_lbl.setPixmap(get_icon(icon_name, "#A1A7BB", 16).pixmap(16, 16))
+                title_row.addWidget(icon_lbl)
             
             if title:
                 title_label = QLabel(title)
                 title_label.setObjectName("SectionTitle")
-                header.addWidget(title_label)
+                title_row.addWidget(title_label)
+            title_row.addStretch()
+            left_col.addLayout(title_row)
+
             if subtitle:
                 subtitle_label = QLabel(subtitle)
                 subtitle_label.setObjectName("MutedLabel")
                 subtitle_label.setWordWrap(True)
-                header.addWidget(subtitle_label)
+                left_col.addWidget(subtitle_label)
+
+            header.addLayout(left_col, 1)
+
+            # Right side (e.g. Status chip)
+            if header_right_widget:
+                header.addWidget(header_right_widget, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+
             self.root.addWidget(header_frame)
 
         self.content_widget = QWidget()
@@ -185,6 +292,7 @@ class StatusChip(QLabel):
         "DISCONNECTED": ("#FF5D73", "●"),
         "SUCCEEDED": ("#3DDC84", "●"),
         "COMPLETED": ("#3DDC84", "●"),
+        "INSTALLED": ("#3DDC84", "●"),
     }
 
     def __init__(self, status: str = "OFFLINE", parent=None):

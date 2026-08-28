@@ -23,7 +23,9 @@ if errorlevel 1 exit /b 1
 python -m pip install -r requirements.txt
 if errorlevel 1 exit /b 1
 
+set RENDERHIVE_TESTING=1
 python -m unittest discover -s tests -p "test_*.py"
+set RENDERHIVE_TESTING=
 if errorlevel 1 exit /b 1
 
 python -m PyInstaller --noconfirm --clean RenderHiveWorker.spec
@@ -31,5 +33,5 @@ if errorlevel 1 exit /b 1
 
 echo.
 echo Build completed:
-echo %CD%\dist\RenderHiveWorker.exe
+echo %CD%\dist\RenderHive Worker\RenderHive Worker.exe
 exit /b 0
