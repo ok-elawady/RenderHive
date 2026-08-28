@@ -92,11 +92,11 @@ class Command(BaseCommand):
             self.stdout.write("Existing token retrieved.")
 
         self.stdout.write("")
-        self.stdout.write(self.style.WARNING("═" * 60))
+        self.stdout.write(self.style.WARNING("=" * 60))
         self.stdout.write(self.style.WARNING("  FARM API TOKEN (add to renderhive.conf)"))
-        self.stdout.write(self.style.WARNING("═" * 60))
+        self.stdout.write(self.style.WARNING("=" * 60))
         self.stdout.write(f"  RENDERHIVE_API_TOKEN={token.key}")
-        self.stdout.write(self.style.WARNING("═" * 60))
+        self.stdout.write(self.style.WARNING("=" * 60))
         self.stdout.write("")
         self.stdout.write(
             "  Workers and DCC plugins must include this token in every request:\n  Authorization: Token <token>"
