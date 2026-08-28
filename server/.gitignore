@@ -1,0 +1,7 @@
+Output/
+downloads/
+staging/
+.venv*/
+__pycache__/
+*.pyc
+*.spec

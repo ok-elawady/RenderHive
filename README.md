@@ -15,6 +15,7 @@ This repository is organized as a monorepo containing the following main compone
 | **Worker**        | [`worker/`](./worker)                         | Desktop application that runs on each render node.                       | Python, PySide6 (Qt), psutil                                  |
 | **AI Service**  | [`services/ai_service/`](./services/ai_service) | LLM-powered service for intelligent task dispatch and log explanation.     | FastAPI, llama-cpp-python                                     |
 | **Plugins**       | [`plugins/`](./plugins)                       | DCC Integrations. Currently hosts Autodesk Maya integration.             | Python, PySide, MEL, Maya Commands                            |
+| **Server Installer** | [`server/`](./server)                         | Fully automated Windows installer for local/on-premise deployment.       | Inno Setup, PowerShell, Batch, PyInstaller                    |
 
 ---
 
@@ -40,7 +41,7 @@ This repository is organized as a monorepo containing the following main compone
 - `pnpm` — only needed for frontend development outside Docker
 - Autodesk Maya (for using the Maya submitter/worker plugins)
 
-### 🐳 Running with Docker Compose
+### 🐳 Running with Docker Compose (Recommended)
 
 RenderHive uses Docker Compose **profiles** to let you start only the components you need.
 
@@ -74,6 +75,25 @@ docker compose --profile frontend --profile ai up --build
 | AI Scheduler | [http://localhost:8001](http://localhost:8001) | `ai` |
 
 > **AI Service note:** Requires a GGUF model file. Without one it runs in mock mode (useful for dev). See [`services/ai_service/README.md`](./services/ai_service/README.md) for model setup.
+
+---
+
+### 💿 Running with Windows Installer (Easy Mode / Local Deployments)
+
+RenderHive provides a fully standalone Windows installer that automatically configures all required services (PostgreSQL, Redis, Nginx, Django API, Next.js Frontend, and the AI Service) as Windows Background Services.
+
+**Installation Steps:**
+1. Run the `RenderHive Server Setup.exe` installer (located in `server/Output/`).
+2. Follow the prompts to specify the installation directory, data directory, and Server IP.
+3. The installer automatically extracts and configures PostgreSQL 16, Redis, Nginx, Django API, Next.js frontend, and the AI Service, registering them all as Windows services using NSSM.
+4. Once installed, open your browser to `http://renderhive.local` (if on the host machine) or via your server's IP.
+
+**Building the Installer from Source:**
+If you are developing or need to compile the installer yourself:
+1. Open a terminal in the `server/` directory.
+2. Run `.\build.bat` (requires Python and `pnpm`). This builds the PyInstaller executables for the API, AI Service, Manager GUI, and exports the Next.js frontend.
+3. Open `RenderHiveServerSetup.iss` in **Inno Setup 6 or 7** and click **Compile**.
+4. The final `.exe` will be generated in `server/Output/`.
 
 ### 💻 Running the Frontend Locally (without Docker)
 
