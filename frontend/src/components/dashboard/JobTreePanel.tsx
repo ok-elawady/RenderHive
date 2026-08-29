@@ -21,6 +21,9 @@ import {
   Terminal,
   Loader2,
   ExternalLink,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -117,25 +120,35 @@ function LayerStateIcon({ state }: { state: string }) {
 }
 
 function formatDeadlineDate(dateStr?: string) {
-  if (!dateStr) return "";
+  if (!dateStr) return "—";
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "";
+  if (isNaN(d.getTime())) return "—";
   const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const dd = pad(d.getDate());
+  const mm = pad(d.getMonth() + 1);
+  const yy = d.getFullYear().toString().slice(-2);
+  const hh = pad(d.getHours());
+  const min = pad(d.getMinutes());
+  return `${dd}/${mm}/${yy} ${hh}:${min}`;
 }
 
-function formatDeadlineDuration(startStr?: string, endStr?: string) {
-  if (!startStr) return "";
+function formatDeadlineDuration(startStr?: string, endStr?: string, state?: string) {
+  if (!startStr) return "—";
   const start = new Date(startStr).getTime();
+  if (isNaN(start)) return "—";
+  if (!endStr && state !== "RUNNING") return "—";
   const end = endStr ? new Date(endStr).getTime() : Date.now();
-  if (isNaN(start)) return "";
+  if (isNaN(end)) return "—";
   const diffSecs = Math.floor(Math.max(0, end - start) / 1000);
   const d = Math.floor(diffSecs / 86400);
   const h = Math.floor((diffSecs % 86400) / 3600);
   const m = Math.floor((diffSecs % 3600) / 60);
   const s = diffSecs % 60;
   const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${pad(d)}:${pad(h)}:${pad(m)}:${pad(s)}`;
+  if (d > 0) {
+    return `${d}d ${pad(h)}:${pad(m)}:${pad(s)}`;
+  }
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 export function JobTreePanel({
@@ -193,6 +206,105 @@ export function JobTreePanel({
     }
     return result;
   }, [jobs, activeTab, normalizedQuery]);
+
+  type JobSortField =
+    | "priority"
+    | "name"
+    | "user"
+    | "status"
+    | "frames"
+    | "progress"
+    | "created_at"
+    | "started_at"
+    | "finished_at"
+    | "duration";
+  type SortDirection = "asc" | "desc";
+
+  const [sortField, setSortField] = useState<JobSortField>("created_at");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  const handleSort = (field: JobSortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      if (["priority", "created_at", "started_at", "finished_at", "progress", "duration"].includes(field)) {
+        setSortDirection("desc");
+      } else {
+        setSortDirection("asc");
+      }
+    }
+  };
+
+  const sortedJobs = useMemo(() => {
+    const list = [...filteredJobs];
+    return list.sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "priority":
+          cmp = (a.priority ?? 0) - (b.priority ?? 0);
+          break;
+        case "name":
+          cmp = (a.displayId || "").localeCompare(b.displayId || "", undefined, { numeric: true, sensitivity: "base" });
+          break;
+        case "user":
+          cmp = (a.user || "").localeCompare(b.user || "");
+          break;
+        case "status":
+          cmp = (a.status || "").localeCompare(b.status || "");
+          break;
+        case "frames":
+          cmp = (a.frame_range || "").localeCompare(b.frame_range || "", undefined, { numeric: true });
+          break;
+        case "progress": {
+          const progA = ((a.succeeded_tasks || 0) + (a.skipped_tasks || 0)) / Math.max(1, a.total_tasks || 1);
+          const progB = ((b.succeeded_tasks || 0) + (b.skipped_tasks || 0)) / Math.max(1, b.total_tasks || 1);
+          cmp = progA - progB;
+          break;
+        }
+        case "created_at":
+          cmp = new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+          break;
+        case "started_at":
+          cmp =
+            (a.started_at ? new Date(a.started_at).getTime() : 0) -
+            (b.started_at ? new Date(b.started_at).getTime() : 0);
+          break;
+        case "finished_at":
+          cmp =
+            (a.finished_at ? new Date(a.finished_at).getTime() : 0) -
+            (b.finished_at ? new Date(b.finished_at).getTime() : 0);
+          break;
+        case "duration": {
+          const durA = a.started_at
+            ? (a.finished_at ? new Date(a.finished_at).getTime() : Date.now()) - new Date(a.started_at).getTime()
+            : -1;
+          const durB = b.started_at
+            ? (b.finished_at ? new Date(b.finished_at).getTime() : Date.now()) - new Date(b.started_at).getTime()
+            : -1;
+          cmp = durA - durB;
+          break;
+        }
+      }
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+  }, [filteredJobs, sortField, sortDirection]);
+
+  const renderSortIcon = (field: JobSortField) => {
+    if (sortField !== field) {
+      return (
+        <ArrowUpDown
+          size={10}
+          className="opacity-0 group-hover/col:opacity-40 transition-opacity ml-1 inline shrink-0"
+        />
+      );
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp size={10} className="text-primary ml-1 inline shrink-0" />
+    ) : (
+      <ArrowDown size={10} className="text-primary ml-1 inline shrink-0" />
+    );
+  };
 
   const tabs: Array<{ id: QueueTabFilter | "COMPLETED"; label: string; count: number; alert?: boolean }> = [
     { id: "ALL", label: "All", count: jobs.length },
@@ -286,8 +398,11 @@ export function JobTreePanel({
 
   const handleJobClick = (jobId: string) => {
     onSelectJob(jobId);
-    if (!expandedJobs.has(jobId)) {
-      const newExpanded = new Set(expandedJobs);
+    const newExpanded = new Set(expandedJobs);
+    if (newExpanded.has(jobId)) {
+      newExpanded.delete(jobId);
+      setExpandedJobs(newExpanded);
+    } else {
       newExpanded.add(jobId);
       setExpandedJobs(newExpanded);
       if (!layersCache[jobId] && !loadingLayers.has(jobId)) {
@@ -387,20 +502,82 @@ export function JobTreePanel({
         ) : (
           <div className="flex flex-col min-w-[1250px] w-full">
             {/* Table Header */}
-            <div className="grid grid-cols-[24px_minmax(150px,1fr)_64px_112px_224px_128px_128px_128px_128px_48px] items-center gap-2 p-1.5 bg-muted/40 border-b border-border/50 text-[11px] font-bold text-foreground uppercase tracking-wider select-none">
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/50 grid grid-cols-[24px_48px_minmax(160px,1fr)_80px_115px_80px_150px_110px_110px_110px_90px_76px] items-center gap-2 p-1.5 text-[11px] font-bold text-foreground uppercase tracking-wider select-none shadow-sm">
               <div className="shrink-0" /> {/* Spacer for expand icon */}
-              <div className="min-w-0 text-left">Job Name</div>
-              <div className="min-w-0 text-center">User</div>
-              <div className="min-w-0 text-center">Status</div>
-              <div className="min-w-0 text-center px-4">Task Progress</div>
-              <div className="min-w-0 text-center">Submitted</div>
-              <div className="min-w-0 text-center">Started</div>
-              <div className="min-w-0 text-center">Finished</div>
-              <div className="min-w-0 text-center">Duration</div>
+              <div
+                onClick={() => handleSort("priority")}
+                className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+                title="Sort by Priority"
+              >
+                Pri {renderSortIcon("priority")}
+              </div>
+              <div
+                onClick={() => handleSort("name")}
+                className="min-w-0 text-left cursor-pointer hover:text-primary transition-colors flex items-center group/col"
+                title="Sort by Job Name"
+              >
+                Job Name {renderSortIcon("name")}
+              </div>
+              <div
+                onClick={() => handleSort("user")}
+                className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+                title="Sort by User"
+              >
+                User {renderSortIcon("user")}
+              </div>
+              <div
+                onClick={() => handleSort("status")}
+                className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+                title="Sort by Status"
+              >
+                Status {renderSortIcon("status")}
+              </div>
+              <div
+                onClick={() => handleSort("frames")}
+                className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+                title="Sort by Frame Range"
+              >
+                Frames {renderSortIcon("frames")}
+              </div>
+              <div
+                onClick={() => handleSort("progress")}
+                className="min-w-0 text-center px-2 cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+                title="Sort by Progress"
+              >
+                Task Progress {renderSortIcon("progress")}
+              </div>
+              <div
+                onClick={() => handleSort("created_at")}
+                className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+                title="Sort by Submitted Time"
+              >
+                Submitted {renderSortIcon("created_at")}
+              </div>
+              <div
+                onClick={() => handleSort("started_at")}
+                className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+                title="Sort by Started Time"
+              >
+                Started {renderSortIcon("started_at")}
+              </div>
+              <div
+                onClick={() => handleSort("finished_at")}
+                className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+                title="Sort by Finished Time"
+              >
+                Finished {renderSortIcon("finished_at")}
+              </div>
+              <div
+                onClick={() => handleSort("duration")}
+                className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+                title="Sort by Duration"
+              >
+                Duration {renderSortIcon("duration")}
+              </div>
               <div className="min-w-0 text-right pr-2">Actions</div>
             </div>
 
-            {filteredJobs.map((job) => {
+            {sortedJobs.map((job) => {
               const isExpanded = expandedJobs.has(job.id);
               const isSelected = selectedJobId === job.id;
               const isActioning = actionJobId === job.id;
@@ -414,7 +591,7 @@ export function JobTreePanel({
                   <div
                     onClick={() => handleJobClick(job.id)}
                     className={cn(
-                      "grid grid-cols-[24px_minmax(150px,1fr)_64px_112px_224px_128px_128px_128px_128px_48px] items-center gap-2 p-1.5 cursor-pointer transition-colors group relative",
+                      "grid grid-cols-[24px_48px_minmax(160px,1fr)_80px_115px_80px_150px_110px_110px_110px_90px_76px] items-center gap-2 p-1.5 cursor-pointer transition-colors group relative",
                       isSelected ? "bg-primary/10" : "hover:bg-muted/40",
                       job.status === "Rendering" && "bg-success/10",
                     )}
@@ -427,6 +604,11 @@ export function JobTreePanel({
                     >
                       {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </button>
+
+                    {/* Priority */}
+                    <div className="flex items-center justify-center text-foreground font-semibold text-[11px] min-w-0">
+                      {job.priority}
+                    </div>
 
                     {/* Job Name */}
                     <div className="flex items-center gap-1.5 min-w-0">
@@ -442,8 +624,13 @@ export function JobTreePanel({
                       {getJobStateBadge(job.backendState, displayStatus)}
                     </div>
 
+                    {/* Frames */}
+                    <div className="flex items-center justify-center text-muted-foreground truncate text-[11px] min-w-0">
+                      {job.frame_range || "—"}
+                    </div>
+
                     {/* Progress */}
-                    <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                    <div className="flex items-center gap-1.5 min-w-0 pr-1">
                       <div className="flex-1">
                         <SegmentedProgressBar
                           className="h-2 rounded-full"
@@ -457,8 +644,8 @@ export function JobTreePanel({
                           showCounts={false}
                         />
                       </div>
-                      <span className="text-[10px] text-muted-foreground tabular-nums min-w-[24px] text-right">
-                        {Math.round(((job.succeeded_tasks + job.skipped_tasks) / Math.max(1, job.total_tasks)) * 100)}%
+                      <span className="text-[10px] text-muted-foreground tabular-nums min-w-[36px] text-right">
+                        {job.succeeded_tasks + job.skipped_tasks}/{job.total_tasks}
                       </span>
                     </div>
 
@@ -473,7 +660,7 @@ export function JobTreePanel({
                       {formatDeadlineDate(job.finished_at)}
                     </div>
                     <div className="flex items-center justify-center text-foreground truncate text-[11px] min-w-0">
-                      {formatDeadlineDuration(job.started_at, job.finished_at)}
+                      {formatDeadlineDuration(job.started_at, job.finished_at, job.backendState)}
                     </div>
 
                     {/* Actions */}
@@ -558,7 +745,7 @@ export function JobTreePanel({
                                 openLayerInfo(job.id, layer.id);
                               }}
                               className={cn(
-                                "grid grid-cols-[24px_minmax(150px,1fr)_64px_112px_224px_128px_128px_128px_128px_48px] items-center gap-2 p-1.5 border-b border-border/20 last:border-0 cursor-pointer transition-colors relative",
+                                "grid grid-cols-[24px_48px_minmax(160px,1fr)_80px_115px_80px_150px_110px_110px_110px_90px_76px] items-center gap-2 p-1.5 border-b border-border/20 last:border-0 cursor-pointer transition-colors relative",
                                 isLayerSelected ? "bg-primary/20" : "bg-muted/10 hover:bg-muted/30",
                                 layer.state === "RUNNING" && "bg-success/5",
                               )}
@@ -567,6 +754,7 @@ export function JobTreePanel({
                                 <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary/70" />
                               )}
                               <div className="shrink-0" /> {/* Spacer */}
+                              <div className="min-w-0 text-center text-muted-foreground text-[10px]">—</div>
                               <div className="flex items-center gap-1.5 min-w-0">
                                 <span className="text-xs truncate">{layer.name}</span>
                               </div>
@@ -574,10 +762,17 @@ export function JobTreePanel({
                               <div className="flex items-center justify-center min-w-0">
                                 {getJobStateBadge(
                                   layer.state,
-                                  layer.state === "RUNNING" ? "Rendering" : layer.state === "FINISHED" ? "Completed" : layer.state
+                                  layer.state === "RUNNING"
+                                    ? "Rendering"
+                                    : layer.state === "FINISHED"
+                                      ? "Completed"
+                                      : layer.state,
                                 )}
                               </div>
-                              <div className="min-w-0 px-4">
+                              <div className="flex items-center justify-center text-muted-foreground truncate text-[11px] min-w-0">
+                                {layer.frame_range || "—"}
+                              </div>
+                              <div className="min-w-0 px-1">
                                 <div className="flex items-center gap-1.5 w-full">
                                   <div className="flex-1">
                                     <SegmentedProgressBar
@@ -592,8 +787,8 @@ export function JobTreePanel({
                                       showCounts={false}
                                     />
                                   </div>
-                                  <span className="text-[10px] text-muted-foreground tabular-nums min-w-[24px] text-right">
-                                    {Math.round(((layer.succeeded_tasks + layer.skipped_tasks) / Math.max(1, layer.total_tasks)) * 100)}%
+                                  <span className="text-[10px] text-muted-foreground tabular-nums min-w-[36px] text-right">
+                                    {layer.succeeded_tasks + layer.skipped_tasks}/{layer.total_tasks}
                                   </span>
                                 </div>
                               </div>
@@ -641,11 +836,11 @@ export function JobTreePanel({
         isLoading={isExecutingMaster}
         onConfirm={handleMasterBatchAction}
       />
-      <LayerInfoDialog 
-        jobId={infoDialogJobId} 
-        layerId={infoDialogLayerId} 
-        isOpen={infoDialogOpen} 
-        onClose={() => setInfoDialogOpen(false)} 
+      <LayerInfoDialog
+        jobId={infoDialogJobId}
+        layerId={infoDialogLayerId}
+        isOpen={infoDialogOpen}
+        onClose={() => setInfoDialogOpen(false)}
       />
     </div>
   );

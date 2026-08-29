@@ -13,7 +13,7 @@ import re
 import django_filters
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, F, Q, Case, When, Value, IntegerField
+from django.db.models import Count, F, Q, Case, When, Value, IntegerField, Min
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -159,7 +159,8 @@ class JobViewSet(viewsets.ModelViewSet):
                 When(state=JobState.FINISHED, then=Value(5)),
                 default=Value(99),
                 output_field=IntegerField(),
-            )
+            ),
+            calculated_started_at=Min("tasks__started_at", filter=Q(tasks__started_at__isnull=False)),
         ).order_by("state_rank", "-priority", "created_at")
         if self.action == "retrieve":
             qs = qs.prefetch_related("layers", "included_pools", "excluded_pools")
@@ -436,8 +437,8 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
         """
         layer_pk = self.kwargs.get("layer_pk")
         if layer_pk:
-            return Task.objects.filter(layer_id=layer_pk)
-        return Task.objects.all()
+            return Task.objects.filter(layer_id=layer_pk).order_by("frame_start", "frame_end", "id")
+        return Task.objects.all().order_by("frame_start", "frame_end", "id")
 
     def get_serializer_class(self):
         """Return the appropriate serializer for the current action.
@@ -526,6 +527,10 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
         task.state = TaskState.SUCCEEDED
         task.exit_status = data["exit_status"]
         task.max_memory_used_mb = data["max_memory_used_mb"]
+        if data.get("peak_cpu_percent") is not None:
+            task.peak_cpu_percent = data["peak_cpu_percent"]
+        if data.get("file_size_bytes") is not None:
+            task.file_size_bytes = data["file_size_bytes"]
         if data.get("cores_used") is not None:
             task.cores_used = data["cores_used"]
         # stopped_at is set by the task_pre_save signal on SUCCEEDED/SKIPPED transitions.
@@ -548,6 +553,8 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             error_tail=data.get("error_tail", ""),
             duration_seconds=duration,
             peak_memory_mb=task.max_memory_used_mb,
+            peak_cpu_percent=task.peak_cpu_percent,
+            file_size_bytes=task.file_size_bytes,
             output_image_path=data.get("output_image_path", ""),
             attempt_number=task.retries + 1,
         )
@@ -584,6 +591,12 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
 
         worker_hostname = data.get("worker_hostname") or task.worker_name or "unknown"
         task.exit_status = data["exit_status"]
+        if data.get("max_memory_used_mb"):
+            task.max_memory_used_mb = data["max_memory_used_mb"]
+        if data.get("peak_cpu_percent") is not None:
+            task.peak_cpu_percent = data["peak_cpu_percent"]
+        if data.get("file_size_bytes") is not None:
+            task.file_size_bytes = data["file_size_bytes"]
         task.retries += 1
 
         duration = (
@@ -604,6 +617,8 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
             error_tail=data.get("error_tail", ""),
             duration_seconds=duration,
             peak_memory_mb=task.max_memory_used_mb,
+            peak_cpu_percent=task.peak_cpu_percent,
+            file_size_bytes=task.file_size_bytes,
             output_image_path=data.get("output_image_path", ""),
             attempt_number=task.retries,
         )

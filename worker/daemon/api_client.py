@@ -94,6 +94,8 @@ class RenderHiveApiClient:
         output_image_path: str = "",
         worker_hostname: str = "",
         max_memory_used_mb: int = 0,
+        peak_cpu_percent: float = 0.0,
+        file_size_bytes: int = 0,
         timeout: float = 15.0,
     ) -> requests.Response:
         endpoint = "succeed" if exit_status == 0 else "fail"
@@ -118,6 +120,8 @@ class RenderHiveApiClient:
             "duration_seconds": duration_seconds,
             "output_image_path": output_image_path or "",
             "max_memory_used_mb": max(0, int(max_memory_used_mb or 0)),
+            "peak_cpu_percent": max(0.0, float(peak_cpu_percent or 0.0)),
+            "file_size_bytes": max(0, int(file_size_bytes or 0)),
         }
 
         return self.session.post(

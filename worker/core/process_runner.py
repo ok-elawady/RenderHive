@@ -23,21 +23,23 @@ _IMAGE_RE = re.compile(
 )
 
 
-def _get_process_tree_rss_mb(pid: int) -> int:
-    """Calculate total RSS memory in MB for the process and all its child processes."""
+def _get_process_tree_metrics(pid: int) -> tuple[int, float]:
+    """Calculate total RSS memory in MB and total CPU percent for process and all children."""
     if not pid:
-        return 0
+        return 0, 0.0
     try:
         parent = psutil.Process(pid)
         total_rss = parent.memory_info().rss
+        total_cpu = parent.cpu_percent(interval=None)
         for child in parent.children(recursive=True):
             try:
                 total_rss += child.memory_info().rss
+                total_cpu += child.cpu_percent(interval=None)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
-        return int(total_rss // (1024 * 1024))
+        return int(total_rss // (1024 * 1024)), float(total_cpu)
     except (psutil.NoSuchProcess, psutil.AccessDenied):
-        return 0
+        return 0, 0.0
 
 
 def _windows_absolute(path: str) -> bool:
@@ -77,6 +79,8 @@ class ProcessResult:
     output_image_path: str = ""
     error_tail: str = ""
     peak_memory_mb: int = 0
+    peak_cpu_percent: float = 0.0
+    output_file_size_bytes: int = 0
 
 
 def _terminate_process_tree(process: subprocess.Popen) -> None:
@@ -209,9 +213,11 @@ def run_process(
                 now = time.monotonic()
                 if now - last_mem_check >= 1.5:
                     if process and process.pid:
-                        rss_mb = _get_process_tree_rss_mb(process.pid)
+                        rss_mb, cpu_pct = _get_process_tree_metrics(process.pid)
                         if rss_mb > peak_memory_mb:
                             peak_memory_mb = rss_mb
+                        if cpu_pct > peak_cpu_percent:
+                            peak_cpu_percent = round(cpu_pct, 1)
                     last_mem_check = now
 
                 if now - last_heartbeat >= 5.0:
@@ -236,7 +242,7 @@ def run_process(
                     pass
         with open(log_path, "a", encoding="utf-8", errors="replace") as handle:
             handle.write("\nWorker execution error: {}\n".format(error))
-        return ProcessResult(exit_code=-1, log_path=log_path, error_tail=str(error), peak_memory_mb=0)
+        return ProcessResult(exit_code=-1, log_path=log_path, error_tail=str(error), peak_memory_mb=0, peak_cpu_percent=0.0, output_file_size_bytes=0)
 
     error_tail = ""
     if exit_code != 0:
@@ -247,10 +253,20 @@ def run_process(
         except Exception:
             pass
 
+    output_file_size_bytes = 0
+    if output_image_path:
+        try:
+            if os.path.isfile(output_image_path):
+                output_file_size_bytes = os.path.getsize(output_image_path)
+        except Exception:
+            output_file_size_bytes = 0
+
     return ProcessResult(
         exit_code=exit_code,
         log_path=log_path,
         output_image_path=output_image_path,
         error_tail=error_tail,
         peak_memory_mb=peak_memory_mb,
+        peak_cpu_percent=peak_cpu_percent,
+        output_file_size_bytes=output_file_size_bytes,
     )

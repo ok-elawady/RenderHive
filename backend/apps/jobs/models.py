@@ -11,9 +11,11 @@ from django.db.models import (
     BooleanField,
     CharField,
     DateTimeField,
+    FloatField,
     ForeignKey,
     Index,
     IntegerField,
+    BigIntegerField,
     JSONField,
     PositiveIntegerField,
     TextChoices,
@@ -328,6 +330,8 @@ class Task(models.Model):
     )
 
     max_memory_used_mb = PositiveIntegerField(default=0, verbose_name="peak memory used (MB)")
+    peak_cpu_percent = FloatField(default=0.0, verbose_name="peak CPU percent")
+    file_size_bytes = BigIntegerField(default=0, verbose_name="output file size in bytes")
     cores_used = PositiveIntegerField(null=True, blank=True)
     worker_name = CharField(max_length=256, null=True, blank=True, verbose_name="worker hostname")
 
