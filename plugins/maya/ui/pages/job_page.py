@@ -2,7 +2,7 @@
 
 from __future__ import print_function
 
-from ..qt_compat import QtWidgets
+from ..qt_compat import QtCore, QtWidgets
 from ..common_widgets import (
     Card,
     LabeledField,
@@ -25,8 +25,8 @@ def build_job_page(self, register):
 
     identity = Card("Job Details", "Identity and ownership information shown in the queue and reports.")
     grid = QtWidgets.QGridLayout()
-    grid.setHorizontalSpacing(10)
-    grid.setVerticalSpacing(8)
+    grid.setHorizontalSpacing(8)
+    grid.setVerticalSpacing(5)
 
     project = register("rh_project_name", QtWidgets.QLineEdit())
     project.setPlaceholderText("Enter the project name")
@@ -42,6 +42,8 @@ def build_job_page(self, register):
     department.setPlaceholderText("e.g. Lighting, FX or Look Development")
     ScrollFilter.install(department)
 
+    submission_mode = register("rh_submission_mode", SegmentedChoice(["Shared Storage", "Server Repository Staging"]))
+
     comment = register("rh_comment", QtWidgets.QLineEdit())
     comment.setPlaceholderText("Optional notes for the render team")
     ScrollFilter.install(comment)
@@ -50,7 +52,8 @@ def build_job_page(self, register):
     grid.addWidget(LabeledField("Job Name", job), 0, 1)
     grid.addWidget(LabeledField("Priority", priority, "Higher values schedule first when farm capacity is shared across jobs."), 1, 0)
     grid.addWidget(LabeledField("Department", department), 1, 1)
-    grid.addWidget(LabeledField("Notes", comment), 2, 0, 1, 2)
+    grid.addWidget(LabeledField("Storage & Staging Mode", submission_mode, "Choose Shared Storage for network mount paths, or Server Repository Staging to stage scene files directly to the server like Deadline."), 2, 0, 1, 2)
+    grid.addWidget(LabeledField("Notes", comment), 3, 0, 1, 2)
     grid.setColumnStretch(0, 1)
     grid.setColumnStretch(1, 1)
     identity.layout.addLayout(grid)
@@ -61,8 +64,8 @@ def build_job_page(self, register):
         "Control task chunking, concurrency and scheduler limits.",
     )
     schedule_grid = QtWidgets.QGridLayout()
-    schedule_grid.setHorizontalSpacing(10)
-    schedule_grid.setVerticalSpacing(8)
+    schedule_grid.setHorizontalSpacing(8)
+    schedule_grid.setVerticalSpacing(5)
 
     chunk_size = register("rh_chunk_size", StepperNumberInput(minimum=1, maximum=10000, default=1))
     concurrent = register("rh_concurrent_tasks", StepperNumberInput(minimum=1, maximum=64, default=1))
@@ -97,6 +100,7 @@ def build_job_page(self, register):
     sync_workers = register("sync_workers_button", QtWidgets.QPushButton("  Refresh"))
     sync_workers.setObjectName("SecondaryBtn")
     sync_workers.setIcon(get_icon("refresh", "#CBD5E1", 13))
+    sync_workers.setCursor(QtCore.Qt.PointingHandCursor)
     sync_workers.clicked.connect(self.sync_available_workers)
     worker_status_row.addWidget(api_chip)
     worker_status_row.addWidget(worker_chip)
@@ -164,10 +168,11 @@ def build_job_page(self, register):
 
     browse_dependencies = register(
         "rh_job_dependencies_browse",
-        QtWidgets.QPushButton("  Browse Jobs…"),
+        QtWidgets.QPushButton("Browse Jobs…"),
     )
     browse_dependencies.setObjectName("SecondaryBtn")
     browse_dependencies.setIcon(get_icon("search", "#CBD5E1", 13))
+    browse_dependencies.setCursor(QtCore.Qt.PointingHandCursor)
     browse_dependencies.clicked.connect(self.open_job_dependency_browser)
 
     clear_dependencies = register(
@@ -176,6 +181,7 @@ def build_job_page(self, register):
     )
     clear_dependencies.setObjectName("GhostBtn")
     clear_dependencies.setIcon(get_icon("x", COLORS["muted"], 13))
+    clear_dependencies.setCursor(QtCore.Qt.PointingHandCursor)
     clear_dependencies.clicked.connect(self.clear_job_dependencies)
 
     dependency_row = QtWidgets.QHBoxLayout()
@@ -221,11 +227,13 @@ def build_job_page(self, register):
     open_output = QtWidgets.QPushButton("  Open Output Folder")
     open_output.setObjectName("GhostBtn")
     open_output.setIcon(get_icon("folder", "#CBD5E1", 13))
+    open_output.setCursor(QtCore.Qt.PointingHandCursor)
     open_output.clicked.connect(self.api.open_output_folder)
 
     sync_scene = QtWidgets.QPushButton("  Sync Scene Settings")
     sync_scene.setObjectName("SecondaryBtn")
     sync_scene.setIcon(get_icon("refresh", "#CBD5E1", 13))
+    sync_scene.setCursor(QtCore.Qt.PointingHandCursor)
     sync_scene.clicked.connect(self.sync_from_scene)
 
     utility_row.addWidget(open_output)

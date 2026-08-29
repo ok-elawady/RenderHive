@@ -22,10 +22,78 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-if getattr(sys, "frozen", False):
-    _PLUGINS_DIR = Path(sys._MEIPASS) / "plugins"
-else:
-    _PLUGINS_DIR = Path(__file__).resolve().parent.parent.parent / "plugins"
+
+def get_plugins_dir() -> Path:
+    """Resolve the plugins directory across dev checkouts, PyInstaller frozen bundles, and Inno Setup installs."""
+    candidates = []
+    
+    # 1. PyInstaller frozen runtime (_MEIPASS and executable directory)
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            candidates.append(Path(meipass) / "plugins")
+            candidates.append(Path(meipass) / "_internal" / "plugins")
+            candidates.append(Path(meipass).parent / "plugins")
+            candidates.append(Path(meipass).parent / "_internal" / "plugins")
+            
+        try:
+            exe_dir = Path(sys.executable).resolve().parent
+            candidates.append(exe_dir / "plugins")
+            candidates.append(exe_dir / "_internal" / "plugins")
+            candidates.append(exe_dir.parent / "plugins")
+            candidates.append(exe_dir.parent / "_internal" / "plugins")
+        except Exception:
+            pass
+
+    # 2. Source / development checkout
+    try:
+        source_root = Path(__file__).resolve().parent.parent.parent
+        candidates.append(source_root / "plugins")
+    except Exception:
+        pass
+
+    try:
+        source_parent = Path(__file__).resolve().parent.parent
+        candidates.append(source_parent / "plugins")
+    except Exception:
+        pass
+
+    # 3. Current working directory
+    try:
+        candidates.append(Path.cwd() / "plugins")
+        candidates.append(Path.cwd() / "_internal" / "plugins")
+        candidates.append(Path.cwd().parent / "plugins")
+    except Exception:
+        pass
+
+    # 4. Standard Windows / Program Files / LocalAppData install locations
+    for env_var in ("PROGRAMFILES", "ProgramFiles(x86)", "LOCALAPPDATA", "APPDATA"):
+        val = os.environ.get(env_var)
+        if val:
+            candidates.append(Path(val) / "RenderHive" / "Worker" / "_internal" / "plugins")
+            candidates.append(Path(val) / "RenderHive" / "Worker" / "plugins")
+            candidates.append(Path(val) / "RenderHive" / "plugins")
+
+    # Return the first candidate that contains at least maya or houdini plugins
+    for c in candidates:
+        try:
+            if c.is_dir() and ((c / "maya").is_dir() or (c / "houdini").is_dir()):
+                return c
+        except Exception:
+            pass
+
+    # Secondary check: any existing directory in candidates
+    for c in candidates:
+        try:
+            if c.is_dir():
+                return c
+        except Exception:
+            pass
+
+    return candidates[0] if candidates else Path("plugins")
+
+
+_PLUGINS_DIR = get_plugins_dir()
 import psutil
 from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPropertyAnimation, QRect, QSettings, QTimer, Qt, QUrl, Slot, QThread, Signal
 from PySide6.QtGui import QAction, QColor, QCursor, QDesktopServices, QIcon, QMouseEvent, QPaintEvent, QPainter, QPalette, QResizeEvent, QTextCharFormat, QTextCursor
@@ -2319,15 +2387,22 @@ class PluginInstallWorker(QThread):
         import json
         import shutil
 
-        source_dir = _PLUGINS_DIR / "maya"
+        source_dir = get_plugins_dir() / "maya"
         if not source_dir.is_dir():
             raise RuntimeError(f"Maya plugin source not found at: {source_dir}")
 
+        maya_roots = []
         if os.name == "nt":
-            maya_root = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Documents" / "maya"
+            for env_k in ("USERPROFILE", "OneDrive", "OneDriveConsumer"):
+                val = os.environ.get(env_k)
+                if val:
+                    maya_roots.append(Path(val) / "Documents" / "maya")
+                    maya_roots.append(Path(val) / "maya")
+            maya_roots.append(Path.home() / "Documents" / "maya")
         else:
-            maya_root = Path.home() / "maya"
+            maya_roots.append(Path.home() / "maya")
 
+        maya_root = next((r for r in maya_roots if r.is_dir()), maya_roots[0])
         maya_scripts = maya_root / "scripts"
         install_dir = maya_scripts / "RenderHive"
 
@@ -2496,7 +2571,8 @@ class PluginInstallWorker(QThread):
     def _install_houdini(self):
         """Delegate to the existing houdini installer module bundled in plugins/."""
         import importlib.util
-        install_py = _PLUGINS_DIR / "houdini" / "installer" / "install.py"
+        source = get_plugins_dir() / "houdini"
+        install_py = source / "installer" / "install.py"
         if not install_py.is_file():
             raise RuntimeError(f"Houdini installer not found at: {install_py}")
 
@@ -2504,7 +2580,6 @@ class PluginInstallWorker(QThread):
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
 
-        source = _PLUGINS_DIR / "houdini"
         mod.assert_source(source)
         pref_dirs = mod.detect_pref_dirs([])
         if not pref_dirs:

@@ -2,7 +2,7 @@
 
 from __future__ import print_function
 
-from ..qt_compat import QtWidgets
+from ..qt_compat import QtCore, QtWidgets
 from ..common_widgets import Card, LabeledField, ScrollFilter, StepperNumberInput
 from ..targeting_widgets import RenderLayerSelector
 from ..icons import get_icon
@@ -20,6 +20,7 @@ def build_render_page(self, register):
     preset_row.setSpacing(8)
 
     preset = register("render_preset", QtWidgets.QComboBox())
+    preset.setCursor(QtCore.Qt.PointingHandCursor)
     ScrollFilter.install(preset)
     preset.addItems(
         [
@@ -34,10 +35,12 @@ def build_render_page(self, register):
     apply_button = QtWidgets.QPushButton("  Apply Preset")
     apply_button.setObjectName("PrimaryButton")
     apply_button.setIcon(get_icon("sliders", COLORS["primary_fg"], 13))
+    apply_button.setCursor(QtCore.Qt.PointingHandCursor)
     apply_button.clicked.connect(self.apply_preset)
 
     preset_row.addWidget(preset, 1)
     preset_row.addWidget(apply_button)
+
     preset_card.layout.addLayout(preset_row)
     body.addWidget(preset_card)
 
@@ -51,29 +54,54 @@ def build_render_page(self, register):
     layers_card.layout.addWidget(layer_selector)
     body.addWidget(layers_card)
 
-    render_card = Card("Frame Range & Arnold", "RenderHive Maya renders with Arnold. Choose the shared frames and camera used by the selected layers.")
+    local_render_action = register(
+        "local_render_button",
+        QtWidgets.QPushButton("  Local Test Render"),
+    )
+    local_render_action.setObjectName("SecondaryBtn")
+    local_render_action.setIcon(get_icon("cube", COLORS["secondary"], 13))
+    local_render_action.setCursor(QtCore.Qt.PointingHandCursor)
+    local_render_action.setFixedHeight(26)
+    if hasattr(self, "open_local_render_dialog"):
+        local_render_action.clicked.connect(self.open_local_render_dialog)
+
+    render_card = Card(
+        "Frame Range & Arnold",
+        "RenderHive Maya renders with Arnold. Choose the shared frames and camera used by the selected layers.",
+        action_widget=local_render_action,
+    )
     render_grid = QtWidgets.QGridLayout()
-    render_grid.setHorizontalSpacing(10)
-    render_grid.setVerticalSpacing(8)
+    render_grid.setHorizontalSpacing(8)
+    render_grid.setVerticalSpacing(5)
 
     frame_start = register("rh_frame_start", StepperNumberInput(minimum=-1000000, maximum=1000000, default=1))
     frame_end = register("rh_frame_end", StepperNumberInput(minimum=-1000000, maximum=1000000, default=100))
     frame_step = register("rh_frame_step", StepperNumberInput(minimum=1, maximum=1000, default=1))
 
     renderer = register("rh_renderer", QtWidgets.QComboBox())
+    renderer.setCursor(QtCore.Qt.PointingHandCursor)
     ScrollFilter.install(renderer)
     renderer.addItem("arnold")
-    renderer.setToolTip("RenderHive Maya currently supports Arnold only.")
 
     camera = register("rh_camera", QtWidgets.QComboBox())
+    camera.setCursor(QtCore.Qt.PointingHandCursor)
     ScrollFilter.install(camera)
     camera.addItem("Loading")
 
     render_grid.addWidget(LabeledField("Start Frame", frame_start), 0, 0)
     render_grid.addWidget(LabeledField("End Frame", frame_end), 0, 1)
     render_grid.addWidget(LabeledField("Frame Step", frame_step), 1, 0)
-    render_grid.addWidget(LabeledField("Renderer", renderer), 1, 1)
-    render_grid.addWidget(LabeledField("Render Camera", camera), 2, 0, 1, 2)
+    render_grid.addWidget(
+        LabeledField(
+            "Render Camera",
+            camera,
+            "Primary camera used for rendering. If selected render layers define camera overrides in Maya, those layer overrides take precedence on the farm.",
+        ),
+        2,
+        0,
+        1,
+        2,
+    )
     render_grid.setColumnStretch(0, 1)
     render_grid.setColumnStretch(1, 1)
     render_card.layout.addLayout(render_grid)
@@ -81,14 +109,15 @@ def build_render_page(self, register):
 
     output_card = Card("Output Settings", "Define the output prefix, file format, frame padding and resolution.")
     output_grid = QtWidgets.QGridLayout()
-    output_grid.setHorizontalSpacing(10)
-    output_grid.setVerticalSpacing(8)
+    output_grid.setHorizontalSpacing(8)
+    output_grid.setVerticalSpacing(5)
 
     image_name = register("rh_image_name", QtWidgets.QLineEdit())
     image_name.setPlaceholderText("Enter the output file prefix")
     ScrollFilter.install(image_name)
 
     image_format = register("rh_image_format", QtWidgets.QComboBox())
+    image_format.setCursor(QtCore.Qt.PointingHandCursor)
     ScrollFilter.install(image_format)
     image_format.addItems(["png", "jpg", "exr", "tif"])
 

@@ -59,7 +59,11 @@ class RenderHiveApiClient(object):
         if path.startswith(("http://", "https://")):
             self._assert_safe_url(path, source="endpoint '{}'".format(name))
             return path
-        return "{}/{}".format(self.base_url.rstrip("/"), path.lstrip("/"))
+        base = self.base_url.rstrip("/")
+        norm_path = "/" + path.lstrip("/")
+        if base.endswith("/api") and norm_path.startswith("/api/"):
+            norm_path = norm_path[4:]
+        return "{}/{}".format(base, norm_path.lstrip("/"))
 
     @staticmethod
     def _origin(url):
@@ -135,6 +139,18 @@ class RenderHiveApiClient(object):
         try:
             return json.loads(raw)
         except Exception:
+            if raw.startswith("<") or "<html" in raw.lower():
+                import re
+                title_match = re.search(r"<title>(.*?)</title>", raw, re.IGNORECASE | re.DOTALL)
+                h1_match = re.search(r"<h1>(.*?)</h1>", raw, re.IGNORECASE | re.DOTALL)
+                clean_title = ""
+                if title_match:
+                    clean_title = re.sub(r"<[^>]+>", "", title_match.group(1)).strip()
+                elif h1_match:
+                    clean_title = re.sub(r"<[^>]+>", "", h1_match.group(1)).strip()
+
+                msg = clean_title if clean_title else "HTML error page returned by server"
+                return {"message": msg, "_raw_html": True}
             return {"message": raw}
 
     @staticmethod
@@ -145,9 +161,13 @@ class RenderHiveApiClient(object):
                 if isinstance(value, list):
                     value = "; ".join(str(item) for item in value)
                 if value:
+                    if payload.get("_raw_html"):
+                        return "RenderHive API returned HTTP {}: {}".format(status_code, value)
                     return str(value)
             field_messages = []
             for key, value in payload.items():
+                if key.startswith("_"):
+                    continue
                 if isinstance(value, list):
                     value = "; ".join(str(item) for item in value)
                 elif isinstance(value, dict):

@@ -899,6 +899,123 @@ def _ensure_local_package(
     importlib.invalidate_caches()
 
 
+def render_frame_locally(frame=None, camera=None, layer=None, width=None, height=None, output_path=None, show_render_view=True):
+    """
+    Renders a single frame locally inside Maya and displays it in the Render View.
+    """
+    try:
+        import maya.cmds as cmds
+        import maya.mel as mel
+
+        current_time = cmds.currentTime(query=True) if cmds.objExists("time1") else 1
+        target_frame = int(frame) if frame is not None else int(current_time)
+        cmds.currentTime(target_frame)
+
+        if layer and layer not in ("defaultRenderLayer", "masterLayer"):
+            try:
+                if cmds.objExists(layer):
+                    cmds.editRenderLayerGlobals(currentRenderLayer=layer)
+            except Exception:
+                pass
+
+        target_camera = camera or get_renderable_camera() or "persp"
+        res = get_resolution()
+        target_width = int(width) if width else res[0]
+        target_height = int(height) if height else res[1]
+
+        # 1. Open and raise Maya's native Render View window so the artist sees the output
+        if show_render_view:
+            try:
+                mel.eval('RenderViewWindow;')
+            except Exception:
+                try:
+                    if not cmds.window("renderViewWindow", exists=True):
+                        mel.eval('renderIntoNewWindow render;')
+                    else:
+                        cmds.showWindow("renderViewWindow")
+                except Exception:
+                    pass
+
+        # 2. Render frame into Maya's Render View
+        rendered_via = "renderWindow"
+        try:
+            mel_cmd = 'renderWindowRenderCamera "render" "renderView" "{}";'.format(target_camera)
+            mel.eval(mel_cmd)
+            rendered_via = "renderWindowRenderCamera"
+        except Exception:
+            try:
+                cmds.render(target_camera, x=target_width, y=target_height)
+                rendered_via = "cmds.render"
+            except Exception:
+                renderer = get_current_renderer()
+                if str(renderer).lower() == "arnold":
+                    try:
+                        import mtoa.core
+                        mtoa.core.createOptions()
+                        cmds.arnoldRender(cam=target_camera, width=target_width, height=target_height)
+                        rendered_via = "cmds.arnoldRender"
+                    except Exception as arnold_err:
+                        raise RuntimeError("Arnold render failed: {}".format(arnold_err))
+                else:
+                    raise
+
+        # Ensure Render View window is displayed
+        try:
+            if cmds.window("renderViewWindow", exists=True):
+                cmds.showWindow("renderViewWindow")
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "frame": target_frame,
+            "camera": target_camera,
+            "layer": layer or "defaultRenderLayer",
+            "resolution": "{}x{}".format(target_width, target_height),
+            "rendered_via": rendered_via,
+            "message": "Rendered frame {} (Camera: {}, Res: {}x{}) into Maya Render View.".format(
+                target_frame, target_camera, target_width, target_height
+            ),
+        }
+    except Exception as error:
+        return {
+            "success": False,
+            "frame": frame,
+            "error": str(error),
+            "message": "Local render failed: {}".format(error),
+        }
+
+
+def stage_scene_to_repository(repository_path=None, job_id=None):
+    """
+    Stages the active scene file to the central server repository for worker access.
+    """
+    import shutil
+    scene_path = get_scene_path()
+    if not scene_path or not os.path.isfile(scene_path):
+        raise RuntimeError("The Maya scene must be saved to disk before staging.")
+
+    job_id = job_id or "job_{}".format(datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
+    if not repository_path:
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        base = os.path.join(local_app_data, "RenderHive", "repository") if local_app_data else os.path.expanduser("~/.renderhive/repository")
+        repository_path = base
+
+    target_dir = os.path.join(repository_path, "jobs", str(job_id))
+    if not os.path.isdir(target_dir):
+        os.makedirs(target_dir)
+
+    target_file = os.path.join(target_dir, os.path.basename(scene_path))
+    shutil.copy2(scene_path, target_file)
+
+    return {
+        "staged_scene_path": target_file,
+        "staging_dir": target_dir,
+        "job_id": job_id,
+        "original_scene_path": scene_path,
+    }
+
+
 def show_submitter():
     try:
         _ensure_local_package("ui")

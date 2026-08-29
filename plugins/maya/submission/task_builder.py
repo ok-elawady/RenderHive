@@ -254,6 +254,12 @@ def _render_layer_specs(api, widgets):
             "source": str(record.get("source") or "maya"),
             "renderable": bool(record.get("renderable", True)),
             "is_default": bool(record.get("is_default", name == "defaultRenderLayer")),
+            "camera": record.get("camera"),
+            "frame_start": record.get("frame_start"),
+            "frame_end": record.get("frame_end"),
+            "frame_step": record.get("frame_step"),
+            "width": record.get("width"),
+            "height": record.get("height"),
         })
     return specs, missing
 
@@ -276,7 +282,8 @@ def build_task(api, window=None, widgets=None, validation_report=None):
     frame_end = int(task.get("frame_end", frame_start))
     frame_step = max(1, int(getattr(api, "get_int")("rh_frame_step", 1)))
     chunk_size = max(1, int(getattr(api, "get_int")("rh_chunk_size", 10)))
-    frame_count = (((frame_end - frame_start) // frame_step) + 1) if frame_end >= frame_start else 0
+    frame_direction = "descending" if frame_start > frame_end else "ascending"
+    frame_count = (abs(frame_end - frame_start) // frame_step) + 1
     task_count = int(math.ceil(float(frame_count) / float(chunk_size))) if frame_count else 0
 
     targeting = _targeting_snapshot(window)
@@ -303,6 +310,7 @@ def build_task(api, window=None, widgets=None, validation_report=None):
         uuid.uuid4().hex[:6].upper(),
     )
     render_layers, missing_layer_names = _render_layer_specs(api, widgets)
+    submission_mode = getattr(api, "get_option")("rh_submission_mode", getattr(api, "get_text")("rh_submission_mode", "Shared Storage")) or "Shared Storage"
 
     task.update({
         "schema_version": "2.1",
@@ -337,13 +345,15 @@ def build_task(api, window=None, widgets=None, validation_report=None):
         "worker_assignment_mode": "pool_based",
         "retry_count": getattr(api, "get_int")("rh_retry_count", 2),
         "task_timeout_minutes": getattr(api, "get_int")("rh_timeout_minutes", 0),
-        "submission_mode": "Shared Storage",
+        "submission_mode": submission_mode,
         "department": getattr(api, "get_text")("rh_department", ""),
         "comment": getattr(api, "get_text")("rh_comment", ""),
         "job_dependencies": dependencies,
         "minimum_cores": getattr(api, "get_int")("rh_minimum_cores", 0),
         "minimum_ram_gb": getattr(api, "get_int")("rh_minimum_ram_gb", 0),
         "minimum_gpus": getattr(api, "get_int")("rh_minimum_gpus", 0),
+        "rule_overrides": dict(getattr(window, "validation_rule_overrides", {}) or {}),
+        "required_aovs": getattr(window, "required_aovs", None),
     })
 
     task["job"] = {
@@ -362,6 +372,7 @@ def build_task(api, window=None, widgets=None, validation_report=None):
         "count": frame_count,
         "chunk_size": chunk_size,
         "task_count": task_count,
+        "direction": frame_direction,
     }
     task["farm"] = {
         "pool": display_pool,

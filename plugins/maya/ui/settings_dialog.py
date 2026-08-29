@@ -290,7 +290,36 @@ class SettingsDialog(QtWidgets.QDialog):
         # Divider
         body_layout.addWidget(self._create_section_divider())
 
-        # ── Section 4: Danger Zone ──
+        # ── Section 4: Validation Rules ──
+        sec_val = QtWidgets.QWidget()
+        sec_val_layout = QtWidgets.QVBoxLayout(sec_val)
+        sec_val_layout.setContentsMargins(0, 0, 0, 0)
+        sec_val_layout.setSpacing(8)
+        sec_val_layout.addWidget(
+            self._create_section_header(
+                "sliders",
+                "VALIDATION RULES & AOVS",
+                "Configure check severities, rule presets, and required AOVs.",
+            )
+        )
+
+        val_row = QtWidgets.QHBoxLayout()
+        val_row.setContentsMargins(0, 4, 0, 0)
+        val_btn = QtWidgets.QPushButton("  Configure Validation Rules & AOVs…")
+        val_btn.setObjectName("SecondaryBtn")
+        val_btn.setIcon(get_icon("sliders", COLORS["secondary"], 13))
+        val_btn.setFixedHeight(34)
+        val_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        val_btn.clicked.connect(self._open_validation_rules)
+        val_row.addWidget(val_btn)
+        val_row.addStretch()
+        sec_val_layout.addLayout(val_row)
+        body_layout.addWidget(sec_val)
+
+        # Divider
+        body_layout.addWidget(self._create_section_divider())
+
+        # ── Section 5: Danger Zone ──
         sec_danger = QtWidgets.QWidget()
         sec_danger_layout = QtWidgets.QVBoxLayout(sec_danger)
         sec_danger_layout.setContentsMargins(0, 0, 0, 0)
@@ -545,6 +574,10 @@ class SettingsDialog(QtWidgets.QDialog):
                 pass
 
         self.accept()
+
+    def _open_validation_rules(self):
+        if self.submitter and hasattr(self.submitter, "open_validation_rules_dialog"):
+            self.submitter.open_validation_rules_dialog()
 
     def _uninstall_plugin(self):
         if self.submitter and hasattr(self.submitter, "api") and hasattr(self.submitter.api, "uninstall_renderhive_from_maya"):

@@ -78,6 +78,11 @@ class JobDependencyDialog(QtWidgets.QDialog):
         filters.addWidget(self.search, 1)
 
         self.state_filter = QtWidgets.QComboBox()
+        try:
+            from .common_widgets import ScrollFilter
+            ScrollFilter.install(self.state_filter)
+        except Exception:
+            pass
         self.state_filter.addItem("All States")
         states = sorted({job_state(job) for job in self._jobs if job_state(job)})
         for state in states:

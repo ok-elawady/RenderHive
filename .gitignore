@@ -100,6 +100,7 @@ backend/media/
 worker/build/
 worker/dist/
 worker/*.spec
+!worker/RenderHiveWorker.spec
 worker/RenderHiveWorker.exe
 
 # IDEs

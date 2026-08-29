@@ -653,9 +653,8 @@ class RenderHiveSubmitter(
 
         self.startup_timer = QtCore.QTimer(self)
         self.startup_timer.setSingleShot(True)
-        self.startup_timer.timeout.connect(
-            self.test_api_connection
-        )
+        self.validation_rule_overrides = {}
+        self.required_aovs = ["crypto_asset", "crypto_object", "crypto_material"]
 
         self.setObjectName("RenderHiveWindow")
         self.setWindowTitle("RenderHive — Maya Submitter")
@@ -1227,6 +1226,45 @@ class RenderHiveSubmitter(
                 icon="warning",
             )
 
+    def open_validation_rules_dialog(self):
+        try:
+            from .common_widgets import ValidationRulesDialog
+            dialog = ValidationRulesDialog(
+                current_overrides=self.validation_rule_overrides,
+                current_aovs=self.required_aovs,
+                parent=self
+            )
+            if dialog.exec_():
+                self.validation_rule_overrides = dict(dialog.rule_overrides)
+                self.required_aovs = list(dialog.required_aovs)
+                self.append_activity(
+                    "Applied validation rule overrides ({}) and required AOVs ({}).".format(
+                        len(self.validation_rule_overrides), len(self.required_aovs)
+                    )
+                )
+                self.validate_scene()
+        except Exception as error:
+            self.append_activity("Could not open Validation Rules dialog: {}".format(error))
+
+    def open_local_render_dialog(self):
+        try:
+            from .common_widgets import LocalRenderDialog
+            dialog = LocalRenderDialog(submitter=self, parent=self)
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            dialog.exec_()
+        except Exception as error:
+            import traceback
+            traceback.print_exc()
+            self.append_activity("Could not open Local Render dialog: {}".format(error))
+            RenderHiveMessageDialog.show_message(
+                self,
+                "RenderHive Local Render",
+                "Could not open Local Render dialog:\n\n{}".format(error),
+                icon="warning",
+            )
+
     def showEvent(self, event):
         super(RenderHiveSubmitter, self).showEvent(event)
         self._apply_window_theme()
@@ -1345,8 +1383,9 @@ class RenderHiveSubmitter(
         sync_scene_btn = QtWidgets.QPushButton("  Sync")
         sync_scene_btn.setObjectName("SecondaryBtn")
         sync_scene_btn.setIcon(get_icon("refresh", COLORS["secondary"], 13))
-        sync_scene_btn.setFixedHeight(32)
+        sync_scene_btn.setFixedHeight(30)
         sync_scene_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        sync_scene_btn.setFocusPolicy(QtCore.Qt.NoFocus)
         sync_scene_btn.setAccessibleName("Sync settings from the current Maya scene")
         sync_scene_btn.clicked.connect(self.sync_from_scene)
         layout.addWidget(sync_scene_btn)
@@ -1355,8 +1394,9 @@ class RenderHiveSubmitter(
         validate_btn = QtWidgets.QPushButton("  Validate")
         validate_btn.setObjectName("SecondaryBtn")
         validate_btn.setIcon(get_icon("shield-check", COLORS["secondary"], 13))
-        validate_btn.setFixedHeight(32)
+        validate_btn.setFixedHeight(30)
         validate_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        validate_btn.setFocusPolicy(QtCore.Qt.NoFocus)
         validate_btn.setAccessibleName("Run scene validation checks")
         validate_btn.clicked.connect(self.validate_scene)
         layout.addWidget(validate_btn)
@@ -1369,8 +1409,9 @@ class RenderHiveSubmitter(
         submit.setObjectName("SubmitButton")
         submit.setIcon(get_icon("send", COLORS["primary_fg"], 13))
         submit.setCursor(QtCore.Qt.PointingHandCursor)
-        submit.setMinimumWidth(130)
-        submit.setFixedHeight(32)
+        submit.setFocusPolicy(QtCore.Qt.NoFocus)
+        submit.setMinimumWidth(120)
+        submit.setFixedHeight(30)
         submit.setAccessibleName("Submit render job to RenderHive")
         submit.clicked.connect(self.submit_job)
         layout.addWidget(submit)
@@ -1379,9 +1420,9 @@ class RenderHiveSubmitter(
         settings_btn = QtWidgets.QPushButton()
         settings_btn.setObjectName("SecondaryBtn")
         settings_btn.setIcon(get_icon("settings", COLORS["secondary"], 14))
-        settings_btn.setFixedSize(32, 32)
+        settings_btn.setFixedSize(30, 30)
         settings_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        settings_btn.setToolTip("Submitter Settings")
+        settings_btn.setFocusPolicy(QtCore.Qt.NoFocus)
         settings_btn.setAccessibleName("Open RenderHive Submitter Settings")
         settings_btn.clicked.connect(self.open_settings_dialog)
         layout.addWidget(settings_btn)
@@ -1407,8 +1448,8 @@ class RenderHiveSubmitter(
 
         content = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(content)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(14)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
         layout.addWidget(PageHeader(title, subtitle, action_widget=action_widget))
 
         scroll.setWidget(content)

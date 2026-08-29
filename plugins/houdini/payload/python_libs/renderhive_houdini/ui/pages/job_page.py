@@ -123,8 +123,8 @@ class JobPage(QtWidgets.QWidget):
         self._render_requirements = []
 
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(20, 16, 20, 16)
-        root.setSpacing(14)
+        root.setContentsMargins(16, 12, 16, 12)
+        root.setSpacing(10)
         root.addWidget(PageHeader(
             "Job Configuration",
             "Configure job metadata, scheduling, pool targeting and delivery options.",
@@ -133,7 +133,7 @@ class JobPage(QtWidgets.QWidget):
         details = SectionCard("Job Details", "Identity and ownership information shown in the queue and reports.")
         grid = QtWidgets.QGridLayout()
         grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(8)
+        grid.setVerticalSpacing(6)
         self.project_name = QtWidgets.QLineEdit()
         self.project_name.setPlaceholderText("Enter the project name")
         ScrollFilter.install(self.project_name)
@@ -159,7 +159,7 @@ class JobPage(QtWidgets.QWidget):
         scheduling = SectionCard("Scheduling", "Control task chunking, concurrency and scheduler limits.")
         schedule_grid = QtWidgets.QGridLayout()
         schedule_grid.setHorizontalSpacing(10)
-        schedule_grid.setVerticalSpacing(8)
+        schedule_grid.setVerticalSpacing(6)
         self.chunk_size = StepperNumberInput(minimum=1, maximum=10000, default=1)
         self.concurrent_tasks = StepperNumberInput(minimum=1, maximum=64, default=1)
         self.min_cores = StepperNumberInput(minimum=0, maximum=4096, default=0, special_value_text="Any")

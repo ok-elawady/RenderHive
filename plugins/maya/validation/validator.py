@@ -20,9 +20,43 @@ CHECK_MODULES = [
 ]
 
 
+RULE_PROFILES = {
+    "standard": {
+        "name": "Standard (Default)",
+        "description": "Standard studio production rules. Critical scene and render issues block submission; advisory issues warn.",
+        "overrides": {},
+    },
+    "studio_strict": {
+        "name": "Studio Strict",
+        "description": "Strict delivery profile. Unlinked textures, missing AOVs, and questionable camera clipping are treated as errors.",
+        "overrides": {
+            "TEXTURE_MISSING": "ERROR",
+            "REQUIRED_AOV_MISSING": "ERROR",
+            "AOV_DRIVER_MISSING": "ERROR",
+            "CAMERA_CLIPPING_SUSPICIOUS": "ERROR",
+            "NON_MANIFOLD_VERTICES": "ERROR",
+            "NON_MANIFOLD_EDGES": "ERROR",
+            "REFERENCE_MISSING": "ERROR",
+            "CACHE_FILE_MISSING": "ERROR",
+        },
+    },
+    "lookdev": {
+        "name": "LookDev / Relaxed",
+        "description": "Relaxes non-critical asset, texture, and scene checks to warnings during early look development.",
+        "overrides": {
+            "TEXTURE_MISSING": "WARNING",
+            "REQUIRED_AOV_MISSING": "WARNING",
+            "CAMERA_CLIPPING_SUSPICIOUS": "INFO",
+            "NON_MANIFOLD_VERTICES": "INFO",
+            "NON_MANIFOLD_EDGES": "INFO",
+        },
+    },
+}
+
+
 class ValidationEngine:
     """
-    Central RenderHive validation engine.
+    Central RenderHive validation engine with configurable rule severities.
 
     Every validation module must contain:
         run_checks(context)
@@ -30,22 +64,30 @@ class ValidationEngine:
     The function must return a list of result dictionaries.
     """
 
-    def __init__(self, context=None):
+    def __init__(self, context=None, rule_overrides=None):
         self.context = context or {}
+        self.rule_overrides = dict(rule_overrides or self.context.get("rule_overrides") or {})
         self.results = []
 
+    def set_rule_overrides(self, overrides):
+        self.rule_overrides = dict(overrides or {})
+
+    def get_rule_severity(self, code, default="ERROR"):
+        code = str(code or "").upper()
+        return str(self.rule_overrides.get(code, default)).upper()
+
     def run(self):
-        self.results = []
+        raw_results = []
 
         for module in CHECK_MODULES:
             try:
                 module_results = module.run_checks(self.context)
 
                 if module_results:
-                    self.results.extend(module_results)
+                    raw_results.extend(module_results)
 
             except Exception as error:
-                self.results.append({
+                raw_results.append({
                     "severity": "ERROR",
                     "category": "System",
                     "code": "VALIDATION_MODULE_FAILED",
@@ -56,6 +98,22 @@ class ValidationEngine:
                     "fixable": False,
                     "data": {}
                 })
+
+        # Apply user/profile rule severity overrides
+        self.results = []
+        for result in raw_results:
+            code = str(result.get("code") or "").upper()
+            override = self.rule_overrides.get(code)
+            if override:
+                override = str(override).upper()
+                if override in ("DISABLED", "IGNORE", "OFF"):
+                    continue
+                if override in ("ERROR", "WARNING", "INFO", "PASSED"):
+                    result = dict(result)
+                    result["severity"] = override
+                    result["original_severity"] = result.get("severity")
+
+            self.results.append(result)
 
         return self.results
 
