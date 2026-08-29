@@ -47,6 +47,8 @@ class TaskExecutionLog(models.Model):
     exit_status = models.IntegerField(default=0)
     duration_seconds = models.FloatField(default=0.0)
     peak_memory_mb = models.PositiveIntegerField(default=0)
+    peak_cpu_percent = models.FloatField(default=0.0)
+    file_size_bytes = models.BigIntegerField(default=0)
     output_image_path = models.CharField(max_length=2048, blank=True)
 
     error_tail = models.TextField(blank=True, help_text="Fast-access failure excerpt.")

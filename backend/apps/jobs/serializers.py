@@ -11,7 +11,7 @@ Serializers are split by usage pattern:
 
 from rest_framework import serializers
 
-from .models import Dependency, DependencyType, Job, Layer, Task
+from .models import Dependency, DependencyType, Job, JobState, Layer, Task, TaskState
 from .services import check_dependency_cycle, create_job_with_layers
 
 # ── Dependency Serializers ────────────────────────────────────────────────────
@@ -204,6 +204,9 @@ class TaskListSerializer(serializers.ModelSerializer):
             "exit_status",
             "started_at",
             "stopped_at",
+            "max_memory_used_mb",
+            "peak_cpu_percent",
+            "file_size_bytes",
         ]
         read_only_fields = fields
 
@@ -422,7 +425,15 @@ class JobListSerializer(serializers.ModelSerializer):
         depend_tasks: Counter cache.
         created_at: Submission timestamp.
         updated_at: Last update timestamp.
+        started_at: Dynamic start timestamp derived from first task execution.
+        finished_at: Alias for stopped_at timestamp.
+        stopped_at: Timestamp when job reached FINISHED or FAILED.
     """
+
+    started_at = serializers.SerializerMethodField()
+    finished_at = serializers.DateTimeField(source="stopped_at", read_only=True, allow_null=True)
+    stopped_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    frame_range = serializers.SerializerMethodField()
 
     class Meta:
         model = Job
@@ -446,10 +457,36 @@ class JobListSerializer(serializers.ModelSerializer):
             "depend_tasks",
             "created_at",
             "updated_at",
+            "started_at",
+            "finished_at",
+            "stopped_at",
+            "frame_range",
             "included_pools",
             "excluded_pools",
         ]
         read_only_fields = fields
+
+    def get_frame_range(self, obj):
+        layers = list(obj.layers.all())
+        if not layers:
+            return "—"
+        ranges = [l.frame_range for l in layers if l.frame_range]
+        if not ranges:
+            return "—"
+        unique_ranges = list(dict.fromkeys(ranges))
+        return ", ".join(unique_ranges)
+
+    def get_started_at(self, obj):
+        val = getattr(obj, "calculated_started_at", None)
+        if val is not None:
+            return val.isoformat()
+        if hasattr(obj, "started_at") and getattr(obj, "started_at") is not None:
+            raw = getattr(obj, "started_at")
+            return raw.isoformat() if hasattr(raw, "isoformat") else raw
+        first_started = obj.tasks.filter(started_at__isnull=False).order_by("started_at").values_list("started_at", flat=True).first()
+        if first_started is not None:
+            return first_started.isoformat()
+        return None
 
 
 class JobDetailSerializer(JobListSerializer):
@@ -472,7 +509,6 @@ class JobDetailSerializer(JobListSerializer):
             "layers",
             "log_directory",
             "max_tasks_per_worker",
-            "stopped_at",
         ]
         read_only_fields = fields
 
@@ -651,6 +687,8 @@ class TaskSucceedSerializer(serializers.Serializer):
     max_memory_used_mb = serializers.IntegerField(
         default=0, min_value=0, help_text="Peak RSS memory used by the render process, in MB."
     )
+    peak_cpu_percent = serializers.FloatField(required=False, default=0.0, min_value=0.0)
+    file_size_bytes = serializers.IntegerField(required=False, default=0, min_value=0)
     cores_used = serializers.IntegerField(
         required=False,
         allow_null=True,
@@ -672,6 +710,9 @@ class TaskFailSerializer(serializers.Serializer):
     """
 
     exit_status = serializers.IntegerField(help_text="Non-zero process exit code from the render process.")
+    max_memory_used_mb = serializers.IntegerField(required=False, default=0, min_value=0)
+    peak_cpu_percent = serializers.FloatField(required=False, default=0.0, min_value=0.0)
+    file_size_bytes = serializers.IntegerField(required=False, default=0, min_value=0)
     log_output = serializers.CharField(required=False, allow_blank=True, default="")
     error_tail = serializers.CharField(required=False, allow_blank=True, default="")
     duration_seconds = serializers.FloatField(required=False, default=0.0)

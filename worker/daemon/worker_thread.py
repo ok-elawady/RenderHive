@@ -516,8 +516,16 @@ class WorkerThread(QThread):
             if result.error_tail:
                 message += "\n  Output: {}".format(result.error_tail)
             message += "\n  Log: {}".format(display_log)
-            self.log_signal.emit(message)
-        return result.exit_code, display_log, result.error_tail, duration, result.output_image_path, result.peak_memory_mb
+        return (
+            result.exit_code,
+            display_log,
+            result.error_tail,
+            duration,
+            result.output_image_path,
+            result.peak_memory_mb,
+            result.peak_cpu_percent,
+            result.output_file_size_bytes,
+        )
 
     def report_status(
         self,
@@ -528,6 +536,8 @@ class WorkerThread(QThread):
         duration_seconds: float = 0.0,
         output_image_path: str = "",
         max_memory_used_mb: int = 0,
+        peak_cpu_percent: float = 0.0,
+        file_size_bytes: int = 0,
     ) -> None:
         try:
             response = self.client.report_task_status(
@@ -539,6 +549,8 @@ class WorkerThread(QThread):
                 output_image_path=output_image_path,
                 worker_hostname=HOSTNAME,
                 max_memory_used_mb=max_memory_used_mb,
+                peak_cpu_percent=peak_cpu_percent,
+                file_size_bytes=file_size_bytes,
             )
             if not (200 <= response.status_code < 300):
                 self.log_signal.emit("Failed to report task status: HTTP {}".format(response.status_code))
@@ -619,8 +631,16 @@ class WorkerThread(QThread):
                     task_id = task.get("id", task.get("task_id", "unknown"))
                     self.status_signal.emit("RENDERING")
                     self.scheduler_signal.emit("RUNNING TASK")
-                    self.log_signal.emit("Received task {}.".format(task_id))
-                    exit_status, log_path, error_tail, duration, out_img, peak_mem = self.run_task(task)
+                    (
+                        exit_status,
+                        log_path,
+                        error_tail,
+                        duration,
+                        out_img,
+                        peak_mem,
+                        peak_cpu,
+                        file_size,
+                    ) = self.run_task(task)
                     self.report_status(
                         str(task_id),
                         exit_status,
@@ -629,6 +649,8 @@ class WorkerThread(QThread):
                         duration_seconds=duration,
                         output_image_path=out_img,
                         max_memory_used_mb=peak_mem,
+                        peak_cpu_percent=peak_cpu,
+                        file_size_bytes=file_size,
                     )
                     if self.pause_after_current:
                         self.dispatch_paused = True

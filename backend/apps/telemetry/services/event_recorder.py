@@ -43,6 +43,8 @@ def record_task_log(
     error_tail: str = "",
     duration_seconds: float = 0.0,
     peak_memory_mb: int = 0,
+    peak_cpu_percent: float = 0.0,
+    file_size_bytes: int = 0,
     output_image_path: str = "",
     attempt_number: Optional[int] = None,
 ) -> Optional[TaskExecutionLog]:
@@ -65,6 +67,8 @@ def record_task_log(
             exit_status=int(exit_status),
             duration_seconds=max(0.0, float(duration_seconds or 0.0)),
             peak_memory_mb=max(0, int(peak_memory_mb or 0)),
+            peak_cpu_percent=max(0.0, float(peak_cpu_percent or 0.0)),
+            file_size_bytes=max(0, int(file_size_bytes or 0)),
             output_image_path=str(output_image_path or "")[:2048],
             error_tail=sanitized_tail,
             log_output=sanitized_log,
