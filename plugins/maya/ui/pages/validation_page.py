@@ -27,13 +27,13 @@ def get_counter_card_qss(color, rgb, count=0):
         "border: 1px solid " + idle_border + ";"
         "border-radius: 6px;"
         "color: " + idle_color + ";"
-        "padding: 6px 8px;"
+        "padding: 4px 6px;"
         "margin: 0px;"
-        "font-size: 11px;"
+        "font-size: 10.5px;"
         "font-weight: " + font_weight + ";"
         "text-align: center;"
-        "min-height: 44px;"
-        "max-height: 44px;"
+        "min-height: 40px;"
+        "max-height: 40px;"
         "}"
         "QPushButton#CounterCard:hover {"
         "background-color: rgba(" + rgb + ", 0.14);"
@@ -50,7 +50,21 @@ def get_counter_card_qss(color, rgb, count=0):
 
 
 def build_checks_page(self, register):
-    # Header action button on top right of the Page Title
+    # Header action buttons on top right of the Page Title
+    header_actions = QtWidgets.QWidget()
+    header_row = QtWidgets.QHBoxLayout(header_actions)
+    header_row.setContentsMargins(0, 0, 0, 0)
+    header_row.setSpacing(6)
+
+    config_rules_btn = QtWidgets.QPushButton("  Configure Checks")
+    config_rules_btn.setObjectName("SecondaryBtn")
+    config_rules_btn.setIcon(get_icon("sliders", "#CBD5E1", 13))
+    config_rules_btn.setFixedHeight(30)
+    config_rules_btn.setCursor(QtCore.Qt.PointingHandCursor)
+    if hasattr(self, "open_validation_rules_dialog"):
+        config_rules_btn.clicked.connect(self.open_validation_rules_dialog)
+    header_row.addWidget(config_rules_btn)
+
     rescan_btn = QtWidgets.QPushButton("  Re-scan Scene")
     rescan_btn.setObjectName("SecondaryBtn")
     rescan_btn.setIcon(get_icon("shield-check", "#CBD5E1", 13))
@@ -58,11 +72,12 @@ def build_checks_page(self, register):
     rescan_btn.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
     rescan_btn.setCursor(QtCore.Qt.PointingHandCursor)
     rescan_btn.clicked.connect(self.validate_scene)
+    header_row.addWidget(rescan_btn)
 
     page, body = self.scroll_page(
         "Scene Validation",
         "Errors block submission; warnings remain visible for review.",
-        action_widget=rescan_btn,
+        action_widget=header_actions,
     )
 
     # ── 1. Top Severity Counter Tabs ──
@@ -116,8 +131,9 @@ def build_checks_page(self, register):
     # ── 2. Results Card with Integrated Category Header Filter ──
     category = register("category_filter", QtWidgets.QComboBox())
     category.addItem("All")
-    category.setMinimumWidth(150)
-    category.setFixedHeight(28)
+    category.setMinimumWidth(120)
+    category.setFixedHeight(26)
+    category.setCursor(QtCore.Qt.PointingHandCursor)
     ScrollFilter.install(category)
     category.currentIndexChanged.connect(self.api.refresh_validation_filters)
 
@@ -126,7 +142,7 @@ def build_checks_page(self, register):
     cat_layout.setContentsMargins(0, 0, 0, 0)
     cat_layout.setSpacing(6)
     cat_lbl = QtWidgets.QLabel("Category:")
-    cat_lbl.setObjectName("MutedText")
+    cat_lbl.setStyleSheet("font-size: 11px; font-weight: 600; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.4px;")
     cat_layout.addWidget(cat_lbl)
     cat_layout.addWidget(category)
 
@@ -143,7 +159,7 @@ def build_checks_page(self, register):
     tree.setAlternatingRowColors(True)
     tree.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
     tree.setUniformRowHeights(True)
-    tree.setMinimumHeight(240)
+    tree.setMinimumHeight(160)
     tree.header().setStretchLastSection(False)
     tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
     tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
@@ -193,16 +209,19 @@ def build_checks_page(self, register):
     select_node = QtWidgets.QPushButton("  Select Node")
     select_node.setObjectName("SecondaryBtn")
     select_node.setIcon(get_icon("search", "#CBD5E1", 13))
+    select_node.setCursor(QtCore.Qt.PointingHandCursor)
     select_node.clicked.connect(self.api.select_validation_node)
 
     export = QtWidgets.QPushButton("  Export Report")
     export.setObjectName("SecondaryBtn")
     export.setIcon(get_icon("copy", "#CBD5E1", 13))
+    export.setCursor(QtCore.Qt.PointingHandCursor)
     export.clicked.connect(self.api.export_validation_report)
 
     clear = QtWidgets.QPushButton("  Clear")
     clear.setObjectName("GhostBtn")
     clear.setIcon(get_icon("x", COLORS["muted"], 13))
+    clear.setCursor(QtCore.Qt.PointingHandCursor)
     clear.clicked.connect(self.api.clear_validation_results)
 
     action_bar.addWidget(select_node)
@@ -216,6 +235,7 @@ def build_checks_page(self, register):
     )
     fix_selected.setObjectName("SecondaryBtn")
     fix_selected.setIcon(get_icon("wrench", "#CBD5E1", 13))
+    fix_selected.setCursor(QtCore.Qt.PointingHandCursor)
     fix_selected.clicked.connect(self.fix_selected_validation)
 
     fix_all = register(
@@ -224,6 +244,7 @@ def build_checks_page(self, register):
     )
     fix_all.setObjectName("PrimaryButton")
     fix_all.setIcon(get_icon("zap", COLORS["primary_fg"], 13))
+    fix_all.setCursor(QtCore.Qt.PointingHandCursor)
     fix_all.clicked.connect(self.fix_all_safe_validations)
 
     action_bar.addWidget(fix_selected)

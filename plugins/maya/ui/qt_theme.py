@@ -34,11 +34,12 @@ COLORS = {
     "border_focus":  "#9C73F2",
     "divider":       "#1E2536",
     # Brand
-    "primary":       "#9C73F2",
-    "primary_hover": "#AD8BF5",
-    "primary_press": "#7D4EDB",
-    "primary_fg":    "#080A0F",
-    "accent":        "#C084FC",
+    "primary":        "#9C73F2",
+    "primary_hover":  "#AD8BF5",
+    "primary_press":  "#7D4EDB",
+    "primary_active": "#7D4EDB",
+    "primary_fg":     "#080A0F",
+    "accent":         "#C084FC",
     # Text scale
     "text":          "#F8FAFC",
     "text_primary":  "#FFFFFF",
@@ -83,7 +84,7 @@ def build_stylesheet():
         background-color: transparent;
         color: %(text)s;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-        font-size: 13px;
+        font-size: 12.5px;
         font-weight: 400;
         selection-background-color: %(selection_bg)s;
         selection-color: %(text_primary)s;
@@ -180,36 +181,37 @@ def build_stylesheet():
         margin: 0 4px;
     }
 
-    /* ── Segmented Pill Navigation (Header Tab Bar — matches Worker exactly) ── */
+    /* ── Segmented Pill Navigation (Header Tab Bar — matches Frontend Dashboard) ── */
     QFrame#NavSegmentContainer {
-        background-color: %(surface_input)s;
-        border: 1px solid %(border)s;
+        background-color: #111520;
+        border: 1px solid #283145;
         border-radius: 6px;
-        padding: 0;
+        padding: 2px;
         margin: 0;
-        min-height: 32px;
-        max-height: 32px;
-        height: 32px;
+        min-height: 30px;
+        max-height: 30px;
+        height: 30px;
     }
 
     QPushButton#SegmentNavBtn {
         background-color: transparent;
-        color: %(muted)s;
+        color: #94A3B8;
         border: none;
         border-radius: 4px;
-        padding: 0 14px;
+        padding: 0 12px;
         margin: 0;
         font-weight: 500;
-        font-size: 13px;
-        min-height: 28px;
-        max-height: 28px;
-        height: 28px;
+        font-size: 12px;
+        min-height: 24px;
+        max-height: 24px;
+        height: 24px;
         text-align: center;
+        cursor: pointer;
     }
 
     QPushButton#SegmentNavBtn:hover {
-        background-color: %(surface3)s;
-        color: %(text_primary)s;
+        background-color: rgba(255, 255, 255, 0.06);
+        color: #FFFFFF;
     }
 
     QPushButton#SegmentNavBtn:checked {
@@ -217,6 +219,7 @@ def build_stylesheet():
         color: %(primary_fg)s;
         border: none;
         font-weight: 600;
+        border-radius: 4px;
     }
 
     QPushButton#SegmentNavBtn:focus {
@@ -342,9 +345,9 @@ def build_stylesheet():
         border-radius: 8px;
     }
 
-    /* ── Typography Scale (Worker-exact) ── */
+    /* ── Typography Scale (Matching Frontend Dashboard) ── */
     QLabel#PageTitle {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 700;
         color: %(text_primary)s;
         letter-spacing: -0.2px;
@@ -352,16 +355,15 @@ def build_stylesheet():
 
     QLabel#SectionTitle,
     QLabel#CardTitle {
-        /* 14px/700 — clearly larger than 13px body, passes WCAG AA large-text (3:1) */
-        font-size: 14px;
-        font-weight: 700;
+        font-size: 13px;
+        font-weight: 600;
         color: %(text_primary)s;
         letter-spacing: -0.1px;
     }
 
-    /* ── Form Layout Input Labels (Worker Parity: 13px/500 Title Case Left-Aligned) ── */
+    /* ── Form Layout Input Labels ── */
     QFormLayout QLabel {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 500;
         color: %(text)s;
         text-transform: none;
@@ -371,24 +373,23 @@ def build_stylesheet():
     }
 
     QLabel#FieldLabel {
-        /* 12px/600 uppercase — subordinate to 14px SectionTitle */
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.6px;
-        color: %(muted)s;
+        letter-spacing: 0.5px;
+        color: #CBD5E1;
     }
 
     QLabel#FieldValue {
         color: %(text_primary)s;
         font-weight: 500;
-        font-size: 13px;
+        font-size: 12.5px;
     }
 
     QLabel#MutedText,
     QLabel#MutedLabel {
         color: %(muted)s;
-        font-size: 13px;
+        font-size: 11.5px;
         font-weight: 400;
     }
 
@@ -400,7 +401,7 @@ def build_stylesheet():
 
     QLabel#CardDescription {
         color: %(muted)s;
-        font-size: 12px;
+        font-size: 11.5px;
         font-weight: 400;
     }
 
@@ -451,17 +452,17 @@ def build_stylesheet():
 
     /* ── Form Inputs & Text Fields ── */
     QLineEdit {
-        min-height: 34px;
-        max-height: 34px;
-        height: 34px;
+        min-height: 30px;
+        max-height: 30px;
+        height: 30px;
         background-color: %(surface_input)s;
         color: %(text_primary)s;
         border: 1px solid %(border)s;
-        border-radius: 6px;
-        padding: 0 10px;
+        border-radius: 5px;
+        padding: 0 9px;
         selection-background-color: %(selection_bg)s;
         selection-color: %(text_primary)s;
-        font-size: 13px;
+        font-size: 12px;
     }
 
     QLineEdit:hover {
@@ -484,10 +485,10 @@ def build_stylesheet():
         background-color: %(terminal)s;
         color: %(text)s;
         border: 1px solid %(border_card)s;
-        border-radius: 8px;
-        padding: 10px;
+        border-radius: 6px;
+        padding: 8px;
         font-family: 'JetBrains Mono', Consolas, monospace;
-        font-size: 13px;
+        font-size: 12px;
         selection-background-color: %(selection_bg)s;
         selection-color: %(text_primary)s;
     }
@@ -497,21 +498,27 @@ def build_stylesheet():
         border: 1px solid %(border_focus)s;
     }
 
-    /* ── Stepper Number Input (matching Worker StepperFrame) ── */
-    QFrame#StepperFrame {
+    /* ── Stepper Number Input ── */
+    QFrame#StepperFrame,
+    QFrame#StepperWidget,
+    QWidget#StepperWidget {
         background-color: %(surface_input)s;
         border: 1px solid %(border)s;
-        border-radius: 6px;
-        min-height: 34px;
-        max-height: 34px;
-        height: 34px;
+        border-radius: 5px;
+        min-height: 30px;
+        max-height: 30px;
+        height: 30px;
     }
 
-    QFrame#StepperFrame:hover {
+    QFrame#StepperFrame:hover,
+    QFrame#StepperWidget:hover,
+    QWidget#StepperWidget:hover {
         border-color: %(border_card)s;
     }
 
-    QFrame#StepperFrame:focus-within {
+    QFrame#StepperFrame:focus-within,
+    QFrame#StepperWidget:focus-within,
+    QWidget#StepperWidget:focus-within {
         border: 1px solid %(border_focus)s;
         background-color: #10141E;
     }
@@ -520,36 +527,39 @@ def build_stylesheet():
         background: transparent;
         border: none;
         color: %(text_primary)s;
-        font-size: 13px;
+        font-size: 12px;
         padding: 0 4px;
-        min-height: 28px;
-        max-height: 28px;
-        height: 28px;
+        min-height: 26px;
+        max-height: 26px;
+        height: 26px;
     }
 
-    QPushButton#StepperBtn {
+    QPushButton#StepperBtn,
+    QPushButton#StepperButton {
         background-color: transparent;
         border: none;
         border-radius: 4px;
-        min-width: 28px;
-        max-width: 28px;
-        width: 28px;
-        min-height: 28px;
-        max-height: 28px;
-        height: 28px;
+        min-width: 26px;
+        max-width: 26px;
+        width: 26px;
+        min-height: 26px;
+        max-height: 26px;
+        height: 26px;
         padding: 0px;
         margin: 0px;
         color: %(muted)s;
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 700;
     }
 
-    QPushButton#StepperBtn:hover {
+    QPushButton#StepperBtn:hover,
+    QPushButton#StepperButton:hover {
         background-color: rgba(255, 255, 255, 0.10);
         color: %(text_primary)s;
     }
 
-    QPushButton#StepperBtn:pressed {
+    QPushButton#StepperBtn:pressed,
+    QPushButton#StepperButton:pressed {
         background-color: rgba(156, 115, 242, 0.25);
         color: %(primary)s;
     }
@@ -562,18 +572,18 @@ def build_stylesheet():
     /* ── Standard QSpinBox fallback ── */
     QSpinBox,
     QDoubleSpinBox {
-        min-height: 34px;
-        max-height: 34px;
-        height: 34px;
+        min-height: 30px;
+        max-height: 30px;
+        height: 30px;
         background-color: %(surface_input)s;
         color: %(text_primary)s;
         border: 1px solid %(border)s;
-        border-radius: 6px;
-        padding-left: 10px;
-        padding-right: 32px;
+        border-radius: 5px;
+        padding-left: 9px;
+        padding-right: 28px;
         selection-background-color: %(selection_bg)s;
         selection-color: %(text_primary)s;
-        font-size: 13px;
+        font-size: 12px;
     }
 
     QSpinBox:focus,
@@ -645,18 +655,19 @@ def build_stylesheet():
 
     /* ── ComboBox ── */
     QComboBox {
-        min-height: 34px;
-        max-height: 34px;
-        height: 34px;
+        min-height: 30px;
+        max-height: 30px;
+        height: 30px;
         background-color: %(surface_input)s;
         color: %(text_primary)s;
         border: 1px solid %(border)s;
-        border-radius: 6px;
-        padding-left: 10px;
-        padding-right: 32px;
+        border-radius: 5px;
+        padding-left: 9px;
+        padding-right: 28px;
         selection-background-color: %(selection_bg)s;
         selection-color: %(text_primary)s;
-        font-size: 13px;
+        font-size: 12px;
+        cursor: pointer;
     }
 
     QComboBox:hover {
@@ -666,6 +677,23 @@ def build_stylesheet():
     QComboBox:focus {
         border: 1px solid %(border_focus)s;
         background-color: #10141E;
+    }
+
+    QComboBox#SeverityCombo {
+        min-height: 28px;
+        max-height: 28px;
+        height: 28px;
+        font-size: 12px;
+        padding-left: 8px;
+        padding-right: 22px;
+        background-color: #0E121A;
+        border: 1px solid %(border)s;
+        border-radius: 4px;
+    }
+
+    QComboBox#SeverityCombo::drop-down {
+        width: 18px;
+        margin-right: 2px;
     }
 
     QComboBox::drop-down {
@@ -722,21 +750,21 @@ def build_stylesheet():
         border: none;
     }
 
-    /* ── Push Buttons (Worker-exact variant system) ── */
-    /* Default QPushButton is PRIMARY filled purple — same as Worker */
+    /* ── Push Buttons ── */
     QPushButton {
-        min-height: 32px;
-        max-height: 32px;
-        height: 32px;
+        min-height: 30px;
+        max-height: 30px;
+        height: 30px;
         background-color: %(primary)s;
         color: %(primary_fg)s;
         border: 1px solid #7D4EDB;
-        border-radius: 6px;
-        padding: 0 14px;
+        border-radius: 5px;
+        padding: 0 12px;
         margin: 0;
         font-weight: 600;
-        font-size: 13px;
+        font-size: 12px;
         outline: none;
+        cursor: pointer;
     }
 
     QPushButton:hover {
@@ -756,8 +784,7 @@ def build_stylesheet():
     }
 
     QPushButton:focus {
-        outline: 2px solid %(primary)s;
-        outline-offset: 1px;
+        outline: none;
     }
 
     /* Secondary / Outlined variant */
@@ -767,12 +794,14 @@ def build_stylesheet():
         background-color: #171C28;
         color: %(text_primary)s;
         border: 1px solid %(border)s;
+        border-radius: 5px;
         margin: 0;
         font-weight: 500;
-        font-size: 13px;
-        min-height: 32px;
-        max-height: 32px;
-        height: 32px;
+        font-size: 12px;
+        min-height: 30px;
+        max-height: 30px;
+        height: 30px;
+        padding: 0 12px;
     }
 
     QPushButton#SecondaryBtn:hover,
@@ -804,18 +833,19 @@ def build_stylesheet():
         border: 1px solid %(divider)s;
     }
 
-    /* Outlined secondary / ghost buttons (framed style, avoiding plain text buttons) */
+    /* Outlined secondary / ghost buttons */
     QPushButton#GhostBtn,
     QPushButton#GhostButton {
         background-color: #171C28;
         color: %(secondary)s;
         border: 1px solid %(border)s;
-        border-radius: 6px;
+        border-radius: 5px;
         font-weight: 500;
-        min-height: 32px;
-        max-height: 32px;
-        height: 32px;
-        padding: 0 14px;
+        font-size: 12px;
+        min-height: 30px;
+        max-height: 30px;
+        height: 30px;
+        padding: 0 12px;
         margin: 0;
     }
 
@@ -845,12 +875,13 @@ def build_stylesheet():
         background-color: %(primary)s;
         color: %(primary_fg)s;
         border: 1px solid #7D4EDB;
-        border-radius: 6px;
+        border-radius: 5px;
         font-weight: 600;
-        padding: 0 16px;
-        min-height: 32px;
-        max-height: 32px;
-        height: 32px;
+        font-size: 12px;
+        padding: 0 14px;
+        min-height: 30px;
+        max-height: 30px;
+        height: 30px;
     }
 
     QPushButton#PrimaryButton:hover,
@@ -985,36 +1016,38 @@ def build_stylesheet():
         color: %(text_primary)s;
     }
 
-    /* ── Segmented Choices (inline) ── */
+    /* ── Segmented Choices (inline tabs / filter groups) ── */
     QFrame#SegmentedControl {
-        background-color: %(surface_input)s;
-        border: 1px solid %(border)s;
+        background-color: #111520;
+        border: 1px solid #283145;
         border-radius: 6px;
         padding: 2px;
     }
 
     QPushButton#SegmentButton {
         background-color: transparent;
-        color: %(muted)s;
+        color: #94A3B8;
         border: none;
         border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 12px;
+        padding: 0 10px;
+        font-size: 11.5px;
         font-weight: 500;
-        min-height: 26px;
-        max-height: 26px;
-        height: 26px;
+        min-height: 24px;
+        max-height: 24px;
+        height: 24px;
+        cursor: pointer;
     }
 
     QPushButton#SegmentButton:hover {
-        color: %(text_primary)s;
-        background-color: %(surface2)s;
+        color: #FFFFFF;
+        background-color: rgba(255, 255, 255, 0.06);
     }
 
     QPushButton#SegmentButton:checked {
-        background-color: %(surface3)s;
-        color: %(text_primary)s;
+        background-color: %(primary)s;
+        color: %(primary_fg)s;
         font-weight: 600;
+        border-radius: 4px;
     }
 
     /* ── Status Chips & Badges (Authentic Pill Shaped) ── */
@@ -1141,6 +1174,7 @@ def build_stylesheet():
         border: 1px solid %(border)s;
         border-radius: 6px;
         outline: none;
+        font-size: 12px;
     }
 
     QTreeWidget#RenderLayerTree,
@@ -1151,37 +1185,111 @@ def build_stylesheet():
         border-radius: 6px;
     }
 
+    QTreeWidget#RulesTree {
+        background-color: %(surface2)s;
+        alternate-background-color: %(surface)s;
+        border: 1px solid %(border)s;
+        border-radius: 6px;
+    }
+
     QTreeWidget#RenderLayerTree::item,
     QTreeWidget#JobDependencyTree::item,
+    QTreeWidget#RulesTree::item,
     QTreeWidget::item,
-    QListWidget::item {
-        padding: 4px 6px;
-        border-radius: 3px;
-        min-height: 22px;
+    QListWidget::item,
+    QTableWidget::item {
+        padding: 3px 6px;
+        border: none;
+        border-radius: 0px;
+        min-height: 24px;
+        font-size: 12px;
     }
 
     QTreeWidget::item:hover,
-    QListWidget::item:hover {
+    QListWidget::item:hover,
+    QTableWidget::item:hover {
         background-color: %(surface3)s;
     }
 
     QTreeWidget::item:selected,
-    QListWidget::item:selected {
+    QListWidget::item:selected,
+    QTableWidget::item:selected {
         background-color: %(selection_bg)s;
         color: %(text_primary)s;
     }
 
-    /* ── Header Views ── */
-    QHeaderView::section {
-        background-color: #1F2330;
-        color: %(muted)s;
-        padding: 8px 12px;
+    /* ── Header Views (Matching Dashboard Table Headers with Rounded Corners) ── */
+    QHeaderView {
+        background-color: transparent;
         border: none;
-        border-bottom: 1px solid %(border_card)s;
+        border-top-left-radius: 6px;
+        border-top-right-radius: 6px;
+    }
+
+    QHeaderView::section {
+        background-color: #121622;
+        color: #94A3B8;
+        padding: 4px 8px;
+        border: none;
+        border-bottom: 1px solid #283145;
         font-weight: 600;
-        font-size: 12px;
+        font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+    }
+
+    QHeaderView::section:first,
+    QHeaderView::section:horizontal:first {
+        border-top-left-radius: 5px;
+    }
+
+    QHeaderView::section:last,
+    QHeaderView::section:horizontal:last {
+        border-top-right-radius: 5px;
+    }
+
+    QHeaderView::section:only-one,
+    QHeaderView::section:horizontal:only-one {
+        border-top-left-radius: 5px;
+        border-top-right-radius: 5px;
+    }
+
+    QTableCornerButton::section {
+        background-color: #121622;
+        border: none;
+        border-top-left-radius: 5px;
+        border-bottom: 1px solid #283145;
+    }
+
+    /* ── Standard QTabWidget & QTabBar (Matching Frontend Dashboard Tabs) ── */
+    QTabWidget::pane {
+        border: 1px solid %(border)s;
+        border-radius: 6px;
+        background-color: %(surface2)s;
+        top: -1px;
+    }
+
+    QTabBar::tab {
+        background-color: transparent;
+        color: #94A3B8;
+        border: 1px solid transparent;
+        border-bottom: 2px solid transparent;
+        padding: 5px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        min-height: 24px;
+        cursor: pointer;
+    }
+
+    QTabBar::tab:hover {
+        color: #FFFFFF;
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    QTabBar::tab:selected {
+        color: #FFFFFF;
+        font-weight: 600;
+        border-bottom: 2px solid %(primary)s;
     }
 
     /* ── Context Menus (Dark Glassmorphic) ── */
@@ -1328,6 +1436,7 @@ def build_stylesheet():
         color: %(text)s;
         spacing: 8px;
         font-size: 13px;
+        cursor: pointer;
     }
 
     QCheckBox::indicator,

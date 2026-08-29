@@ -218,23 +218,29 @@ def check_frame_range(context):
         ))
         return results
 
-    if start > end:
-        results.append(make_result(
-            "ERROR",
-            "FRAME_RANGE_REVERSED",
-            "Frame start cannot be greater than frame end.",
-            data={
-                "frame_start": start,
-                "frame_end": end,
-            }
-        ))
-
-    elif step <= 0:
+    if step <= 0:
         results.append(make_result(
             "ERROR",
             "FRAME_STEP_INVALID",
             "Frame step must be greater than zero.",
             data={"frame_step": step}
+        ))
+
+    elif start > end:
+        results.append(make_result(
+            "INFO",
+            "FRAME_RANGE_DESCENDING",
+            "Frame range is descending ({} to {} by {}). Frames will be rendered in reverse order on the farm.".format(
+                start,
+                end,
+                step,
+            ),
+            data={
+                "frame_start": start,
+                "frame_end": end,
+                "frame_step": step,
+                "direction": "descending",
+            }
         ))
 
     else:
@@ -250,6 +256,7 @@ def check_frame_range(context):
                 "frame_start": start,
                 "frame_end": end,
                 "frame_step": step,
+                "direction": "ascending",
             }
         ))
 
@@ -1310,6 +1317,82 @@ def check_render_region(context):
     return results
 
 
+def check_configured_aovs(context):
+    """
+    Validates required configured AOVs / Cryptomatte layers (e.g. crypto_asset,
+    crypto_object, crypto_material, or custom studio lists).
+    """
+    results = []
+    renderer = str(context.get("renderer", "arnold")).lower()
+    if renderer != "arnold":
+        return results
+
+    required_aovs = context.get("required_aovs")
+    if required_aovs is None:
+        required_aovs = ["crypto_asset", "crypto_object", "crypto_material"]
+
+    if not required_aovs:
+        return results
+
+    active_aov_names = set()
+    try:
+        aov_nodes = cmds.ls(type="aiAOV") or []
+        for node in aov_nodes:
+            name_attr = "{}.name".format(node)
+            enabled_attr = "{}.enabled".format(node)
+            enabled = bool(cmds.getAttr(enabled_attr)) if cmds.objExists(enabled_attr) else True
+            if enabled and cmds.objExists(name_attr):
+                aov_name = str(cmds.getAttr(name_attr) or "").strip().lower()
+                if aov_name:
+                    active_aov_names.add(aov_name)
+    except Exception:
+        pass
+
+    has_cryptomatte_node = False
+    try:
+        crypto_nodes = cmds.ls(type="aiCryptomatte") or []
+        if not crypto_nodes:
+            crypto_nodes = [n for n in (cmds.ls("aiCryptomatte*") or []) if cmds.objExists(n)]
+        has_cryptomatte_node = bool(crypto_nodes)
+    except Exception:
+        has_cryptomatte_node = False
+
+    missing = []
+    for req in required_aovs:
+        clean = str(req or "").strip().lower()
+        if not clean:
+            continue
+        if clean in active_aov_names:
+            continue
+        if clean.startswith("crypto") and has_cryptomatte_node:
+            continue
+        missing.append(req)
+
+    if missing:
+        results.append(make_result(
+            "ERROR",
+            "REQUIRED_AOV_MISSING",
+            "Required AOV / Cryptomatte pass{} missing or disabled: {}.".format(
+                "es are" if len(missing) > 1 else " is",
+                ", ".join(missing)
+            ),
+            fixable=True,
+            data={
+                "missing_aovs": missing,
+                "required_aovs": required_aovs,
+            }
+        ))
+    else:
+        results.append(make_result(
+            "PASSED",
+            "REQUIRED_AOVS_CONFIGURED",
+            "All configured required AOVs ({}) are active.".format(", ".join(required_aovs)),
+            data={"required_aovs": required_aovs}
+        ))
+
+    return results
+
+
 def run_checks(context):
     results = []
 
@@ -1324,6 +1407,7 @@ def run_checks(context):
         check_frame_padding,
         check_render_layers,
         check_arnold_aovs,
+        check_configured_aovs,
         check_arnold_sampling,
         check_render_region,
     ]

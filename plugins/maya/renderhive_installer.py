@@ -7,8 +7,15 @@ import shutil
 import sys
 import tempfile
 
-import maya.cmds as cmds
-import maya.mel as mel
+try:
+    import maya.cmds as cmds
+except ImportError:
+    cmds = None
+
+try:
+    import maya.mel as mel
+except ImportError:
+    mel = None
 
 
 
@@ -21,12 +28,17 @@ STARTUP_BLOCK_END = "# <<< RenderHive Maya startup <<<"
 
 
 def get_installed_package_dir():
-    return os.path.join(
-        cmds.internalVar(
-            userScriptDir=True
-        ),
-        "RenderHive"
-    )
+    if cmds is not None:
+        try:
+            return os.path.join(
+                cmds.internalVar(
+                    userScriptDir=True
+                ),
+                "RenderHive"
+            )
+        except Exception:
+            pass
+    return os.path.expanduser("~/maya/scripts/RenderHive")
 
 
 def _ignore_runtime_content(
@@ -464,20 +476,34 @@ def create_shelf_button(
     try:
         shelf_name = ensure_shelf()
 
-        # Check if a RenderHive button already exists in the shelf
-        children = cmds.shelfLayout(shelf_name, query=True, childArray=True) or []
-        for child in children:
-            if _is_renderhive_button(child):
-                return
+        # Remove any existing/stale RenderHive shelf button first
+        remove_renderhive_shelf_buttons(delete_shelf_tab=False)
 
-        icon_path = os.path.join(
+        source_icon = os.path.join(
             install_dir,
             "icons",
             "renderhive_shelf_icon.png"
-        ).replace(
+        )
+        icon_path = source_icon.replace(
             "\\",
             "/"
         )
+
+        # Copy icon to Maya's internal userBitmapsDir so Maya resolves it unconditionally
+        try:
+            user_bitmaps = cmds.internalVar(userBitmapsDir=True)
+            if user_bitmaps and os.path.isdir(user_bitmaps) and os.path.isfile(source_icon):
+                shutil.copy2(source_icon, os.path.join(user_bitmaps, "renderhive_shelf_icon.png"))
+        except Exception:
+            pass
+
+        try:
+            user_pref = cmds.internalVar(userPrefDir=True)
+            pref_icons = os.path.join(user_pref, "icons")
+            if os.path.isdir(pref_icons) and os.path.isfile(source_icon):
+                shutil.copy2(source_icon, os.path.join(pref_icons, "renderhive_shelf_icon.png"))
+        except Exception:
+            pass
 
         cmds.shelfButton(
             parent=shelf_name,
@@ -602,17 +628,59 @@ def close_renderhive_windows():
         pass
 
 
+def _is_safe_to_uninstall(path):
+    """
+    Strict safety guard: Ensure we ONLY ever remove copies inside Maya's
+    managed user scripts/app directories, and NEVER delete the development
+    source repository, git roots, or workspace directories.
+    """
+    if not path or not os.path.isdir(path):
+        return False
+
+    norm_path = os.path.normcase(os.path.abspath(path))
+
+    # Safety check: Never delete a git root or dev repo
+    curr = norm_path
+    for _ in range(6):
+        if os.path.isdir(os.path.join(curr, ".git")):
+            return False
+        if os.path.isfile(os.path.join(curr, "pyproject.toml")) or os.path.isfile(os.path.join(curr, "package.json")):
+            return False
+        parent = os.path.dirname(curr)
+        if parent == curr:
+            break
+        curr = parent
+
+    # Must be inside Maya's user directories
+    try:
+        user_script = os.path.normcase(os.path.abspath(cmds.internalVar(userScriptDir=True)))
+        user_app = os.path.normcase(os.path.abspath(cmds.internalVar(userAppDir=True)))
+        user_pref = os.path.normcase(os.path.abspath(cmds.internalVar(userPrefDir=True)))
+
+        is_inside_maya = (
+            norm_path.startswith(user_script)
+            or norm_path.startswith(user_app)
+            or norm_path.startswith(user_pref)
+        )
+        if not is_inside_maya:
+            return False
+    except Exception:
+        return False
+
+    # Directory name must be RenderHive
+    base_name = os.path.basename(norm_path).lower()
+    return base_name == "renderhive"
+
+
 def uninstall_renderhive(
     confirm=True
 ):
     versioned_dir = get_installed_package_dir()
     script_parent = os.path.dirname(cmds.internalVar(userScriptDir=True).rstrip("/\\"))
     global_dir = os.path.join(os.path.dirname(script_parent), "scripts", "RenderHive")
-    current_pkg_dir = os.path.dirname(os.path.abspath(__file__))
 
     candidate_dirs = [versioned_dir, global_dir]
-    if "RenderHive" in current_pkg_dir:
-        candidate_dirs.append(current_pkg_dir)
+    safe_dirs_to_remove = [d for d in candidate_dirs if _is_safe_to_uninstall(d)]
 
     target_display = versioned_dir if os.path.isdir(versioned_dir) else (global_dir if os.path.isdir(global_dir) else versioned_dir)
 
@@ -677,8 +745,8 @@ def uninstall_renderhive(
     except Exception:
         pass
 
-    # Remove all candidate install directories
-    for directory in set(candidate_dirs):
+    # Remove all verified safe candidate install directories ONLY
+    for directory in set(safe_dirs_to_remove):
         if os.path.isdir(directory):
             try:
                 shutil.rmtree(directory, ignore_errors=True)

@@ -74,6 +74,16 @@ FIX_GROUPS = {
         "undoable": False,
         "confirmation": True,
     },
+    "create_missing_aovs": {
+        "codes": {
+            "REQUIRED_AOV_MISSING",
+            "REQUIRED_AOVS_MISSING",
+            "CRYPTOMATTE_AOV_MISSING",
+        },
+        "batch_safe": True,
+        "undoable": True,
+        "confirmation": False,
+    },
 }
 
 
@@ -137,6 +147,7 @@ def fix_label(result):
         "set_texture_color_space": "Set Texture Color Space",
         "rename_shape": "Rename Shape",
         "save_scene": "Save Scene",
+        "create_missing_aovs": "Create Required AOVs",
     }
 
     return labels.get(group_name, "Auto Fix")
@@ -644,6 +655,74 @@ def _fix_save_scene(result):
     )
 
 
+def _fix_create_missing_aovs(result):
+    data = result.get("data") or {}
+    missing_aovs = data.get("missing_aovs")
+    if not missing_aovs and data.get("aov_name"):
+        missing_aovs = [data.get("aov_name")]
+    if not missing_aovs:
+        missing_aovs = ["crypto_asset", "crypto_object", "crypto_material"]
+
+    created = []
+    aov_interface = None
+    try:
+        import mtoa.aovs as aovs
+        aov_interface = aovs.AOVInterface()
+    except Exception:
+        aov_interface = None
+
+    default_driver = "defaultArnoldDriver" if cmds.objExists("defaultArnoldDriver") else None
+    default_filter = "defaultArnoldFilter" if cmds.objExists("defaultArnoldFilter") else None
+
+    for aov_name in missing_aovs:
+        clean_name = str(aov_name or "").strip()
+        if not clean_name:
+            continue
+
+        existing_nodes = cmds.ls(type="aiAOV") or []
+        reactivated = False
+        for node in existing_nodes:
+            plug = "{}.name".format(node)
+            if cmds.objExists(plug) and str(cmds.getAttr(plug) or "").lower() == clean_name.lower():
+                cmds.setAttr("{}.enabled".format(node), True)
+                reactivated = True
+                created.append(clean_name + " (enabled)")
+                break
+
+        if reactivated:
+            continue
+
+        if aov_interface is not None:
+            try:
+                aov_interface.addAOV(clean_name)
+                created.append(clean_name)
+                continue
+            except Exception:
+                pass
+
+        node_name = "aiAOV_" + clean_name
+        if not cmds.objExists(node_name):
+            node = cmds.createNode("aiAOV", name=node_name)
+            cmds.setAttr(node + ".name", clean_name, type="string")
+            cmds.setAttr(node + ".enabled", True)
+            if default_driver and cmds.objExists(default_driver):
+                try:
+                    cmds.connectAttr(default_driver + ".message", node + ".outputs[0].driver", force=True)
+                except Exception:
+                    pass
+            if default_filter and cmds.objExists(default_filter):
+                try:
+                    cmds.connectAttr(default_filter + ".message", node + ".outputs[0].filter", force=True)
+                except Exception:
+                    pass
+            created.append(clean_name)
+
+    if not created:
+        return "All required AOVs are already configured."
+
+    return "Created / enabled required AOV(s): {}.".format(", ".join(created))
+
+
 FIXERS = {
     "set_arnold_renderer": _fix_set_arnold_renderer,
     "load_mtoa": _fix_load_mtoa,
@@ -653,6 +732,7 @@ FIXERS = {
     "set_texture_color_space": _fix_texture_color_space,
     "rename_shape": _fix_shape_name,
     "save_scene": _fix_save_scene,
+    "create_missing_aovs": _fix_create_missing_aovs,
 }
 
 

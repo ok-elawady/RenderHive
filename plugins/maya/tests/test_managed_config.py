@@ -15,13 +15,20 @@ class ManagedConfigTests(unittest.TestCase):
         self.root = tempfile.mkdtemp(prefix="rh_managed_config_")
         self.local = os.path.join(self.root, "local")
         self.program = os.path.join(self.root, "program")
+        empty_env = os.path.join(self.root, ".env.empty")
+        with open(empty_env, "w", encoding="utf-8") as handle:
+            handle.write("")
+        clean_env = {
+            k: v for k, v in os.environ.items()
+            if not k.startswith("RENDERHIVE_") and k not in ("NEXT_PUBLIC_API_URL", "API_URL")
+        }
+        clean_env["LOCALAPPDATA"] = self.local
+        clean_env["PROGRAMDATA"] = self.program
+        clean_env["RENDERHIVE_ENV_FILE"] = empty_env
         self.env = mock.patch.dict(
             os.environ,
-            {
-                "LOCALAPPDATA": self.local,
-                "PROGRAMDATA": self.program,
-            },
-            clear=False,
+            clean_env,
+            clear=True,
         )
         self.env.start()
 

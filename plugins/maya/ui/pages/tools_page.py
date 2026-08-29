@@ -75,12 +75,21 @@ def build_more_page(self, register):
     open_logs_btn = QtWidgets.QPushButton("  Open Full Runtime Log File")
     open_logs_btn.setObjectName("SecondaryBtn")
     open_logs_btn.setIcon(get_icon("terminal", "#CBD5E1", 13))
-    open_logs_btn.setFixedHeight(32)
+    open_logs_btn.setFixedHeight(30)
     open_logs_btn.setCursor(QtCore.Qt.PointingHandCursor)
     if hasattr(self, "open_runtime_logs_folder"):
         open_logs_btn.clicked.connect(self.open_runtime_logs_folder)
 
+    local_test_btn = QtWidgets.QPushButton("  Local Test Render")
+    local_test_btn.setObjectName("SecondaryBtn")
+    local_test_btn.setIcon(get_icon("cube", "#CBD5E1", 13))
+    local_test_btn.setFixedHeight(30)
+    local_test_btn.setCursor(QtCore.Qt.PointingHandCursor)
+    if hasattr(self, "open_local_render_dialog"):
+        local_test_btn.clicked.connect(self.open_local_render_dialog)
+
     utility_row.addWidget(open_logs_btn)
+    utility_row.addWidget(local_test_btn)
     utility_row.addStretch()
 
     body.addLayout(utility_row)

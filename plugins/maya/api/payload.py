@@ -54,16 +54,15 @@ def build_frame_range(task):
     end = _integer(task.get("frame_end"), start)
     step = _integer(task.get("frame_step"), 1, minimum=1)
 
-    if end < start:
-        raise PayloadError(
-            "Frame end cannot be lower than frame start."
-        )
-
     if start == end:
         return str(start)
+
+    min_frame = min(start, end)
+    max_frame = max(start, end)
+
     if step == 1:
-        return "{}-{}".format(start, end)
-    return "{}-{}x{}".format(start, end, step)
+        return "{}-{}".format(min_frame, max_frame)
+    return "{}-{}x{}".format(min_frame, max_frame, step)
 
 
 def _quote(value):
