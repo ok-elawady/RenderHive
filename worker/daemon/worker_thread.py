@@ -589,8 +589,34 @@ class WorkerThread(QThread):
                 )
                 self.connection_signal.emit(True)
                 if response.status_code == 200:
-                    task = response.json()
-                    task_id = task.get("id", task.get("task_id", "unknown")) if isinstance(task, dict) else "unknown"
+                    content_type = response.headers.get("content-type", "").lower()
+                    raw_text = (response.text or "").strip()
+                    if "text/html" in content_type or raw_text.startswith("<!DOCTYPE") or raw_text.startswith("<html"):
+                        self.log_signal.emit(
+                            "Dispatch error: Server at {} returned HTML instead of a JSON API response. "
+                            "Please check your API URL in Settings.".format(self.api_url)
+                        )
+                        time.sleep(float(self.poll_interval))
+                        continue
+
+                    if not raw_text:
+                        time.sleep(float(self.poll_interval))
+                        continue
+
+                    try:
+                        task = response.json()
+                    except Exception as json_err:
+                        self.log_signal.emit(
+                            "Dispatch error: Invalid JSON response ({}) from {}".format(json_err, self.api_url)
+                        )
+                        time.sleep(float(self.poll_interval))
+                        continue
+
+                    if not isinstance(task, dict) or not (task.get("id") or task.get("task_id")):
+                        time.sleep(float(self.poll_interval))
+                        continue
+
+                    task_id = task.get("id", task.get("task_id", "unknown"))
                     self.status_signal.emit("RENDERING")
                     self.scheduler_signal.emit("RUNNING TASK")
                     self.log_signal.emit("Received task {}.".format(task_id))
