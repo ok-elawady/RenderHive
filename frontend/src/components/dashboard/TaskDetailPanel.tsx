@@ -15,6 +15,9 @@ import {
   Play,
   RotateCcw,
   SkipForward,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,6 +67,25 @@ function formatDuration(startedAt: string | null, stoppedAt: string | null) {
   return `${m}m ${s}s`;
 }
 
+function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes <= 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatMemory(mb?: number): string {
+  if (!mb || mb <= 0) return "—";
+  if (mb < 1024) return `${mb} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+function formatCpu(cpu?: number): string {
+  if (!cpu || cpu <= 0) return "—";
+  return `${Math.round(cpu)}%`;
+}
+
 export function TaskDetailPanel({
   selectedJobId,
   selectedLayerId,
@@ -75,6 +97,34 @@ export function TaskDetailPanel({
   const [activeTab, setActiveTab] = useState<TaskTabFilter>("ALL");
   const [isRequeuing, setIsRequeuing] = useState(false);
   const [actionTaskId, setActionTaskId] = useState<string | null>(null);
+
+  type TaskSortField = "task" | "state" | "worker" | "time" | "ram" | "cpu" | "size";
+  type TaskSortDirection = "asc" | "desc";
+
+  const [sortField, setSortField] = useState<TaskSortField>("task");
+  const [sortDirection, setSortDirection] = useState<TaskSortDirection>("asc");
+
+  const handleSort = (field: TaskSortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      if (["time", "ram", "cpu", "size"].includes(field)) {
+        setSortDirection("desc");
+      } else {
+        setSortDirection("asc");
+      }
+    }
+  };
+
+  const renderSortIcon = (field: TaskSortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown size={10} className="opacity-0 group-hover/col:opacity-40 transition-opacity ml-1 inline shrink-0" />;
+    }
+    return sortDirection === "asc" 
+      ? <ArrowUp size={10} className="text-primary ml-1 inline shrink-0" /> 
+      : <ArrowDown size={10} className="text-primary ml-1 inline shrink-0" />;
+  };
 
   const [logDialogOpen, setLogDialogOpen] = useState(false);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
@@ -108,15 +158,42 @@ export function TaskDetailPanel({
 
   const sortedTasks = useMemo(() => {
     return [...allTasks].sort((a, b) => {
-      if (a.frame_start !== undefined && b.frame_start !== undefined && a.frame_start !== b.frame_start) {
-        return a.frame_start - b.frame_start;
+      let cmp = 0;
+      switch (sortField) {
+        case "task":
+          if (a.frame_start !== undefined && b.frame_start !== undefined && a.frame_start !== b.frame_start) {
+            cmp = a.frame_start - b.frame_start;
+          } else if (a.frame_end !== undefined && b.frame_end !== undefined && a.frame_end !== b.frame_end) {
+            cmp = a.frame_end - b.frame_end;
+          } else {
+            cmp = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+          }
+          break;
+        case "state":
+          cmp = (a.state || "").localeCompare(b.state || "");
+          break;
+        case "worker":
+          cmp = (a.worker_name || "").localeCompare(b.worker_name || "");
+          break;
+        case "time": {
+          const durA = a.started_at ? (a.stopped_at ? new Date(a.stopped_at).getTime() : Date.now()) - new Date(a.started_at).getTime() : -1;
+          const durB = b.started_at ? (b.stopped_at ? new Date(b.stopped_at).getTime() : Date.now()) - new Date(b.started_at).getTime() : -1;
+          cmp = durA - durB;
+          break;
+        }
+        case "ram":
+          cmp = (a.max_memory_used_mb || 0) - (b.max_memory_used_mb || 0);
+          break;
+        case "cpu":
+          cmp = (a.peak_cpu_percent || 0) - (b.peak_cpu_percent || 0);
+          break;
+        case "size":
+          cmp = (a.file_size_bytes || 0) - (b.file_size_bytes || 0);
+          break;
       }
-      if (a.frame_end !== undefined && b.frame_end !== undefined && a.frame_end !== b.frame_end) {
-        return a.frame_end - b.frame_end;
-      }
-      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+      return sortDirection === "asc" ? cmp : -cmp;
     });
-  }, [allTasks]);
+  }, [allTasks, sortField, sortDirection]);
 
   const filteredTasks = useMemo(() => {
     if (activeTab === "ALL") return sortedTasks;
@@ -326,27 +403,73 @@ export function TaskDetailPanel({
         </div>
       </div>
 
-      {/* Table Header (Fixed) */}
-      <div className="grid grid-cols-[minmax(80px,1fr)_96px_minmax(120px,1fr)_96px_64px] items-center gap-2 p-1.5 border-b border-border/50 bg-muted/40 text-[11px] font-bold uppercase tracking-wider text-foreground pr-6">
-        <div className="min-w-0 pl-3">Task</div>
-        <div className="min-w-0 text-center">State</div>
-        <div className="min-w-0 text-center">Worker</div>
-        <div className="min-w-0 text-center">Time</div>
-        <div className="min-w-0 text-right pr-2">Action</div>
-      </div>
-
       {/* Virtualized Task List */}
       <div 
         ref={parentContainerRef} 
-        className="flex-1 overflow-auto no-scrollbar relative font-mono text-xs"
+        className="flex-1 overflow-auto font-mono text-xs"
       >
-        <div
-          style={{
-            height: `${rowVirtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative',
-          }}
-        >
+        <div className="flex flex-col min-w-[700px] w-full">
+          {/* Table Header (Sticky) */}
+          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/50 grid grid-cols-[minmax(90px,1.2fr)_76px_minmax(90px,1fr)_76px_72px_60px_72px_50px] items-center gap-2 p-1.5 text-[11px] font-bold uppercase tracking-wider text-foreground select-none shadow-sm">
+            <div
+              onClick={() => handleSort("task")}
+              className="min-w-0 pl-3 cursor-pointer hover:text-primary transition-colors flex items-center group/col"
+              title="Sort by Task"
+            >
+              Task {renderSortIcon("task")}
+            </div>
+            <div
+              onClick={() => handleSort("state")}
+              className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+              title="Sort by State"
+            >
+              State {renderSortIcon("state")}
+            </div>
+            <div
+              onClick={() => handleSort("worker")}
+              className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+              title="Sort by Worker"
+            >
+              Worker {renderSortIcon("worker")}
+            </div>
+            <div
+              onClick={() => handleSort("time")}
+              className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+              title="Sort by Time"
+            >
+              Time {renderSortIcon("time")}
+            </div>
+            <div
+              onClick={() => handleSort("ram")}
+              className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+              title="Sort by Peak RAM"
+            >
+              RAM {renderSortIcon("ram")}
+            </div>
+            <div
+              onClick={() => handleSort("cpu")}
+              className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+              title="Sort by Peak CPU"
+            >
+              CPU {renderSortIcon("cpu")}
+            </div>
+            <div
+              onClick={() => handleSort("size")}
+              className="min-w-0 text-center cursor-pointer hover:text-primary transition-colors flex items-center justify-center group/col"
+              title="Sort by Output File Size"
+            >
+              Size {renderSortIcon("size")}
+            </div>
+            <div className="min-w-0 text-right pr-2">Action</div>
+          </div>
+
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const task = filteredTasks[virtualRow.index];
             const cfg = getTaskStateConfig(task.state);
@@ -372,10 +495,10 @@ export function TaskDetailPanel({
                   height: `${virtualRow.size}px`,
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
-                className="grid grid-cols-[minmax(80px,1fr)_96px_minmax(120px,1fr)_96px_64px] items-center gap-2 p-1.5 border-b border-border/30 hover:bg-muted/30 transition-colors group cursor-pointer pr-6"
+                className="grid grid-cols-[minmax(90px,1.2fr)_76px_minmax(90px,1fr)_76px_72px_60px_72px_50px] items-center gap-2 p-1.5 border-b border-border/30 hover:bg-muted/30 transition-colors group cursor-pointer pr-6"
                 onClick={() => openTaskLogs(task.id, task.name)}
               >
-                <div className="min-w-0 pl-3 font-semibold text-[11px]">{displayTaskName}</div>
+                <div className="min-w-0 pl-3 font-semibold text-[11px] truncate">{displayTaskName}</div>
                 <div className="min-w-0 flex justify-center">
                   <span className={cn("text-[10px] font-black uppercase tracking-wider", {
                     "text-success": cfg.variant === "success",
@@ -393,6 +516,15 @@ export function TaskDetailPanel({
                 <div className="min-w-0 text-center tabular-nums text-muted-foreground opacity-80 text-[11px]">
                   {formatDuration(task.started_at, task.stopped_at)}
                 </div>
+                <div className="min-w-0 text-center tabular-nums text-muted-foreground text-[11px]">
+                  {formatMemory(task.max_memory_used_mb)}
+                </div>
+                <div className="min-w-0 text-center tabular-nums text-muted-foreground text-[11px]">
+                  {formatCpu(task.peak_cpu_percent)}
+                </div>
+                <div className="min-w-0 text-center tabular-nums text-muted-foreground text-[11px]">
+                  {formatFileSize(task.file_size_bytes)}
+                </div>
                 <div className="min-w-0 flex justify-end gap-1 pr-2 transition-opacity">
                   {task.state === "FAILED" ? (
                     <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:bg-destructive/10" disabled={isActioning} onClick={(e) => { e.stopPropagation(); handleRetry(task.id); }}>
@@ -409,12 +541,13 @@ export function TaskDetailPanel({
               </div>
             );
           })}
-        </div>
-        {filteredTasks.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs">
-            No tasks match the selected filter.
           </div>
-        )}
+          {filteredTasks.length === 0 && (
+            <div className="p-8 text-center text-muted-foreground text-xs">
+              No tasks match the selected filter.
+            </div>
+          )}
+        </div>
       </div>
 
       <TaskLogsDialog

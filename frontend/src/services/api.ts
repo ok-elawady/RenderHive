@@ -314,7 +314,11 @@ export type JobDetail = components["schemas"]["JobDetail"];
 export type JobPatch = components["schemas"]["PatchedJobPatch"];
 export type LayerList = components["schemas"]["LayerList"];
 export type LayerDetail = components["schemas"]["LayerDetail"];
-export type TaskList = components["schemas"]["TaskList"];
+export type TaskList = components["schemas"]["TaskList"] & {
+  max_memory_used_mb?: number;
+  peak_cpu_percent?: number;
+  file_size_bytes?: number;
+};
 export type TaskDetail = components["schemas"]["TaskDetail"];
 export type JobStateFilter = NonNullable<
   NonNullable<paths["/api/jobs/"]["get"]["parameters"]["query"]>["state"]
@@ -670,8 +674,9 @@ export function mapBackendJobToRenderJob(job: BackendJob): RenderJob {
     skipped_tasks: job.skipped_tasks,
     depend_tasks: job.depend_tasks,
     created_at: job.created_at,
-    started_at: (job as any).started_at,
-    finished_at: (job as any).finished_at,
+    started_at: (job as any).started_at || (job as any).started,
+    finished_at: (job as any).finished_at || (job as any).stopped_at || (job as any).stopped,
+    frame_range: (job as any).frame_range || "—",
     included_pools: job.included_pools || [],
     excluded_pools: job.excluded_pools || [],
     project: job.project || "Unknown Project",

@@ -47,6 +47,7 @@ export interface RenderJob {
   created_at: string;
   started_at?: string;
   finished_at?: string;
+  frame_range?: string;
   included_pools: string[];
   excluded_pools: string[];
   project: string;
