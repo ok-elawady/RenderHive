@@ -1,6 +1,6 @@
 """Production Houdini job configuration and API 0.2.0 farm targeting UI."""
 
-from __future__ import absolute_import
+import os
 
 from renderhive_houdini.api.models import (
     worker_gpu_label,
@@ -10,6 +10,7 @@ from renderhive_houdini.api.models import (
     worker_supports_houdini,
 )
 from renderhive_houdini.ui.qt_compat import (
+    QtCore,
     QtGui,
     QtWidgets,
     Signal,
@@ -30,11 +31,14 @@ from renderhive_houdini.ui.widgets import (
     SectionCard,
     LabeledField,
     ReadOnlyRow,
-    StatusChip,
+    WorkerStatusChip,
     InlineStatus,
     SegmentedChoice,
+    StepperNumberInput,
+    ScrollFilter,
     apply_status_appearance,
 )
+from renderhive_houdini.ui.icons import get_icon
 from renderhive_houdini.ui.theme import COLORS
 
 
@@ -104,6 +108,7 @@ class PoolDetailsDialog(QtWidgets.QDialog):
 class JobPage(QtWidgets.QWidget):
     refreshFarmRequested = Signal()
     browseDependenciesRequested = Signal()
+    syncSceneRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -118,67 +123,83 @@ class JobPage(QtWidgets.QWidget):
         self._render_requirements = []
 
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(8, 4, 8, 8)
-        root.setSpacing(10)
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(14)
         root.addWidget(PageHeader(
             "Job Configuration",
-            "Configure job metadata, scheduling, pool targeting and dependencies.",
+            "Configure job metadata, scheduling, pool targeting and delivery options.",
         ))
 
         details = SectionCard("Job Details", "Identity and ownership information shown in the queue and reports.")
         grid = QtWidgets.QGridLayout()
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(8)
-        self.project_name = QtWidgets.QLineEdit(); self.project_name.setPlaceholderText("Project name")
-        self.job_name = QtWidgets.QLineEdit(); self.job_name.setPlaceholderText("Job name")
-        self.priority = QtWidgets.QSpinBox(); self.priority.setRange(1, 100); self.priority.setValue(50)
-        self.department = QtWidgets.QLineEdit(); self.department.setPlaceholderText("Lighting, FX, LookDev…")
-        self.comment = QtWidgets.QLineEdit(); self.comment.setPlaceholderText("Optional notes for the render team")
+        self.project_name = QtWidgets.QLineEdit()
+        self.project_name.setPlaceholderText("Enter the project name")
+        ScrollFilter.install(self.project_name)
+        self.job_name = QtWidgets.QLineEdit()
+        self.job_name.setPlaceholderText("Enter a descriptive job name")
+        ScrollFilter.install(self.job_name)
+        self.priority = StepperNumberInput(minimum=1, maximum=100, default=50)
+        self.department = QtWidgets.QLineEdit()
+        self.department.setPlaceholderText("e.g. Lighting, FX or Look Development")
+        ScrollFilter.install(self.department)
+        self.comment = QtWidgets.QLineEdit()
+        self.comment.setPlaceholderText("Optional notes for the render team")
+        ScrollFilter.install(self.comment)
         grid.addWidget(LabeledField("Project", self.project_name, "Project label used to organize and report submitted jobs."), 0, 0)
         grid.addWidget(LabeledField("Job Name", self.job_name, "Name displayed in the RenderHive queue and reports."), 0, 1)
-        grid.addWidget(LabeledField("Priority", self.priority, "Higher values are scheduled before lower-priority jobs when resources are available."), 1, 0)
+        grid.addWidget(LabeledField("Priority", self.priority, "Higher values schedule first when farm capacity is shared across jobs."), 1, 0)
         grid.addWidget(LabeledField("Department", self.department, "Optional department or production discipline."), 1, 1)
         grid.addWidget(LabeledField("Notes", self.comment, "Optional information for artists, operators or supervisors."), 2, 0, 1, 2)
-        grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
         details.layout.addLayout(grid)
 
-        scheduling = SectionCard("Scheduling", "Control task chunking, worker concurrency and minimum hardware.")
+        scheduling = SectionCard("Scheduling", "Control task chunking, concurrency and scheduler limits.")
         schedule_grid = QtWidgets.QGridLayout()
-        schedule_grid.setHorizontalSpacing(10); schedule_grid.setVerticalSpacing(8)
-        self.chunk_size = QtWidgets.QSpinBox(); self.chunk_size.setRange(1, 10000); self.chunk_size.setValue(1)
-        self.concurrent_tasks = QtWidgets.QSpinBox(); self.concurrent_tasks.setRange(1, 64); self.concurrent_tasks.setValue(1)
-        self.min_cores = QtWidgets.QSpinBox(); self.min_cores.setRange(0, 4096); self.min_cores.setSpecialValueText("Any")
-        self.min_memory_gb = QtWidgets.QSpinBox(); self.min_memory_gb.setRange(0, 65536); self.min_memory_gb.setSpecialValueText("Any"); self.min_memory_gb.setSuffix(" GB")
-        self.min_gpus = QtWidgets.QSpinBox(); self.min_gpus.setRange(0, 64); self.min_gpus.setSpecialValueText("Any")
+        schedule_grid.setHorizontalSpacing(10)
+        schedule_grid.setVerticalSpacing(8)
+        self.chunk_size = StepperNumberInput(minimum=1, maximum=10000, default=1)
+        self.concurrent_tasks = StepperNumberInput(minimum=1, maximum=64, default=1)
+        self.min_cores = StepperNumberInput(minimum=0, maximum=4096, default=0, special_value_text="Any")
+        self.min_memory_gb = StepperNumberInput(minimum=0, maximum=65536, default=0, suffix=" GB", special_value_text="Any")
+        self.min_gpus = StepperNumberInput(minimum=0, maximum=64, default=0, special_value_text="Any")
         for widget in (self.min_cores, self.min_memory_gb, self.min_gpus):
             widget.valueChanged.connect(self._update_targeting_summary)
         schedule_grid.addWidget(LabeledField("Chunk Size", self.chunk_size, "Number of consecutive frames assigned to each farm task."), 0, 0)
-        schedule_grid.addWidget(LabeledField("Tasks per Worker", self.concurrent_tasks, "Maximum tasks from this job that one worker may run concurrently."), 0, 1)
-        schedule_grid.addWidget(LabeledField("Minimum CPU Cores", self.min_cores, "Minimum CPU core count required by the scheduler. Any disables this requirement."), 1, 0)
-        schedule_grid.addWidget(LabeledField("Minimum RAM", self.min_memory_gb, "Minimum physical memory required by an eligible worker."), 1, 1)
-        schedule_grid.addWidget(LabeledField("Minimum GPUs", self.min_gpus, "Minimum GPU count. Karma XPU tasks automatically require at least one GPU in the payload."), 2, 0)
-        schedule_grid.setColumnStretch(0, 1); schedule_grid.setColumnStretch(1, 1)
+        schedule_grid.addWidget(LabeledField("Tasks per Worker", self.concurrent_tasks, "Maximum number of tasks from this job that one worker may run concurrently."), 0, 1)
+        schedule_grid.addWidget(LabeledField("Minimum CPU Cores", self.min_cores, "Minimum worker CPU core count required by the backend scheduler. Any disables this requirement."), 1, 0)
+        schedule_grid.addWidget(LabeledField("Minimum RAM", self.min_memory_gb, "Minimum worker memory required by the backend scheduler. Any disables this requirement."), 1, 1)
+        schedule_grid.addWidget(LabeledField("Minimum GPUs", self.min_gpus, "Minimum number of GPUs required on an eligible worker. Any disables this requirement."), 2, 0)
+        schedule_grid.setColumnStretch(0, 1)
+        schedule_grid.setColumnStretch(1, 1)
         scheduling.layout.addLayout(schedule_grid)
 
         targeting = SectionCard("Pool Selection", "Choose which backend worker pools are eligible to receive this job.")
-        status_row = QtWidgets.QHBoxLayout(); status_row.setSpacing(6)
-        self.backend_chip = StatusChip("Backend: Not Checked")
-        self.worker_chip = StatusChip("Workers: 0")
-        self.pool_chip = StatusChip("Pools: 0")
-        self.sync_chip = StatusChip("Last Sync: Never")
-        self.refresh_farm_button = QtWidgets.QPushButton("Refresh")
-        self.refresh_farm_button.setObjectName("InfoButton")
+        status_row = QtWidgets.QHBoxLayout()
+        status_row.setSpacing(6)
+        self.backend_chip = WorkerStatusChip("Not Synced")
+        self.worker_chip = WorkerStatusChip("0 Workers")
+        self.pool_chip = WorkerStatusChip("0 Pools")
+        self.sync_chip = WorkerStatusChip("Never")
+        self.refresh_farm_button = QtWidgets.QPushButton("  Refresh")
+        self.refresh_farm_button.setObjectName("SecondaryBtn")
+        self.refresh_farm_button.setIcon(get_icon("refresh", "#CBD5E1", 13))
+        self.refresh_farm_button.setFixedHeight(30)
+        self.refresh_farm_button.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor) if hasattr(QtCore, "Qt") else None)
         self.refresh_farm_button.clicked.connect(self.refreshFarmRequested.emit)
         for chip in (self.backend_chip, self.worker_chip, self.pool_chip, self.sync_chip):
             status_row.addWidget(chip)
-        status_row.addStretch(); status_row.addWidget(self.refresh_farm_button)
+        status_row.addStretch()
+        status_row.addWidget(self.refresh_farm_button)
         targeting.layout.addLayout(status_row)
 
         self.pool_strategy = SegmentedChoice(("All Pools", "Selected Pools Only", "All Except Selected"))
         self.pool_strategy.currentTextChanged.connect(self._on_strategy_changed)
         targeting.layout.addWidget(LabeledField(
             "Assignment Strategy", self.pool_strategy,
-            "Use every pool, selected pools only, or every pool except selected pools.",
+            "Choose whether the job can use every pool, selected pools only, or all pools except selected ones.",
         ))
 
         self.pool_list = QtWidgets.QTreeWidget()
@@ -193,60 +214,116 @@ class JobPage(QtWidgets.QWidget):
         self.pool_list.itemDoubleClicked.connect(self._show_pool_details)
         self.pool_list.setMinimumHeight(145)
         self.pool_list.header().setSectionResizeMode(0, HEADER_STRETCH)
-        self.pool_list.header().setSectionResizeMode(1, HEADER_RESIZE_TO_CONTENTS)
-        self.pool_list.header().setSectionResizeMode(2, HEADER_RESIZE_TO_CONTENTS)
+        for c_idx in (1, 2):
+            self.pool_list.header().setSectionResizeMode(c_idx, HEADER_RESIZE_TO_CONTENTS)
         self.pool_list.header().setSectionResizeMode(3, HEADER_STRETCH)
         targeting.layout.addWidget(self.pool_list)
 
         pool_actions = QtWidgets.QHBoxLayout()
-        self.selection_label = QtWidgets.QLabel("0 Selected / 0 Available"); self.selection_label.setObjectName("SecondaryText")
-        self.details_button = QtWidgets.QPushButton("View Pool Details"); self.details_button.setObjectName("GhostButton")
-        self.details_button.setEnabled(False); self.details_button.clicked.connect(self._show_current_pool_details)
-        pool_actions.addWidget(self.selection_label); pool_actions.addStretch(); pool_actions.addWidget(self.details_button)
+        self.selection_label = QtWidgets.QLabel("0 Selected / 0 Available")
+        self.selection_label.setObjectName("SecondaryText")
+        self.details_button = QtWidgets.QPushButton("View Pool Details")
+        self.details_button.setObjectName("GhostBtn")
+        self.details_button.setEnabled(False)
+        self.details_button.clicked.connect(self._show_current_pool_details)
+        pool_actions.addWidget(self.selection_label)
+        pool_actions.addStretch()
+        pool_actions.addWidget(self.details_button)
         targeting.layout.addLayout(pool_actions)
         self.targeting_summary = InlineStatus("No pool data has been synchronized yet.", "neutral")
         self.targeting_summary.setObjectName("EligibilitySummary")
         targeting.layout.addWidget(self.targeting_summary)
 
         recovery = SectionCard("Recovery & Dependencies", "Configure task recovery and cross-DCC backend job dependencies.")
-        recovery_grid = QtWidgets.QGridLayout(); recovery_grid.setHorizontalSpacing(10); recovery_grid.setVerticalSpacing(8)
-        self.retry_count = QtWidgets.QSpinBox(); self.retry_count.setRange(0, 20); self.retry_count.setValue(2)
-        self.timeout_minutes = QtWidgets.QSpinBox(); self.timeout_minutes.setRange(0, 100000); self.timeout_minutes.setSpecialValueText("No Timeout"); self.timeout_minutes.setSuffix(" min")
+        recovery_grid = QtWidgets.QGridLayout()
+        recovery_grid.setHorizontalSpacing(10)
+        recovery_grid.setVerticalSpacing(8)
+        self.retry_count = StepperNumberInput(minimum=0, maximum=20, default=2)
+        self.timeout_minutes = StepperNumberInput(minimum=0, maximum=100000, default=0, suffix=" min", special_value_text="No Timeout")
         recovery_grid.addWidget(LabeledField("Retry Attempts", self.retry_count, "Number of automatic retries allowed after a task failure."), 0, 0)
         recovery_grid.addWidget(LabeledField("Task Timeout", self.timeout_minutes, "Maximum runtime for one task before the backend marks it as timed out."), 0, 1)
 
         self.dependency_summary = QtWidgets.QLabel("No dependencies selected")
         self.dependency_summary.setObjectName("SecondaryText")
-        self.dependency_summary.setMinimumHeight(30); self.dependency_summary.setWordWrap(True)
-        self.browse_dependencies = QtWidgets.QPushButton("Browse Jobs…"); self.browse_dependencies.setObjectName("InfoButton")
+        self.dependency_summary.setMinimumHeight(30)
+        self.dependency_summary.setWordWrap(True)
+        self.browse_dependencies = QtWidgets.QPushButton("  Browse Jobs…")
+        self.browse_dependencies.setObjectName("SecondaryBtn")
+        self.browse_dependencies.setIcon(get_icon("search", "#CBD5E1", 13))
         self.browse_dependencies.clicked.connect(self.browseDependenciesRequested.emit)
-        self.clear_dependencies = QtWidgets.QPushButton("Clear"); self.clear_dependencies.setObjectName("GhostButton")
+        self.clear_dependencies = QtWidgets.QPushButton("  Clear")
+        self.clear_dependencies.setObjectName("GhostBtn")
+        self.clear_dependencies.setIcon(get_icon("x", COLORS["muted"], 13))
         self.clear_dependencies.clicked.connect(self.clear_job_dependencies)
-        dependency_row = QtWidgets.QHBoxLayout(); dependency_row.setContentsMargins(0, 0, 0, 0); dependency_row.setSpacing(7)
-        dependency_row.addWidget(self.dependency_summary, 1); dependency_row.addWidget(self.browse_dependencies); dependency_row.addWidget(self.clear_dependencies)
-        dependency_widget = QtWidgets.QWidget(); dependency_widget.setObjectName("InlineFieldContainer"); dependency_widget.setAutoFillBackground(False); dependency_widget.setLayout(dependency_row)
+        dependency_row = QtWidgets.QHBoxLayout()
+        dependency_row.setContentsMargins(0, 0, 0, 0)
+        dependency_row.setSpacing(7)
+        dependency_row.addWidget(self.dependency_summary, 1)
+        dependency_row.addWidget(self.browse_dependencies)
+        dependency_row.addWidget(self.clear_dependencies)
+        dependency_widget = QtWidgets.QWidget()
+        dependency_widget.setObjectName("InlineFieldContainer")
+        dependency_widget.setAutoFillBackground(False)
+        dependency_widget.setLayout(dependency_row)
         recovery_grid.addWidget(LabeledField(
             "Job Dependencies", dependency_widget,
             "Select existing Maya or Houdini RenderHive jobs that must complete before this job can start.",
         ), 1, 0, 1, 2)
-        recovery_grid.setColumnStretch(0, 1); recovery_grid.setColumnStretch(1, 1)
+        recovery_grid.setColumnStretch(0, 1)
+        recovery_grid.setColumnStretch(1, 1)
         recovery.layout.addLayout(recovery_grid)
 
         paths = SectionCard("Scene & Project Paths", "Review the HIP and project locations used by farm workers.")
-        path_grid = QtWidgets.QGridLayout(); path_grid.setHorizontalSpacing(10); path_grid.setVerticalSpacing(8)
+        path_grid = QtWidgets.QGridLayout()
+        path_grid.setHorizontalSpacing(10)
+        path_grid.setVerticalSpacing(8)
         self.hip_file = ReadOnlyRow("HIP File", tooltip="Current .hip, .hiplc or .hipnc file.")
         self.project_path = ReadOnlyRow("Project Path", tooltip="Uses $JOB when available, otherwise the HIP directory.")
         self.hip_directory = ReadOnlyRow("$HIP")
         self.job_directory = ReadOnlyRow("$JOB")
-        path_grid.addWidget(self.hip_file, 0, 0, 1, 2); path_grid.addWidget(self.project_path, 1, 0, 1, 2)
-        path_grid.addWidget(self.hip_directory, 2, 0); path_grid.addWidget(self.job_directory, 2, 1)
-        path_grid.setColumnStretch(0, 1); path_grid.setColumnStretch(1, 1)
+        path_grid.addWidget(self.hip_file, 0, 0, 1, 2)
+        path_grid.addWidget(self.project_path, 1, 0, 1, 2)
+        path_grid.addWidget(self.hip_directory, 2, 0)
+        path_grid.addWidget(self.job_directory, 2, 1)
+        path_grid.setColumnStretch(0, 1)
+        path_grid.setColumnStretch(1, 1)
         paths.layout.addLayout(path_grid)
+
+        utility_row = QtWidgets.QHBoxLayout()
+        utility_row.setSpacing(7)
+
+        open_hip_btn = QtWidgets.QPushButton("  Open HIP Folder")
+        open_hip_btn.setObjectName("GhostBtn")
+        open_hip_btn.setIcon(get_icon("folder", "#CBD5E1", 13))
+        open_hip_btn.clicked.connect(self._open_hip_folder)
+
+        sync_scene_btn = QtWidgets.QPushButton("  Sync Scene Settings")
+        sync_scene_btn.setObjectName("SecondaryBtn")
+        sync_scene_btn.setIcon(get_icon("refresh", "#CBD5E1", 13))
+        sync_scene_btn.clicked.connect(self.syncSceneRequested.emit)
+
+        utility_row.addWidget(open_hip_btn)
+        utility_row.addStretch()
+        utility_row.addWidget(sync_scene_btn)
+        paths.layout.addLayout(utility_row)
 
         for card in (details, scheduling, targeting, recovery, paths):
             root.addWidget(card)
         root.addStretch()
         self._update_dependency_summary()
+
+    def _open_hip_folder(self):
+        import sys
+        folder = ""
+        if self._context:
+            folder = str(getattr(self._context, "hip_directory", "") or getattr(self._context, "project_path", "") or "").strip()
+        if not folder or not os.path.exists(folder):
+            return
+        if sys.platform == "win32":
+            os.startfile(os.path.normpath(folder))
+        else:
+            import subprocess
+            subprocess.Popen(["xdg-open", folder])
 
     @staticmethod
     def _context_key(context):

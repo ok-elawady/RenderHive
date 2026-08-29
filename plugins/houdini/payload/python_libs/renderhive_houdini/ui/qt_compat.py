@@ -12,15 +12,15 @@ wrapInstance = None
 isValid = None
 
 try:
-    from hutil.Qt import QtCore, QtGui, QtWidgets
+    from hutil.Qt import QtCore, QtGui, QtWidgets, QtSvg
     module_name = str(getattr(QtCore, "__name__", ""))
     QT_BINDING = "PySide6" if "PySide6" in module_name else "PySide2"
 except ImportError:
     try:
-        from PySide6 import QtCore, QtGui, QtWidgets
+        from PySide6 import QtCore, QtGui, QtWidgets, QtSvg
         QT_BINDING = "PySide6"
     except ImportError:
-        from PySide2 import QtCore, QtGui, QtWidgets
+        from PySide2 import QtCore, QtGui, QtWidgets, QtSvg
         QT_BINDING = "PySide2"
 
 try:

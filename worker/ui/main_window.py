@@ -22,7 +22,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-_PLUGINS_DIR = Path(__file__).resolve().parent.parent.parent / "plugins"
+if getattr(sys, "frozen", False):
+    _PLUGINS_DIR = Path(sys._MEIPASS) / "plugins"
+else:
+    _PLUGINS_DIR = Path(__file__).resolve().parent.parent.parent / "plugins"
 import psutil
 from PySide6.QtCore import QEasingCurve, QEvent, QObject, QPoint, QPropertyAnimation, QRect, QSettings, QTimer, Qt, QUrl, Slot, QThread, Signal
 from PySide6.QtGui import QAction, QColor, QCursor, QDesktopServices, QIcon, QMouseEvent, QPaintEvent, QPainter, QPalette, QResizeEvent, QTextCharFormat, QTextCursor

@@ -38,9 +38,10 @@ from renderhive_houdini.ui.pages.job_page import JobPage
 from renderhive_houdini.ui.pages.render_page import RenderPage
 from renderhive_houdini.ui.pages.validation_page import ValidationPage
 from renderhive_houdini.ui.pages.tools_page import ToolsPage
-from renderhive_houdini.ui.theme import stylesheet
-from renderhive_houdini.ui.widgets import apply_status_appearance, StatusChip
-from renderhive_houdini.ui.icons import icon_path
+from renderhive_houdini.ui.icons import get_icon, icon_path
+from renderhive_houdini.ui.theme import stylesheet, COLORS
+from renderhive_houdini.ui.font_loader import load_application_fonts
+from renderhive_houdini.ui.widgets import StatusChip
 from renderhive_houdini.ui.job_dependency_widgets import JobDependencyDialog
 from renderhive_houdini.validation.auto_fix import apply_fix, apply_many, requires_confirmation, fix_label
 from renderhive_houdini.validation.validator import summary
@@ -92,10 +93,19 @@ class MainWindow(QtWidgets.QWidget):
             self.api_config_error = str(error)
 
         self.setObjectName(WINDOW_OBJECT_NAME)
-        self.setWindowTitle("{} v{}".format(WINDOW_TITLE, __version__))
+        self.setWindowTitle(WINDOW_TITLE)
         self.setMinimumSize(720, 620)
         self.resize(820, 780)
+        load_application_fonts(self)
         self.setStyleSheet(stylesheet())
+
+        # Window icon (shows in OS taskbar and native titlebar)
+        _icon_path = icon_path("renderhive_header_logo.png")
+        if not os.path.isfile(_icon_path):
+            _icon_path = icon_path("renderhive.png")
+        if os.path.isfile(_icon_path):
+            self.setWindowIcon(QtGui.QIcon(_icon_path))
+
         if not self._embedded:
             set_window_flag(self, WINDOW, True)
 
@@ -110,28 +120,61 @@ class MainWindow(QtWidgets.QWidget):
         self._autosave_timer.start()
         QtCore.QTimer.singleShot(350, self.sync_backend)
 
+
+    def showEvent(self, event):
+        super(MainWindow, self).showEvent(event)
+        self._apply_window_theme()
+
+    def _apply_window_theme(self):
+        """Match native OS titlebar and window border to studio dark theme (#0B0E17).
+
+        Uses Windows DWM attributes (Win10 20H1+ / Win11) to seamlessly integrate
+        the native caption bar with our dark UI. Identical technique to the Worker.
+        No-op on macOS / Linux; all errors are silently swallowed.
+        """
+        import sys
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            import ctypes.wintypes as wintypes
+            hwnd = wintypes.HWND(int(self.winId()))
+            # Dark mode caption buttons (Win10 20H1+ = 19, Win11 = 20)
+            dark = ctypes.c_int(1)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), ctypes.sizeof(dark))
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 19, ctypes.byref(dark), ctypes.sizeof(dark))
+            # Caption background #0B0E17 → COLORREF 0x00170E0B
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 35, ctypes.byref(ctypes.c_int(0x00170E0B)), 4)
+            # Caption text #CBD5E1 → COLORREF 0x00E1D5CB
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 36, ctypes.byref(ctypes.c_int(0x00E1D5CB)), 4)
+            # Window border #283145 → COLORREF 0x00453128 (matches Worker outline)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, 34, ctypes.byref(ctypes.c_int(0x00453128)), 4)
+        except Exception:
+            pass
+
     def _build_ui(self):
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(10, 10, 10, 10)
-        root.setSpacing(8)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
         root.addWidget(self._build_header())
 
-        center = QtWidgets.QHBoxLayout()
-        center.setSpacing(8)
-        center.addWidget(self._build_sidebar())
         self.page_stack = QtWidgets.QStackedWidget()
         self.job_page = JobPage()
         self.render_page = RenderPage()
         self.validation_page = ValidationPage()
         self.tools_page = ToolsPage()
+        
         for page in (self.job_page, self.render_page, self.validation_page, self.tools_page):
             scroll = QtWidgets.QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
             scroll.setWidget(page)
             self.page_stack.addWidget(scroll)
-        center.addWidget(self.page_stack, 1)
-        root.addLayout(center, 1)
+            
+        root.addWidget(self.page_stack, 1)
         root.addWidget(self._build_footer())
 
         self.render_page.refreshRequested.connect(self.refresh_render_nodes)
@@ -139,13 +182,9 @@ class MainWindow(QtWidgets.QWidget):
         self.render_page.renderNodeChanged.connect(self.on_render_node_changed)
         self.render_page.renderSelectionChanged.connect(self.on_render_selection_changed)
         self.job_page.refreshFarmRequested.connect(self.sync_backend)
+        self.job_page.syncSceneRequested.connect(lambda: self.refresh_context(scan_nodes=True))
         self.job_page.browseDependenciesRequested.connect(self.open_job_dependency_browser)
-        self.tools_page.retryConnectionRequested.connect(self.sync_backend)
         self.tools_page.openRuntimeLogsRequested.connect(lambda: self._open_folder(runtime_logs_dir()))
-        self.tools_page.createSupportBundleRequested.connect(self.create_support_bundle)
-        self.tools_page.runProductionCheckRequested.connect(self.run_production_check)
-        self.tools_page.resetSceneStateRequested.connect(self.reset_scene_state)
-        self.tools_page.uninstallRequested.connect(self.uninstall_plugin)
         self.validation_page.autoFixRequested.connect(self.apply_selected_fix)
         self.validation_page.autoFixAllRequested.connect(self.apply_safe_fixes)
         self.validation_page.selectNodeRequested.connect(self.select_houdini_node)
@@ -153,56 +192,136 @@ class MainWindow(QtWidgets.QWidget):
         self.validation_page.validationCompleted.connect(self._on_validation_completed)
         self.submit_button.clicked.connect(self.submit_job)
 
-    def _build_header(self):
-        card = QtWidgets.QFrame(); card.setObjectName("HeaderCard")
-        layout = QtWidgets.QHBoxLayout(card); layout.setContentsMargins(14, 10, 14, 10); layout.setSpacing(10)
-        logo = QtWidgets.QLabel("⬢"); logo.setObjectName("HeaderLogo"); logo.setFixedSize(48, 48); logo.setAlignment(ALIGN_CENTER)
-        logo_file = icon_path("renderhive_header_logo.png") or icon_path()
-        if logo_file:
-            pixmap = QtGui.QPixmap(logo_file)
-            if not pixmap.isNull():
-                logo.setText(""); logo.setPixmap(pixmap.scaled(44, 44))
-        brand = QtWidgets.QVBoxLayout(); brand.setSpacing(0)
-        title_row = QtWidgets.QHBoxLayout(); title_row.setSpacing(0)
-        main = QtWidgets.QLabel("RENDER"); main.setObjectName("BrandMain")
-        accent = QtWidgets.QLabel("HIVE"); accent.setObjectName("BrandAccent")
-        title_row.addWidget(main); title_row.addWidget(accent); title_row.addStretch()
-        subtitle = QtWidgets.QLabel("HOUDINI RENDER SUBMISSION"); subtitle.setObjectName("BrandSubtitle")
-        self.scene_label = QtWidgets.QLabel("Scene: loading…"); self.scene_label.setObjectName("SceneMeta")
-        brand.addLayout(title_row); brand.addWidget(subtitle); brand.addWidget(self.scene_label)
-        meta = QtWidgets.QVBoxLayout(); meta.setSpacing(5); meta.setAlignment(ALIGN_RIGHT | ALIGN_VCENTER)
-        self.version_chip = StatusChip("UI v{}".format(__version__))
-        self.renderer_chip = StatusChip("Renderer: Not Set")
-        meta.addWidget(self.version_chip); meta.addWidget(self.renderer_chip)
-        layout.addWidget(logo); layout.addLayout(brand, 1); layout.addLayout(meta)
-        return card
 
-    def _build_sidebar(self):
-        frame = QtWidgets.QFrame(); frame.setObjectName("Sidebar"); frame.setFixedWidth(104)
-        layout = QtWidgets.QVBoxLayout(frame); layout.setContentsMargins(0, 8, 0, 8); layout.setSpacing(0)
+    def _build_header(self):
+        frame = QtWidgets.QFrame()
+        frame.setObjectName("TopHeaderBar")
+        frame.setFixedHeight(50)
+
+        layout = QtWidgets.QHBoxLayout(frame)
+        layout.setContentsMargins(14, 9, 14, 9)
+        layout.setSpacing(8)
+        layout.setAlignment(QtCore.Qt.AlignVCenter)
+
+        # ── Segmented Pill Nav Container (left) ──
+        nav_container = QtWidgets.QFrame()
+        nav_container.setObjectName("NavSegmentContainer")
+        nav_container.setFixedHeight(32)
+        nav_layout = QtWidgets.QHBoxLayout(nav_container)
+        nav_layout.setContentsMargins(2, 2, 2, 2)
+        nav_layout.setSpacing(2)
+
         self.nav_buttons = []
-        group = QtWidgets.QButtonGroup(self); group.setExclusive(True)
-        for index, label in enumerate(("Job", "Render", "Validation", "Tools")):
-            button = QtWidgets.QPushButton(label); button.setObjectName("NavButton"); button.setCheckable(True)
-            button.clicked.connect(lambda checked=False, page=index: self.select_page(page))
-            group.addButton(button, index); layout.addWidget(button); self.nav_buttons.append(button)
-        layout.addStretch()
-        self.houdini_chip = StatusChip("Houdini")
-        layout.addWidget(self.houdini_chip, 0, ALIGN_HCENTER)
-        self.nav_buttons[0].setChecked(True)
+        nav_group = QtWidgets.QButtonGroup(self)
+        nav_group.setExclusive(True)
+
+        pages = [
+            ("layers",       "Job"),
+            ("camera",       "Render"),
+            ("shield-check", "Validation"),
+            ("terminal",     "Logs"),
+        ]
+        
+        for idx, (icon_name, label) in enumerate(pages):
+            btn = QtWidgets.QPushButton("  " + label)
+            btn.setObjectName("SegmentNavBtn")
+            btn.setCheckable(True)
+            btn.setFixedHeight(28)
+            btn.setFocusPolicy(QtCore.Qt.NoFocus)
+            btn.setIcon(get_icon(icon_name, COLORS["primary_fg"] if idx == 0 else COLORS["muted"], 13))
+            btn.setCursor(QtCore.Qt.PointingHandCursor)
+            btn.setAccessibleName(label + " page")
+            btn.clicked.connect(lambda checked=False, page_idx=idx: self.select_page(page_idx))
+            nav_group.addButton(btn, idx)
+            nav_layout.addWidget(btn)
+            self.nav_buttons.append(btn)
+            
+        if self.nav_buttons:
+            self.nav_buttons[0].setChecked(True)
+            
+        layout.addWidget(nav_container)
+        
+        # ── Right cluster (Action Controls) ──
+        layout.addStretch(1)
+        
+        sync_btn = QtWidgets.QPushButton("  Sync")
+        sync_btn.setObjectName("SecondaryBtn")
+        sync_btn.setIcon(get_icon("refresh", COLORS["secondary"], 13))
+        sync_btn.setFixedHeight(32)
+        sync_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        sync_btn.setAccessibleName("Sync settings from the current scene")
+        sync_btn.clicked.connect(self.sync_backend)
+        layout.addWidget(sync_btn)
+        
+        val_btn = QtWidgets.QPushButton("  Validate")
+        val_btn.setObjectName("SecondaryBtn")
+        val_btn.setIcon(get_icon("shield-check", COLORS["secondary"], 13))
+        val_btn.setFixedHeight(32)
+        val_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        val_btn.setAccessibleName("Run scene validation checks")
+        val_btn.clicked.connect(lambda: self.select_page(2)) # Validation page
+        layout.addWidget(val_btn)
+        
+        self.submit_button = QtWidgets.QPushButton("  Submit Job")
+        self.submit_button.setObjectName("SubmitButton")
+        self.submit_button.setIcon(get_icon("send", COLORS["primary_fg"], 13))
+        self.submit_button.setCursor(QtCore.Qt.PointingHandCursor)
+        self.submit_button.setMinimumWidth(130)
+        self.submit_button.setFixedHeight(32)
+        self.submit_button.setAccessibleName("Submit render job to RenderHive")
+        layout.addWidget(self.submit_button)
+
+        settings_btn = QtWidgets.QPushButton()
+        settings_btn.setObjectName("SecondaryBtn")
+        settings_btn.setIcon(get_icon("settings", COLORS["secondary"], 14))
+        settings_btn.setFixedSize(32, 32)
+        settings_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        settings_btn.setToolTip("Submitter Settings")
+        settings_btn.setAccessibleName("Open RenderHive Submitter Settings")
+        settings_btn.clicked.connect(self.open_settings_dialog)
+        layout.addWidget(settings_btn)
+        
         return frame
 
     def _build_footer(self):
-        card = QtWidgets.QFrame(); card.setObjectName("FooterCard")
-        root = QtWidgets.QVBoxLayout(card); root.setContentsMargins(10, 8, 10, 8); root.setSpacing(6)
-        self.submit_button = QtWidgets.QPushButton("Submit Job"); self.submit_button.setObjectName("SubmitButton"); self.submit_button.setEnabled(False)
-        self.submit_button.setMinimumWidth(340); self.submit_button.setMaximumWidth(440); self.submit_button.setMinimumHeight(38)
-        row = QtWidgets.QHBoxLayout(); row.addStretch(); row.addWidget(self.submit_button); row.addStretch(); root.addLayout(row)
-        status_row = QtWidgets.QHBoxLayout()
-        self.status_dot = QtWidgets.QLabel("●"); self.status_text = QtWidgets.QLabel("Ready")
-        status_row.addWidget(self.status_dot); status_row.addWidget(self.status_text); status_row.addStretch(); status_row.addWidget(QtWidgets.QLabel("RenderHive"))
-        root.addLayout(status_row)
-        return card
+        frame = QtWidgets.QFrame()
+        frame.setObjectName("BottomStatusBar")
+        frame.setFixedHeight(48)
+
+        layout = QtWidgets.QHBoxLayout(frame)
+        layout.setContentsMargins(14, 0, 14, 0)
+        layout.setSpacing(8)
+        layout.setAlignment(QtCore.Qt.AlignVCenter)
+
+        self.status_chip = StatusChip("READY")
+        layout.addWidget(self.status_chip)
+
+        div0 = QtWidgets.QLabel("│")
+        div0.setObjectName("StatusBarDivider")
+        layout.addWidget(div0)
+
+        self.scene_label = QtWidgets.QLabel("Ready for submission")
+        self.scene_label.setObjectName("StatusBarHint")
+        layout.addWidget(self.scene_label, 1)
+
+        try:
+            import hou
+            _hou_ver = "Houdini {}".format(hou.applicationVersionString())
+        except Exception:
+            _hou_ver = "Houdini"
+        self.houdini_chip = QtWidgets.QLabel(_hou_ver)
+        self.houdini_chip.setObjectName("MetaChip")
+        layout.addWidget(self.houdini_chip)
+
+        self.renderer_chip = QtWidgets.QLabel("Renderer: Not Set")
+        self.renderer_chip.setObjectName("MetaChip")
+        layout.addWidget(self.renderer_chip)
+        
+        self.version_chip = QtWidgets.QLabel("v{}".format(__version__))
+        self.version_chip.setObjectName("MetaChip")
+        layout.addWidget(self.version_chip)
+
+        return frame
 
     def _restore_window_state(self):
         geometry = self.window_settings.value("geometry")
@@ -221,18 +340,73 @@ class MainWindow(QtWidgets.QWidget):
             pass
 
     def select_page(self, index):
-        self.page_stack.setCurrentIndex(index)
-        if 0 <= index < len(self.nav_buttons): self.nav_buttons[index].setChecked(True)
+        if self.page_stack is not None:
+            self.page_stack.setCurrentIndex(index)
+
+        icon_map = ["layers", "camera", "shield-check", "terminal"]
+        for button_index, button in enumerate(self.nav_buttons):
+            is_active = (button_index == index)
+            button.setChecked(is_active)
+            if button_index < len(icon_map):
+                color = COLORS["primary_fg"] if is_active else COLORS["muted"]
+                button.setIcon(get_icon(icon_map[button_index], color, 13))
 
     def _set_busy(self, busy):
-        # Connection/submission state is communicated by the footer status text
-        # and Submit button label.  Keep the footer clean instead of showing an
-        # indeterminate progress strip that does not represent real progress.
         self._busy = bool(busy)
 
-    def _set_status(self, text, level="good"):
-        self.status_text.setText(str(text)); apply_status_appearance(self.status_text, level); apply_status_appearance(self.status_dot, level)
-        if hasattr(self, "tools_page"): self.tools_page.append_activity(text)
+    def _infer_status_level(self, message):
+        value = str(message or "").lower()
+        if "error" in value or "failed" in value or "disconnected" in value or "refused" in value:
+            return "error"
+        if "warning" in value or "offline" in value or "unauthorized" in value:
+            return "warning"
+        if "complete" in value or "passed" in value or "saved" in value or "ready" in value or "loaded" in value or "good" in value:
+            return "good"
+        if "validat" in value or "sync" in value or "running" in value or "check" in value or "connecting" in value:
+            return "info"
+        return "good"
+
+    def _set_status(self, text, level=None):
+        level = level or self._infer_status_level(text)
+        msg_lower = str(text or "").lower()
+        color = {
+            "error": COLORS["error"],
+            "warning": COLORS["warning"],
+            "info": COLORS["info"],
+            "good": COLORS["success"],
+            "success": COLORS["success"],
+            "offline": COLORS["muted"],
+        }.get(level, COLORS["success"])
+
+        if hasattr(self, "status_chip"):
+            if "disconnect" in msg_lower or "refused" in msg_lower or "unreachable" in msg_lower:
+                self.status_chip.set_status("DISCONNECTED")
+            elif "offline" in msg_lower or level == "offline":
+                self.status_chip.set_status("OFFLINE")
+            elif "validat" in msg_lower and ("..." in str(text) or "running" in msg_lower):
+                self.status_chip.set_status("VALIDATING")
+            elif "submit" in msg_lower and ("..." in str(text) or "running" in msg_lower):
+                self.status_chip.set_status("SUBMITTING")
+            elif level == "error":
+                self.status_chip.set_status("ERROR")
+            elif level == "warning":
+                self.status_chip.set_status("WARNING")
+            elif level in ("good", "success"):
+                self.status_chip.set_status("READY")
+            elif level == "info":
+                self.status_chip.set_status("INFO")
+            else:
+                self.status_chip.set_status("READY")
+
+        if hasattr(self, "scene_label"):
+            self.scene_label.setText(str(text))
+            if level in ("error", "warning"):
+                self.scene_label.setStyleSheet("color: %s; font-size: 12px; font-weight: 600;" % color)
+            else:
+                self.scene_label.setStyleSheet("")
+
+        if hasattr(self, "tools_page"):
+            self.tools_page.append_activity(text)
         log_json(self.logger, "info", "ui_status", {"message": text, "level": level})
 
     def _initialize_api_status(self):
@@ -669,6 +843,11 @@ class MainWindow(QtWidgets.QWidget):
                 subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
         except Exception as error:
             self._set_status("Could not open folder: {}".format(error), "error")
+
+    def open_settings_dialog(self):
+        from renderhive_houdini.ui.settings_dialog import SettingsDialog
+        dialog = SettingsDialog(submitter_window=self, parent=self)
+        dialog.exec_()
 
     def create_support_bundle(self):
         try:
