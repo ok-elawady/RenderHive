@@ -102,17 +102,21 @@ Filename: "{app}\manager\RenderHiveServer.exe"; \
 
 [UninstallRun]
 Filename: "taskkill.exe"; Parameters: "/f /im RenderHiveServer.exe"; Flags: runhidden; RunOnceId: "KillManager"
-Filename: "sc.exe"; Parameters: "stop RenderHive-Nginx";    Flags: nowait runhidden; RunOnceId: "StopNginx"
-Filename: "sc.exe"; Parameters: "stop RenderHive-API";      Flags: nowait runhidden; RunOnceId: "StopAPI"
-Filename: "sc.exe"; Parameters: "stop RenderHive-AI";       Flags: nowait runhidden; RunOnceId: "StopAI"
-Filename: "sc.exe"; Parameters: "stop RenderHive-Redis";    Flags: nowait runhidden; RunOnceId: "StopRedis"
-Filename: "sc.exe"; Parameters: "stop RenderHive-Postgres"; Flags: nowait runhidden; RunOnceId: "StopPostgres"
-Filename: "timeout.exe"; Parameters: "/t 10 /nobreak";      Flags: runhidden; RunOnceId: "TimeoutWait"
-Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-Nginx    confirm"; Flags: runhidden; RunOnceId: "RemoveNginx"
-Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-API      confirm"; Flags: runhidden; RunOnceId: "RemoveAPI"
-Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-AI       confirm"; Flags: runhidden; RunOnceId: "RemoveAI"
-Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-Redis    confirm"; Flags: runhidden; RunOnceId: "RemoveRedis"
-Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-Postgres confirm"; Flags: runhidden; RunOnceId: "RemovePostgres"
+Filename: "sc.exe"; Parameters: "stop RenderHive-Nginx";         Flags: nowait runhidden; RunOnceId: "StopNginx"
+Filename: "sc.exe"; Parameters: "stop RenderHive-API";           Flags: nowait runhidden; RunOnceId: "StopAPI"
+Filename: "sc.exe"; Parameters: "stop RenderHive-Celery-Worker"; Flags: nowait runhidden; RunOnceId: "StopCeleryWorker"
+Filename: "sc.exe"; Parameters: "stop RenderHive-Celery-Beat";   Flags: nowait runhidden; RunOnceId: "StopCeleryBeat"
+Filename: "sc.exe"; Parameters: "stop RenderHive-AI";            Flags: nowait runhidden; RunOnceId: "StopAI"
+Filename: "sc.exe"; Parameters: "stop RenderHive-Redis";         Flags: nowait runhidden; RunOnceId: "StopRedis"
+Filename: "sc.exe"; Parameters: "stop RenderHive-Postgres";      Flags: nowait runhidden; RunOnceId: "StopPostgres"
+Filename: "timeout.exe"; Parameters: "/t 10 /nobreak";           Flags: runhidden; RunOnceId: "TimeoutWait"
+Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-Nginx         confirm"; Flags: runhidden; RunOnceId: "RemoveNginx"
+Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-API           confirm"; Flags: runhidden; RunOnceId: "RemoveAPI"
+Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-Celery-Worker confirm"; Flags: runhidden; RunOnceId: "RemoveCeleryWorker"
+Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-Celery-Beat   confirm"; Flags: runhidden; RunOnceId: "RemoveCeleryBeat"
+Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-AI            confirm"; Flags: runhidden; RunOnceId: "RemoveAI"
+Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-Redis         confirm"; Flags: runhidden; RunOnceId: "RemoveRedis"
+Filename: "{app}\nssm\nssm.exe"; Parameters: "remove RenderHive-Postgres      confirm"; Flags: runhidden; RunOnceId: "RemovePostgres"
 ; Clean up the hosts file entries added during install
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -Command ""$h = '{sys}\drivers\etc\hosts'; if (Test-Path $h) {{ $lines = Get-Content $h; $lines = $lines | Where-Object {{ $_ -notmatch 'renderhive\.local' }}; Set-Content -Path $h -Value $lines -Encoding ASCII }}"""; Flags: runhidden; RunOnceId: "CleanHosts"
 
@@ -185,7 +189,7 @@ var
 begin
   Result := '';
   TmpFile := ExpandConstant('{tmp}\ip.txt');
-  PSCmd := '(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias ''*Wi-Fi*'',''*Ethernet*'' -ErrorAction SilentlyContinue | Where-Object { $_.PrefixOrigin -ne ''WellKnown'' } | Select-Object -First 1).IPAddress | Out-File -FilePath ''' + TmpFile + ''' -Encoding ascii';
+  PSCmd := '$ip = try { (Find-NetRoute -RemoteIPAddress ''8.8.8.8'' -ErrorAction Stop).IPAddress } catch { (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceAlias -notmatch ''vEthernet|Virtual|Loopback|WSL'' -and $_.IPAddress -notmatch ''^(127\.|169\.254\.)'' } | Select-Object -ExpandProperty IPAddress -First 1) }; if ($ip) { $ip | Out-File -FilePath ''' + TmpFile + ''' -Encoding ascii }';
   
   Exec('powershell.exe', '-ExecutionPolicy Bypass -WindowStyle Hidden -Command "' + PSCmd + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   

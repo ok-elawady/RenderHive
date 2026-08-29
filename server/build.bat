@@ -122,6 +122,11 @@ pyinstaller ^
     --collect-submodules "drf_spectacular" ^
     --collect-submodules "django_celery_beat" ^
     --collect-submodules "django_redis" ^
+    --collect-submodules "celery" ^
+    --collect-submodules "kombu" ^
+    --collect-submodules "billiard" ^
+    --collect-submodules "vine" ^
+    --collect-submodules "amqp" ^
     --collect-submodules "apps" ^
     --hidden-import "waitress" ^
     --hidden-import "environ" ^
