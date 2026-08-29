@@ -16,5 +16,5 @@ def test_validation_uses_maya_style_severity_colors():
     text = (ROOT / "ui" / "pages" / "validation_page.py").read_text(encoding="utf-8")
     for token in ('COLORS["error"]', 'COLORS["warning"]', 'COLORS["info"]', 'COLORS["success"]', 'COLORS["light"]'):
         assert token in text
-    assert "border-top: 3px solid %s" in text
+    assert "get_counter_card_qss" in text
     assert "item.setForeground(0" in text

@@ -22,15 +22,48 @@ def version_from_source(root):
 def detect_pref_dirs(explicit):
     if explicit:
         return [Path(item).expanduser().resolve() for item in explicit]
-    documents = Path.home() / "Documents"
+    
+    candidates = [
+        Path.home() / "Documents",
+    ]
+    if os.name == "nt":
+        user_profile = os.environ.get("USERPROFILE")
+        if user_profile:
+            candidates.append(Path(user_profile) / "Documents")
+            candidates.append(Path(user_profile) / "OneDrive" / "Documents")
+        onedrive = os.environ.get("OneDrive")
+        if onedrive:
+            candidates.append(Path(onedrive) / "Documents")
+        onedrive_consumer = os.environ.get("OneDriveConsumer")
+        if onedrive_consumer:
+            candidates.append(Path(onedrive_consumer) / "Documents")
+
     found = []
-    if documents.is_dir():
-        for item in sorted(documents.glob("houdini*.*")):
-            if not item.is_dir():
-                continue
-            match = re.fullmatch(r"houdini(\d+\.\d+)", item.name, flags=re.IGNORECASE)
-            if match and match.group(1) in SUPPORTED:
-                found.append(item)
+    seen = set()
+    for doc_dir in candidates:
+        if doc_dir.is_dir():
+            for item in sorted(doc_dir.glob("houdini*.*")):
+                if not item.is_dir() or str(item) in seen:
+                    continue
+                match = re.fullmatch(r"houdini(\d+\.\d+)", item.name, flags=re.IGNORECASE)
+                if match and match.group(1) in SUPPORTED:
+                    found.append(item)
+                    seen.add(str(item))
+                    
+    # If no existing pref directory found, check installed Houdini versions in Program Files
+    if not found and os.name == "nt":
+        prog_files = Path(os.environ.get("PROGRAMFILES", "C:\\Program Files")) / "Side Effects Software"
+        primary_doc = candidates[0] if candidates[0].is_dir() else (Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Documents")
+        if prog_files.is_dir() and primary_doc.is_dir():
+            for h_dir in sorted(prog_files.glob("Houdini *")):
+                if h_dir.is_dir():
+                    m = re.search(r"(\d+\.\d+)", h_dir.name)
+                    if m and m.group(1) in SUPPORTED:
+                        target = primary_doc / f"houdini{m.group(1)}"
+                        target.mkdir(parents=True, exist_ok=True)
+                        found.append(target)
+                        seen.add(str(target))
+
     return found
 
 

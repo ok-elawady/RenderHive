@@ -6,6 +6,7 @@ import os
 import re
 
 from renderhive_houdini.ui.qt_compat import (
+    QtCore,
     QtWidgets,
     Signal,
     USER_ROLE,
@@ -109,8 +110,8 @@ class RenderPage(QtWidgets.QWidget):
         self._pending_selected_paths = []
 
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(20, 16, 20, 16)
-        root.setSpacing(14)
+        root.setContentsMargins(16, 12, 16, 12)
+        root.setSpacing(10)
         root.addWidget(PageHeader(
             "Render Configuration",
             "Choose one or more executable Houdini render sources. Each checked source becomes a backend RenderHive layer.",
@@ -125,6 +126,8 @@ class RenderPage(QtWidgets.QWidget):
         self.apply_preset_button = QtWidgets.QPushButton("  Apply Preset")
         self.apply_preset_button.setObjectName("PrimaryButton")
         self.apply_preset_button.setIcon(get_icon("sliders", COLORS["primary_fg"], 13))
+        self.apply_preset_button.setFixedHeight(30)
+        self.apply_preset_button.setCursor(QtCore.Qt.PointingHandCursor)
         self.apply_preset_button.clicked.connect(self.apply_preset)
         preset_row.addWidget(self.preset_combo, 1)
         preset_row.addWidget(self.apply_preset_button)

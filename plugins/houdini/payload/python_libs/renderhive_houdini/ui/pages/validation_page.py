@@ -47,13 +47,13 @@ def get_counter_card_qss(color, rgb, count=0):
         "border: 1px solid " + idle_border + ";"
         "border-radius: 6px;"
         "color: " + idle_color + ";"
-        "padding: 6px 8px;"
+        "padding: 4px 6px;"
         "margin: 0px;"
-        "font-size: 11px;"
+        "font-size: 10.5px;"
         "font-weight: " + font_weight + ";"
         "text-align: center;"
-        "min-height: 44px;"
-        "max-height: 44px;"
+        "min-height: 40px;"
+        "max-height: 40px;"
         "outline: none;"
         "}"
         "QPushButton#CounterCard:hover {"
@@ -85,6 +85,7 @@ class ValidationPage(QtWidgets.QWidget):
     selectNodeRequested = Signal(str)
     exportRequested = Signal(object)
     validationCompleted = Signal(object)
+    configureRulesRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -94,18 +95,37 @@ class ValidationPage(QtWidgets.QWidget):
         self._dependencies = None
         self._farm_context = None
         self._results = []
+        self._rule_overrides = {}
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(20, 16, 20, 16)
-        root.setSpacing(14)
+        root.setContentsMargins(16, 12, 16, 12)
+        root.setSpacing(10)
+
+        # Header action buttons on top right of the Page Title
+        header_actions = QtWidgets.QWidget()
+        header_row = QtWidgets.QHBoxLayout(header_actions)
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(6)
+
+        config_rules_btn = QtWidgets.QPushButton("  Configure Checks")
+        config_rules_btn.setObjectName("SecondaryBtn")
+        config_rules_btn.setIcon(get_icon("sliders", "#CBD5E1", 13))
+        config_rules_btn.setFixedHeight(30)
+        config_rules_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        config_rules_btn.setFocusPolicy(QtCore.Qt.NoFocus)
+        config_rules_btn.clicked.connect(self.configureRulesRequested.emit)
+        header_row.addWidget(config_rules_btn)
+
         rescan_btn = QtWidgets.QPushButton("  Re-scan Scene")
         rescan_btn.setObjectName("SecondaryBtn")
+        rescan_btn.setIcon(get_icon("shield-check", "#CBD5E1", 13))
         rescan_btn.setFixedHeight(30)
         rescan_btn.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
         rescan_btn.setCursor(QtCore.Qt.PointingHandCursor)
         rescan_btn.setFocusPolicy(QtCore.Qt.NoFocus)
         rescan_btn.clicked.connect(self.run_validation)
+        header_row.addWidget(rescan_btn)
         
-        root.addWidget(PageHeader("Scene Validation", "Errors block submission. Safe issues can be fixed automatically.", action_widget=rescan_btn))
+        root.addWidget(PageHeader("Scene Validation", "Errors block submission. Safe issues can be fixed automatically.", action_widget=header_actions))
 
         # 1. Top Severity Counter Tabs
         counters = QtWidgets.QHBoxLayout()
@@ -155,8 +175,8 @@ class ValidationPage(QtWidgets.QWidget):
 
         self.category_filter = QtWidgets.QComboBox()
         self.category_filter.addItem("All")
-        self.category_filter.setMinimumWidth(150)
-        self.category_filter.setFixedHeight(28)
+        self.category_filter.setMinimumWidth(120)
+        self.category_filter.setFixedHeight(26)
         self.category_filter.currentIndexChanged.connect(self.refresh_filters)
 
         category_container = QtWidgets.QWidget()
@@ -315,6 +335,12 @@ class ValidationPage(QtWidgets.QWidget):
         self.category_filter.setCurrentIndex(index if index >= 0 else 0)
         self.category_filter.blockSignals(False)
 
+    def set_rule_overrides(self, overrides):
+        self._rule_overrides = dict(overrides or {})
+
+    def rule_overrides(self):
+        return dict(self._rule_overrides)
+
     def run_validation(self):
         if self._context is None:
             return []
@@ -324,6 +350,7 @@ class ValidationPage(QtWidgets.QWidget):
             nodes=self._render_nodes,
             dependencies=self._dependencies,
             farm_context=self._farm_context,
+            rule_overrides=self._rule_overrides,
         ))
         self.validationCompleted.emit(list(self._results))
         return list(self._results)

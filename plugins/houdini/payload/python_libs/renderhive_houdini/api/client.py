@@ -59,7 +59,11 @@ class RenderHiveApiClient(object):
         if path.startswith(("http://", "https://")):
             self._assert_safe_url(path, source="endpoint '{}'".format(name))
             return path
-        return "{}/{}".format(self.base_url.rstrip("/"), path.lstrip("/"))
+        base = self.base_url.rstrip("/")
+        norm_path = "/" + path.lstrip("/")
+        if base.endswith("/api") and norm_path.startswith("/api/"):
+            norm_path = norm_path[4:]
+        return "{}/{}".format(base, norm_path.lstrip("/"))
 
     @staticmethod
     def _origin(url):

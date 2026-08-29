@@ -185,6 +185,12 @@ class MainWindow(QtWidgets.QWidget):
         self.job_page.syncSceneRequested.connect(lambda: self.refresh_context(scan_nodes=True))
         self.job_page.browseDependenciesRequested.connect(self.open_job_dependency_browser)
         self.tools_page.openRuntimeLogsRequested.connect(lambda: self._open_folder(runtime_logs_dir()))
+        self.tools_page.createSupportBundleRequested.connect(self.create_support_bundle)
+        self.tools_page.runProductionCheckRequested.connect(self.run_production_check)
+        self.tools_page.resetSceneStateRequested.connect(self.reset_scene_state)
+        self.tools_page.uninstallRequested.connect(self.uninstall_plugin)
+        self.tools_page.retryConnectionRequested.connect(self.sync_backend)
+        self.validation_page.configureRulesRequested.connect(self.open_validation_rules_dialog)
         self.validation_page.autoFixRequested.connect(self.apply_selected_fix)
         self.validation_page.autoFixAllRequested.connect(self.apply_safe_fixes)
         self.validation_page.selectNodeRequested.connect(self.select_houdini_node)
@@ -196,7 +202,7 @@ class MainWindow(QtWidgets.QWidget):
     def _build_header(self):
         frame = QtWidgets.QFrame()
         frame.setObjectName("TopHeaderBar")
-        frame.setFixedHeight(50)
+        frame.setFixedHeight(48)
 
         layout = QtWidgets.QHBoxLayout(frame)
         layout.setContentsMargins(14, 9, 14, 9)
@@ -206,7 +212,7 @@ class MainWindow(QtWidgets.QWidget):
         # ── Segmented Pill Nav Container (left) ──
         nav_container = QtWidgets.QFrame()
         nav_container.setObjectName("NavSegmentContainer")
-        nav_container.setFixedHeight(32)
+        nav_container.setFixedHeight(30)
         nav_layout = QtWidgets.QHBoxLayout(nav_container)
         nav_layout.setContentsMargins(2, 2, 2, 2)
         nav_layout.setSpacing(2)
@@ -216,22 +222,23 @@ class MainWindow(QtWidgets.QWidget):
         nav_group.setExclusive(True)
 
         pages = [
-            ("layers",       "Job"),
-            ("camera",       "Render"),
-            ("shield-check", "Validation"),
-            ("terminal",     "Logs"),
+            ("layers", "Targeting", "Configure job name, priority, and worker pool targets"),
+            ("camera", "Render", "Select active render source nodes and resolution"),
+            ("shield-check", "Validation", "Validate scene setup before farm dispatch"),
+            ("terminal", "Tools", "View submitter logs, support bundles, and settings"),
         ]
         
-        for idx, (icon_name, label) in enumerate(pages):
+        for idx, (icon_name, label, tooltip) in enumerate(pages):
             btn = QtWidgets.QPushButton("  " + label)
             btn.setObjectName("SegmentNavBtn")
+            btn.setIcon(get_icon(icon_name, COLORS["muted"], 13))
             btn.setCheckable(True)
-            btn.setFixedHeight(28)
-            btn.setFocusPolicy(QtCore.Qt.NoFocus)
-            btn.setIcon(get_icon(icon_name, COLORS["primary_fg"] if idx == 0 else COLORS["muted"], 13))
             btn.setCursor(QtCore.Qt.PointingHandCursor)
-            btn.setAccessibleName(label + " page")
-            btn.clicked.connect(lambda checked=False, page_idx=idx: self.select_page(page_idx))
+            btn.setFocusPolicy(QtCore.Qt.NoFocus)
+            btn.setFixedHeight(24)
+            btn.setToolTip(tooltip)
+            btn.setAccessibleName("Switch to {} page".format(label))
+            btn.clicked.connect(lambda checked=False, i=idx: self.select_page(i))
             nav_group.addButton(btn, idx)
             nav_layout.addWidget(btn)
             self.nav_buttons.append(btn)
@@ -247,8 +254,9 @@ class MainWindow(QtWidgets.QWidget):
         sync_btn = QtWidgets.QPushButton("  Sync")
         sync_btn.setObjectName("SecondaryBtn")
         sync_btn.setIcon(get_icon("refresh", COLORS["secondary"], 13))
-        sync_btn.setFixedHeight(32)
+        sync_btn.setFixedHeight(30)
         sync_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        sync_btn.setFocusPolicy(QtCore.Qt.NoFocus)
         sync_btn.setAccessibleName("Sync settings from the current scene")
         sync_btn.clicked.connect(self.sync_backend)
         layout.addWidget(sync_btn)
@@ -256,26 +264,29 @@ class MainWindow(QtWidgets.QWidget):
         val_btn = QtWidgets.QPushButton("  Validate")
         val_btn.setObjectName("SecondaryBtn")
         val_btn.setIcon(get_icon("shield-check", COLORS["secondary"], 13))
-        val_btn.setFixedHeight(32)
+        val_btn.setFixedHeight(30)
         val_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        val_btn.setFocusPolicy(QtCore.Qt.NoFocus)
         val_btn.setAccessibleName("Run scene validation checks")
-        val_btn.clicked.connect(lambda: self.select_page(2)) # Validation page
+        val_btn.clicked.connect(self.validate_scene)
         layout.addWidget(val_btn)
         
         self.submit_button = QtWidgets.QPushButton("  Submit Job")
         self.submit_button.setObjectName("SubmitButton")
         self.submit_button.setIcon(get_icon("send", COLORS["primary_fg"], 13))
         self.submit_button.setCursor(QtCore.Qt.PointingHandCursor)
+        self.submit_button.setFocusPolicy(QtCore.Qt.NoFocus)
         self.submit_button.setMinimumWidth(130)
-        self.submit_button.setFixedHeight(32)
+        self.submit_button.setFixedHeight(30)
         self.submit_button.setAccessibleName("Submit render job to RenderHive")
         layout.addWidget(self.submit_button)
 
         settings_btn = QtWidgets.QPushButton()
         settings_btn.setObjectName("SecondaryBtn")
         settings_btn.setIcon(get_icon("settings", COLORS["secondary"], 14))
-        settings_btn.setFixedSize(32, 32)
+        settings_btn.setFixedSize(30, 30)
         settings_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        settings_btn.setFocusPolicy(QtCore.Qt.NoFocus)
         settings_btn.setToolTip("Submitter Settings")
         settings_btn.setAccessibleName("Open RenderHive Submitter Settings")
         settings_btn.clicked.connect(self.open_settings_dialog)
@@ -286,7 +297,7 @@ class MainWindow(QtWidgets.QWidget):
     def _build_footer(self):
         frame = QtWidgets.QFrame()
         frame.setObjectName("BottomStatusBar")
-        frame.setFixedHeight(48)
+        frame.setFixedHeight(44)
 
         layout = QtWidgets.QHBoxLayout(frame)
         layout.setContentsMargins(14, 0, 14, 0)
@@ -417,7 +428,12 @@ class MainWindow(QtWidgets.QWidget):
             self.tools_page.set_connection_error(self.api_config_error, "Now"); self.job_page.set_backend_error(self.api_config_error)
 
     def _scene_state_payload(self):
-        return {"schema_version": 3, "job": self.job_page.state_values(), "render": self.render_page.state_values()}
+        return {
+            "schema_version": 3,
+            "job": self.job_page.state_values(),
+            "render": self.render_page.state_values(),
+            "validation_rule_overrides": self.validation_page.rule_overrides(),
+        }
 
     def save_scene_state(self):
         if self._restoring_state or self._context is None:
@@ -436,6 +452,7 @@ class MainWindow(QtWidgets.QWidget):
         self._restoring_state = True
         try:
             self.job_page.apply_state(data.get("job") or {})
+            self.validation_page.set_rule_overrides(data.get("validation_rule_overrides") or {})
             render_state = data.get("render") or {}
             self._pending_render_state = render_state
             node_path = str(render_state.get("render_node_path") or "")
@@ -700,6 +717,10 @@ class MainWindow(QtWidgets.QWidget):
         self.validation_page.set_farm_context(self._farm_validation_context(nodes))
         return self.validation_page.run_validation()
 
+    def validate_scene(self):
+        self.select_page(2)
+        return self.run_full_validation()
+
     def submit_job(self):
         results = self.run_full_validation()
         errors = [item for item in results if item.blocks_submission]
@@ -847,7 +868,19 @@ class MainWindow(QtWidgets.QWidget):
     def open_settings_dialog(self):
         from renderhive_houdini.ui.settings_dialog import SettingsDialog
         dialog = SettingsDialog(submitter_window=self, parent=self)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
         dialog.exec_()
+
+    def open_validation_rules_dialog(self):
+        from renderhive_houdini.ui.validation_rules_dialog import ValidationRulesDialog
+        dialog = ValidationRulesDialog(current_overrides=self.validation_page.rule_overrides(), parent=self)
+        if dialog_exec(dialog):
+            self.validation_page.set_rule_overrides(dialog.rule_overrides)
+            self.save_scene_state()
+            self.run_full_validation()
+            self._set_status("Validation rules updated ({} override(s)).".format(len(dialog.rule_overrides)), "good")
 
     def create_support_bundle(self):
         try:
