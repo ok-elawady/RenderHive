@@ -89,11 +89,13 @@ StatusChip.STYLES.update({
 APP_VERSION = "1.0.0"
 
 SERVICES = {
-    "PostgreSQL":  "RenderHive-Postgres",
-    "Redis":       "RenderHive-Redis",
-    "API Server":  "RenderHive-API",
-    "nginx":       "RenderHive-Nginx",
-    "AI Service":  "RenderHive-AI",
+    "PostgreSQL":    "RenderHive-Postgres",
+    "Redis":         "RenderHive-Redis",
+    "API Server":    "RenderHive-API",
+    "Celery Worker": "RenderHive-Celery-Worker",
+    "Celery Beat":   "RenderHive-Celery-Beat",
+    "nginx":         "RenderHive-Nginx",
+    "AI Service":    "RenderHive-AI",
 }
 
 DASHBOARD_URL = "http://renderhive.local"
@@ -177,6 +179,55 @@ def auto_elevate():
             args = " ".join(shlex.quote(arg) for arg in sys.argv)
             ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, args, None, 1)
         sys.exit(0)
+
+
+def ensure_local_hosts():
+    """Ensure renderhive.local and server.renderhive.local are mapped to 127.0.0.1 on the server machine."""
+    hosts_path = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "drivers" / "etc" / "hosts"
+    if not hosts_path.exists():
+        return
+    try:
+        content = hosts_path.read_text(encoding="utf-8", errors="ignore")
+        lines = content.splitlines()
+
+        target_domains = {
+            "renderhive.local": "127.0.0.1 renderhive.local",
+            "server.renderhive.local": "127.0.0.1 server.renderhive.local",
+        }
+
+        new_lines = []
+        found_domains = set()
+        modified = False
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("#") or not stripped:
+                new_lines.append(line)
+                continue
+
+            parts = stripped.split()
+            if len(parts) >= 2:
+                ip, domain = parts[0], parts[1].lower()
+                if domain in target_domains:
+                    found_domains.add(domain)
+                    # If pointing to a virtual adapter (e.g. 172.x) or not 127.0.0.1, fix it
+                    if ip != "127.0.0.1":
+                        new_lines.append(target_domains[domain])
+                        modified = True
+                    else:
+                        new_lines.append(line)
+                    continue
+            new_lines.append(line)
+
+        for domain, correct_entry in target_domains.items():
+            if domain not in found_domains:
+                new_lines.append(correct_entry)
+                modified = True
+
+        if modified:
+            hosts_path.write_text("\n".join(new_lines) + "\n", encoding="ascii")
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -460,10 +511,15 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(self.style().standardIcon(self.style().StandardPixmap.SP_ComputerIcon))
 
         self._quitting = False
+        ensure_local_hosts()
         self._setup_tray(icon_path)
         self._build_ui(icon_path)
         self._apply_native_dwm_styling()
         self._start_poller()
+
+    def _open_dashboard(self):
+        ensure_local_hosts()
+        webbrowser.open(DASHBOARD_URL)
 
     def _setup_tray(self, icon_path: str):
         self.tray = QSystemTrayIcon(self)
@@ -478,7 +534,7 @@ class MainWindow(QMainWindow):
         tray_menu.addAction(show_act)
 
         dashboard_act = QAction("Open Dashboard", self)
-        dashboard_act.triggered.connect(lambda: webbrowser.open(DASHBOARD_URL))
+        dashboard_act.triggered.connect(self._open_dashboard)
         tray_menu.addAction(dashboard_act)
 
         tray_menu.addSeparator()
@@ -607,7 +663,7 @@ class MainWindow(QMainWindow):
         self.dashboard_btn = QPushButton("  Open Dashboard")
         self.dashboard_btn.setIcon(get_icon("external-link", "#080A0F", 14))
         self.dashboard_btn.setCursor(Qt.PointingHandCursor)
-        self.dashboard_btn.clicked.connect(lambda: webbrowser.open(DASHBOARD_URL))
+        self.dashboard_btn.clicked.connect(self._open_dashboard)
         self.dashboard_btn.setEnabled(False) # Default disabled until poller fires
         header_layout.addWidget(self.dashboard_btn)
 
@@ -854,10 +910,12 @@ class MainWindow(QMainWindow):
 
     def _tail_logs(self):
         log_files = {
-            "API":      LOG_DIR / "api.log",
-            "nginx":    LOG_DIR / "nginx-error.log",
-            "Postgres": LOG_DIR / "postgres-stderr.log",
-            "Redis":    LOG_DIR / "redis-stderr.log",
+            "API":           LOG_DIR / "api.log",
+            "Celery Worker": LOG_DIR / "celery-worker.log",
+            "Celery Beat":   LOG_DIR / "celery-beat.log",
+            "nginx":         LOG_DIR / "nginx-error.log",
+            "Postgres":      LOG_DIR / "postgres-stderr.log",
+            "Redis":         LOG_DIR / "redis-stderr.log",
         }
         new_text = []
         for name, path in log_files.items():
@@ -893,6 +951,7 @@ class MainWindow(QMainWindow):
         if not is_admin():
             RenderHiveMessageDialog.show_message(self, "Admin Required", "Starting services requires Administrator privileges.", icon_name="warning")
             return
+        ensure_local_hosts()
         for svc_name in SERVICES.values():
             start_service(svc_name)
 

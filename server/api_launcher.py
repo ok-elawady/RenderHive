@@ -102,6 +102,32 @@ def main():
         call_command("collectstatic", interactive=False)
         return 0
 
+    elif cmd in ("--celery-worker", "celery-worker", "celery_worker", "worker"):
+        import apps.workers.tasks
+        import apps.jobs.tasks
+        import apps.telemetry.tasks
+        from config.celery import app as celery_app
+
+        worker_args = ["worker", "-l", "INFO", "-P", "solo"]
+        if len(args) > 1:
+            worker_args.extend(args[1:])
+        print(f"Starting RenderHive Celery Worker ({' '.join(worker_args)})...")
+        celery_app.worker_main(argv=worker_args)
+        return 0
+
+    elif cmd in ("--celery-beat", "celery-beat", "celery_beat", "beat"):
+        import apps.workers.tasks
+        import apps.jobs.tasks
+        import apps.telemetry.tasks
+        from config.celery import app as celery_app
+
+        beat_args = ["beat", "-l", "INFO", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
+        if len(args) > 1:
+            beat_args.extend(args[1:])
+        print(f"Starting RenderHive Celery Beat ({' '.join(beat_args)})...")
+        celery_app.start(argv=beat_args)
+        return 0
+
     elif cmd == "--manage":
         # Forward custom management arguments: api_launcher.exe --manage check
         execute_from_command_line([sys.argv[0]] + args[1:])

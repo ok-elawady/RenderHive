@@ -487,6 +487,52 @@ if ($existingApi -match "SERVICE_NAME") {
 Write-OK "API service registered."
 
 # ---------------------------------------------------------------------------
+# Step 12.1: Register Celery Worker service
+# ---------------------------------------------------------------------------
+
+Write-Step "Registering Celery Worker Windows service (RenderHive-Celery-Worker)..."
+
+$celeryWorkerSvcName = "RenderHive-Celery-Worker"
+$existingWorker = sc.exe query $celeryWorkerSvcName 2>$null
+if ($existingWorker -match "SERVICE_NAME") {
+    sc.exe stop $celeryWorkerSvcName 2>$null | Out-Null
+    Start-Sleep -Seconds 2
+    & $NssmExe remove $celeryWorkerSvcName confirm 2>&1 | Out-Null
+}
+
+& $NssmExe install $celeryWorkerSvcName $ApiExe "--celery-worker"
+& $NssmExe set $celeryWorkerSvcName AppDirectory  (Split-Path $ApiExe)
+& $NssmExe set $celeryWorkerSvcName DisplayName   "RenderHive Celery Worker"
+& $NssmExe set $celeryWorkerSvcName Description   "Celery background task worker for RenderHive"
+& $NssmExe set $celeryWorkerSvcName Start         SERVICE_AUTO_START
+& $NssmExe set $celeryWorkerSvcName AppStdout     "$LogDir\celery-worker.log"
+& $NssmExe set $celeryWorkerSvcName AppStderr     "$LogDir\celery-worker-error.log"
+Write-OK "Celery Worker service registered."
+
+# ---------------------------------------------------------------------------
+# Step 12.2: Register Celery Beat service
+# ---------------------------------------------------------------------------
+
+Write-Step "Registering Celery Beat Windows service (RenderHive-Celery-Beat)..."
+
+$celeryBeatSvcName = "RenderHive-Celery-Beat"
+$existingBeat = sc.exe query $celeryBeatSvcName 2>$null
+if ($existingBeat -match "SERVICE_NAME") {
+    sc.exe stop $celeryBeatSvcName 2>$null | Out-Null
+    Start-Sleep -Seconds 2
+    & $NssmExe remove $celeryBeatSvcName confirm 2>&1 | Out-Null
+}
+
+& $NssmExe install $celeryBeatSvcName $ApiExe "--celery-beat"
+& $NssmExe set $celeryBeatSvcName AppDirectory  (Split-Path $ApiExe)
+& $NssmExe set $celeryBeatSvcName DisplayName   "RenderHive Celery Beat"
+& $NssmExe set $celeryBeatSvcName Description   "Celery periodic task scheduler for RenderHive"
+& $NssmExe set $celeryBeatSvcName Start         SERVICE_AUTO_START
+& $NssmExe set $celeryBeatSvcName AppStdout     "$LogDir\celery-beat.log"
+& $NssmExe set $celeryBeatSvcName AppStderr     "$LogDir\celery-beat-error.log"
+Write-OK "Celery Beat service registered."
+
+# ---------------------------------------------------------------------------
 # Step 12.5: Register AI Service
 # ---------------------------------------------------------------------------
 
@@ -510,13 +556,15 @@ if ($existingAi -match "SERVICE_NAME") {
 Write-OK "AI service registered."
 
 # ---------------------------------------------------------------------------
-# Step 13: Start nginx, API, and AI services
+# Step 13: Start all services
 # ---------------------------------------------------------------------------
 
 Write-Step "Starting all services..."
-sc.exe start $apiSvcName   | Out-Null
-sc.exe start $aiSvcName    | Out-Null
-sc.exe start $nginxSvcName | Out-Null
+sc.exe start $apiSvcName          | Out-Null
+sc.exe start $celeryWorkerSvcName | Out-Null
+sc.exe start $celeryBeatSvcName   | Out-Null
+sc.exe start $aiSvcName           | Out-Null
+sc.exe start $nginxSvcName        | Out-Null
 Start-Sleep -Seconds 3
 Write-OK "All services started."
 
@@ -530,8 +578,8 @@ $hostsPath = "$env:windir\System32\drivers\etc\hosts"
 $hostsContent = Get-Content $hostsPath -Raw
 
 $entries = @(
-    "$ServerIP renderhive.local",
-    "$ServerIP server.renderhive.local"
+    "127.0.0.1 renderhive.local",
+    "127.0.0.1 server.renderhive.local"
 )
 
 foreach ($entry in $entries) {

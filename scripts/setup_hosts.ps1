@@ -38,6 +38,15 @@ foreach ($Entry in $Entries) {
     # Check if the exact domain is already mapped to the requested IP
     if ($HostsContent -match "(?m)^[ \t]*$([regex]::Escape($ServerIP))[ \t]+$([regex]::Escape($Domain))[ \t]*$") {
         Write-Host " [SKIP] $Domain is already mapped to $ServerIP."
+    } elseif ($HostsContent -match "(?m)^[ \t]*[^\s#]+[ \t]+$([regex]::Escape($Domain))[ \t]*$") {
+        $HostsContent = [regex]::Replace(
+            $HostsContent,
+            "(?m)^[ \t]*[^\s#]+[ \t]+$([regex]::Escape($Domain))[ \t]*$",
+            $Entry
+        )
+        Set-Content -Path $HostsPath -Value $HostsContent -Encoding ASCII
+        Write-Host " [UPDATED] $Domain -> $ServerIP"
+        $Added = $true
     } else {
         Add-Content -Path $HostsPath -Value $Entry
         Write-Host " [ADDED] $Entry"
