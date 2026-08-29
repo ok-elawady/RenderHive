@@ -5,13 +5,14 @@ from __future__ import absolute_import
 from renderhive_houdini.ui.qt_compat import (
     QtWidgets,
     QtGui,
+    QtCore,
     Signal,
     USER_ROLE,
     HEADER_STRETCH,
     HEADER_RESIZE_TO_CONTENTS,
-    ALIGN_CENTER,
 )
-from renderhive_houdini.ui.widgets import PageHeader, SectionCard, LabeledField, InlineStatus
+from renderhive_houdini.ui.icons import get_icon
+from renderhive_houdini.ui.widgets import PageHeader, SectionCard, InlineStatus
 from renderhive_houdini.ui.theme import COLORS
 from renderhive_houdini.validation.validator import validate, summary
 from renderhive_houdini.validation.auto_fix import can_fix_result, collect_batch_safe, fix_label
@@ -24,6 +25,54 @@ SEVERITY_COLORS = {
     "PASSED": COLORS["success"],
     "TOTAL": COLORS["light"],
 }
+
+
+
+def get_counter_card_qss(color, rgb, count=0):
+    """Generate clean uniform 4-sided styling with matching category selection border."""
+    if count > 0:
+        idle_bg = "rgba({}, 0.08)".format(rgb)
+        idle_border = "rgba({}, 0.38)".format(rgb)
+        idle_color = color
+        font_weight = "700"
+    else:
+        idle_bg = COLORS["surface2"]
+        idle_border = COLORS["border_card"]
+        idle_color = COLORS["muted"]
+        font_weight = "600"
+
+    return (
+        "QPushButton#CounterCard {"
+        "background-color: " + idle_bg + ";"
+        "border: 1px solid " + idle_border + ";"
+        "border-radius: 6px;"
+        "color: " + idle_color + ";"
+        "padding: 6px 8px;"
+        "margin: 0px;"
+        "font-size: 11px;"
+        "font-weight: " + font_weight + ";"
+        "text-align: center;"
+        "min-height: 44px;"
+        "max-height: 44px;"
+        "outline: none;"
+        "}"
+        "QPushButton#CounterCard:hover {"
+        "background-color: rgba(" + rgb + ", 0.14);"
+        "border: 1px solid " + color + ";"
+        "color: #FFFFFF;"
+        "outline: none;"
+        "}"
+        "QPushButton#CounterCard:checked {"
+        "background-color: rgba(" + rgb + ", 0.22);"
+        "border: 2px solid " + color + ";"
+        "color: #FFFFFF;"
+        "font-weight: 700;"
+        "outline: none;"
+        "}"
+        "QPushButton#CounterCard:focus {"
+        "outline: none;"
+        "}"
+    )
 
 
 def _severity_color(level):
@@ -46,46 +95,91 @@ class ValidationPage(QtWidgets.QWidget):
         self._farm_context = None
         self._results = []
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(8, 4, 8, 8)
-        root.setSpacing(10)
-        root.addWidget(PageHeader("Scene Validation", "Errors block submission. Safe issues can be fixed automatically."))
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(14)
+        rescan_btn = QtWidgets.QPushButton("  Re-scan Scene")
+        rescan_btn.setObjectName("SecondaryBtn")
+        rescan_btn.setFixedHeight(30)
+        rescan_btn.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        rescan_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        rescan_btn.setFocusPolicy(QtCore.Qt.NoFocus)
+        rescan_btn.clicked.connect(self.run_validation)
+        
+        root.addWidget(PageHeader("Scene Validation", "Errors block submission. Safe issues can be fixed automatically.", action_widget=rescan_btn))
 
-        summary_card = SectionCard("Validation Summary", "Select a counter to filter the results table.")
-        summary_grid = QtWidgets.QHBoxLayout()
-        summary_grid.setSpacing(6)
+        # 1. Top Severity Counter Tabs
+        counters = QtWidgets.QHBoxLayout()
+        counters.setContentsMargins(0, 0, 0, 0)
+        counters.setSpacing(6)
+        counters.setAlignment(QtCore.Qt.AlignTop)
+        
+        counter_group = QtWidgets.QButtonGroup(self)
+        counter_group.setExclusive(True)
         self.summary_buttons = {}
-        for key in ("ERROR", "WARNING", "INFO", "PASSED", "TOTAL"):
-            button = QtWidgets.QPushButton("{}\n0".format(key.title()))
+        
+        counter_specs = [
+            ("ERROR", "ERRORS", COLORS["error"], "248, 113, 113"),
+            ("WARNING", "WARNINGS", COLORS["warning"], "251, 191, 36"),
+            ("INFO", "INFO", COLORS["info"], "77, 163, 255"),
+            ("PASSED", "PASSED", COLORS["success"], "74, 222, 128"),
+            ("TOTAL", "ALL CHECKS", COLORS["primary"], "156, 115, 242"),
+        ]
+        
+        for key, title, color, rgb in counter_specs:
+            button = QtWidgets.QPushButton("{}\n0".format(title))
             button.setObjectName("CounterCard")
-            button.setMinimumHeight(48)
-            button.setStyleSheet(
-                "QPushButton#CounterCard { border-top: 3px solid %s; }"
-                % _severity_color(key)
-            )
+            button.setCheckable(True)
+            button.setCursor(QtCore.Qt.PointingHandCursor)
+            button.setFocusPolicy(QtCore.Qt.NoFocus)
+            button.setStyleSheet(get_counter_card_qss(color, rgb, count=0))
             button.clicked.connect(lambda checked=False, value=key: self._set_severity(value))
+            counter_group.addButton(button)
             self.summary_buttons[key] = button
-            summary_grid.addWidget(button, 1)
-        summary_card.layout.addLayout(summary_grid)
+            if key == "TOTAL":
+                button.setChecked(True)
+            counters.addWidget(button, 1)
+            
+        root.addLayout(counters)
 
-        filters = SectionCard("Filter Results")
-        filter_grid = QtWidgets.QGridLayout()
-        filter_grid.setHorizontalSpacing(10)
         self.severity_filter = QtWidgets.QComboBox()
+        self.severity_filter.setVisible(False)
         self.severity_filter.addItems(("All", "ERROR", "WARNING", "INFO", "PASSED"))
+        self.severity_filter.currentIndexChanged.connect(self.refresh_filters)
+        self.severity_filter.currentIndexChanged.connect(
+            lambda: [
+                b.setChecked(True)
+                for k, b in getattr(self, "summary_buttons", {}).items()
+                if k == self.severity_filter.currentText() and not b.isChecked()
+            ]
+        )
+
         self.category_filter = QtWidgets.QComboBox()
         self.category_filter.addItem("All")
+        self.category_filter.setMinimumWidth(150)
+        self.category_filter.setFixedHeight(28)
+        self.category_filter.currentIndexChanged.connect(self.refresh_filters)
+
+        category_container = QtWidgets.QWidget()
+        cat_layout = QtWidgets.QHBoxLayout(category_container)
+        cat_layout.setContentsMargins(0, 0, 0, 0)
+        cat_layout.setSpacing(6)
+        cat_lbl = QtWidgets.QLabel("Category:")
+        cat_lbl.setObjectName("MutedText")
+        cat_layout.addWidget(cat_lbl)
+        cat_layout.addWidget(self.category_filter)
+
+        results_card = SectionCard(
+            "Validation Results", 
+            "Inspected scene nodes, shaders, cameras and output settings.",
+            action_widget=category_container
+        )
+        
         self.search = QtWidgets.QLineEdit()
         self.search.setPlaceholderText("Search message, node, category or code")
-        self.severity_filter.currentIndexChanged.connect(self.refresh_filters)
-        self.category_filter.currentIndexChanged.connect(self.refresh_filters)
         self.search.textChanged.connect(self.refresh_filters)
-        filter_grid.addWidget(LabeledField("Severity", self.severity_filter), 0, 0)
-        filter_grid.addWidget(LabeledField("Category", self.category_filter), 0, 1)
-        filter_grid.addWidget(LabeledField("Search", self.search), 0, 2)
-        filter_grid.setColumnStretch(0, 1); filter_grid.setColumnStretch(1, 1); filter_grid.setColumnStretch(2, 2)
-        filters.layout.addLayout(filter_grid)
-
-        results_card = SectionCard("Results", "Double-click a result to select its Houdini node when available.")
+        self.search.setVisible(False)
+        results_card.layout.addWidget(self.search)
+        
         self.status = InlineStatus("Validation has not been run.", "neutral")
         results_card.layout.addWidget(self.status)
         self.table = QtWidgets.QTreeWidget()
@@ -106,42 +200,77 @@ class ValidationPage(QtWidgets.QWidget):
         self.details = QtWidgets.QFrame()
         self.details.setObjectName("DetailsCard")
         details_layout = QtWidgets.QVBoxLayout(self.details)
-        details_layout.setContentsMargins(10, 8, 10, 8)
-        self.details_title = QtWidgets.QLabel("Selected Result")
+        details_layout.setContentsMargins(14, 10, 14, 10)
+        details_layout.setSpacing(4)
+        
+        details_top = QtWidgets.QHBoxLayout()
+        self.details_title = QtWidgets.QLabel("Selected Issue Details")
         self.details_title.setObjectName("SectionTitle")
-        self.details_message = QtWidgets.QLabel("Select a result to inspect it.")
+        details_top.addWidget(self.details_title)
+        details_top.addStretch()
+        
+        self.details_badge = QtWidgets.QLabel("NONE")
+        self.details_badge.setObjectName("MetaChip")
+        details_top.addWidget(self.details_badge)
+        details_layout.addLayout(details_top)
+        
+        self.details_message = QtWidgets.QLabel("Select a result to view its details.")
+        self.details_message.setObjectName("SecondaryText")
         self.details_message.setWordWrap(True)
-        self.details_meta = QtWidgets.QLabel("")
-        self.details_meta.setObjectName("SceneMeta")
-        self.details_meta.setWordWrap(True)
-        details_layout.addWidget(self.details_title)
         details_layout.addWidget(self.details_message)
+        
+        self.details_meta = QtWidgets.QLabel("")
+        self.details_meta.setObjectName("MutedText")
+        self.details_meta.setWordWrap(True)
         details_layout.addWidget(self.details_meta)
+        
         self.details.setVisible(False)
         results_card.layout.addWidget(self.details)
-
+        
         actions = QtWidgets.QHBoxLayout()
-        self.validate_button = QtWidgets.QPushButton("Validate Scene")
-        self.validate_button.setObjectName("PrimaryButton")
-        self.fix_selected_button = QtWidgets.QPushButton("Fix Selected")
-        self.fix_all_button = QtWidgets.QPushButton("Fix All Safe")
-        self.select_button = QtWidgets.QPushButton("Select Node")
-        self.export_button = QtWidgets.QPushButton("Export Report")
-        self.clear_button = QtWidgets.QPushButton("Clear Results")
-        self.validate_button.clicked.connect(self.run_validation)
-        self.fix_selected_button.clicked.connect(self._fix_selected)
-        self.fix_all_button.clicked.connect(self._fix_all)
+        actions.setSpacing(8)
+        
+        self.select_button = QtWidgets.QPushButton("  Select Node")
+        self.select_button.setObjectName("SecondaryBtn")
+        self.select_button.setIcon(get_icon("search", "#CBD5E1", 13))
+        
+        self.export_button = QtWidgets.QPushButton("  Export Report")
+        self.export_button.setObjectName("SecondaryBtn")
+        self.export_button.setIcon(get_icon("copy", "#CBD5E1", 13))
+        
+        self.clear_button = QtWidgets.QPushButton("  Clear")
+        self.clear_button.setObjectName("GhostBtn")
+        self.clear_button.setIcon(get_icon("x", COLORS["muted"], 13))
+        
         self.select_button.clicked.connect(self._select_current_node)
         self.export_button.clicked.connect(lambda: self.exportRequested.emit(list(self._results)))
         self.clear_button.clicked.connect(self.clear_results)
-        for button in (self.validate_button, self.fix_selected_button, self.fix_all_button, self.select_button, self.export_button):
-            actions.addWidget(button)
-        actions.addStretch(); actions.addWidget(self.clear_button)
-        results_card.layout.addLayout(actions)
-
-        root.addWidget(summary_card)
-        root.addWidget(filters)
+        
+        actions.addWidget(self.select_button)
+        actions.addWidget(self.export_button)
+        actions.addWidget(self.clear_button)
+        actions.addStretch()
+        
+        self.fix_selected_button = QtWidgets.QPushButton("  Fix Selected")
+        self.fix_selected_button.setObjectName("SecondaryBtn")
+        self.fix_selected_button.setIcon(get_icon("wrench", "#CBD5E1", 13))
+        self.fix_selected_button.clicked.connect(self._fix_selected)
+        
+        self.fix_all_button = QtWidgets.QPushButton("  Fix All Safe Issues")
+        self.fix_all_button.setObjectName("PrimaryButton")
+        self.fix_all_button.setIcon(get_icon("zap", COLORS["primary_fg"], 13))
+        self.fix_all_button.clicked.connect(self._fix_all)
+        
+        self.validate_button = QtWidgets.QPushButton("  Validate Scene")
+        self.validate_button.setObjectName("PrimaryButton")
+        self.validate_button.clicked.connect(self.run_validation)
+        self.validate_button.hide()
+        
+        actions.addWidget(self.fix_selected_button)
+        actions.addWidget(self.fix_all_button)
+        
         root.addWidget(results_card, 1)
+        root.addLayout(actions)
         self._update_action_state()
 
     def set_context(self, context):

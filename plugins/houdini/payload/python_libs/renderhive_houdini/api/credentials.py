@@ -57,6 +57,30 @@ def _blob_from_bytes(data):
     return blob, buffer_value
 
 
+def _protect_windows(data):
+    input_blob, input_buffer = _blob_from_bytes(data)
+    output_blob = _DATA_BLOB()
+
+    result = ctypes.windll.crypt32.CryptProtectData(
+        ctypes.byref(input_blob),
+        "RenderHive API Token",
+        None,
+        None,
+        None,
+        _CRYPTPROTECT_UI_FORBIDDEN,
+        ctypes.byref(output_blob),
+    )
+
+    if not result:
+        raise CredentialStorageError("Windows DPAPI could not encrypt the API token.")
+
+    try:
+        return ctypes.string_at(output_blob.pbData, output_blob.cbData)
+    finally:
+        ctypes.windll.kernel32.LocalFree(output_blob.pbData)
+        del input_buffer
+
+
 def _unprotect_windows(data):
     input_blob, input_buffer = _blob_from_bytes(data)
     output_blob = _DATA_BLOB()
@@ -76,6 +100,66 @@ def _unprotect_windows(data):
     finally:
         ctypes.windll.kernel32.LocalFree(output_blob.pbData)
         del input_buffer
+
+
+def storage_mode():
+    return "windows_dpapi" if _windows_dpapi_available() else "restricted_file"
+
+
+def _atomic_write(path, content):
+    parent = os.path.dirname(path)
+    if parent and not os.path.isdir(parent):
+        try:
+            os.makedirs(parent)
+        except Exception:
+            pass
+    temp_path = path + ".tmp"
+    with open(temp_path, "wb") as handle:
+        handle.write(content)
+        handle.flush()
+        try:
+            os.fsync(handle.fileno())
+        except Exception:
+            pass
+    try:
+        os.replace(temp_path, path)
+    except Exception:
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        os.rename(temp_path, path)
+
+
+def save_token(token):
+    token = str(token or "").strip()
+    path = get_credential_path()
+    if not token:
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+        return ""
+
+    raw = token.encode("utf-8")
+    if _windows_dpapi_available():
+        encoded = b"DPAPI1\n" + base64.b64encode(_protect_windows(raw))
+    else:
+        encoded = b"PLAIN1\n" + base64.b64encode(raw)
+
+    _atomic_write(path, encoded)
+    return path
+
+
+def delete_token():
+    path = get_credential_path()
+    if os.path.isfile(path):
+        try:
+            os.remove(path)
+        except Exception:
+            pass
 
 
 def load_token():

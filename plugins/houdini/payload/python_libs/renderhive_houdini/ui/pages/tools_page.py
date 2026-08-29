@@ -1,154 +1,110 @@
-"""Compact backend connection, activity log and maintenance menu."""
+"""Tools, activity log and runtime telemetry view for RenderHive Houdini Submitter."""
 
 from __future__ import absolute_import
 
 import datetime
 
-from renderhive_houdini.ui.qt_compat import QtWidgets, Signal
-from renderhive_houdini.ui.widgets import PageHeader, SectionCard, apply_status_appearance
+from renderhive_houdini.ui.qt_compat import QtCore, QtWidgets, Signal
+from renderhive_houdini.ui.widgets import PageHeader, SectionCard
+from renderhive_houdini.ui.icons import get_icon
+from renderhive_houdini.ui.theme import COLORS
 from renderhive_houdini.version import __version__
 
 
-def _instant_popup_mode():
-    mode = getattr(QtWidgets.QToolButton, "InstantPopup", None)
-    if mode is not None:
-        return mode
-    return QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup
-
-
 class ToolsPage(QtWidgets.QWidget):
-    """Maya-parity tools page: backend state, activity, and a compact overflow menu."""
+    """Maya-parity activity logs and runtime telemetry page."""
 
-    retryConnectionRequested = Signal()
     openRuntimeLogsRequested = Signal()
-    createSupportBundleRequested = Signal()
-    runProductionCheckRequested = Signal()
-    resetSceneStateRequested = Signal()
-    uninstallRequested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         root = QtWidgets.QVBoxLayout(self)
-        root.setContentsMargins(8, 4, 8, 8)
-        root.setSpacing(10)
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(14)
         root.addWidget(
             PageHeader(
-                "Tools",
-                "Backend connection, activity and RenderHive maintenance.",
+                "Tools & Activity Logs",
+                "Real-time submission telemetry, validation logs, and network dispatch events.",
             )
         )
 
-        connection = SectionCard(
-            "Connection",
-            "RenderHive connects automatically using the managed studio configuration.",
-        )
-        connection_row = QtWidgets.QHBoxLayout()
-        connection_row.setSpacing(10)
+        # ── Real-time Activity Log Card with Toolbar ──
+        log_toolbar = QtWidgets.QWidget()
+        log_tb_layout = QtWidgets.QHBoxLayout(log_toolbar)
+        log_tb_layout.setContentsMargins(0, 0, 0, 0)
+        log_tb_layout.setSpacing(6)
 
-        self.connection_state = QtWidgets.QLabel("Checking RenderHive connection…")
-        self.connection_state.setObjectName("ConnectionState")
-        self.connection_state.setWordWrap(True)
-        connection_row.addWidget(self.connection_state, 1)
+        copy_log_btn = QtWidgets.QPushButton("  Copy Log")
+        copy_log_btn.setObjectName("SecondaryBtn")
+        copy_log_btn.setIcon(get_icon("copy", "#CBD5E1", 12))
+        copy_log_btn.setFixedHeight(28)
+        copy_log_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        copy_log_btn.clicked.connect(self._copy_log)
 
-        self.retry_button = QtWidgets.QPushButton("Retry Connection")
-        self.retry_button.setObjectName("InfoButton")
-        self.retry_button.clicked.connect(self.retryConnectionRequested.emit)
-        connection_row.addWidget(self.retry_button)
-        connection.layout.addLayout(connection_row)
+        clear_log_btn = QtWidgets.QPushButton("  Clear")
+        clear_log_btn.setObjectName("GhostBtn")
+        clear_log_btn.setIcon(get_icon("x", COLORS["muted"], 12))
+        clear_log_btn.setFixedHeight(28)
+        clear_log_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        clear_log_btn.clicked.connect(self._clear_log)
 
-        self.config_source = QtWidgets.QLabel("Managed configuration")
-        self.config_source.setObjectName("MutedText")
-        connection.layout.addWidget(self.config_source)
-        root.addWidget(connection)
+        log_tb_layout.addWidget(copy_log_btn)
+        log_tb_layout.addWidget(clear_log_btn)
 
         activity = SectionCard(
             "Activity Log",
-            "Recent RenderHive actions and operational messages.",
+            "Live streaming log events from Houdini submitter, scene validator, and farm dispatcher.",
+            action_widget=log_toolbar,
         )
         self.log = QtWidgets.QPlainTextEdit()
         self.log.setObjectName("ActivityLog")
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(500)
-        self.log.setMinimumHeight(280)
+        self.log.setMinimumHeight(380)
         activity.layout.addWidget(self.log, 1)
         root.addWidget(activity, 1)
 
-        maintenance_row = QtWidgets.QHBoxLayout()
-        maintenance_row.setContentsMargins(0, 0, 0, 0)
-        maintenance_row.addStretch()
+        # ── Quick Utility Bar ──
+        utility_row = QtWidgets.QHBoxLayout()
+        utility_row.setSpacing(8)
 
-        self.maintenance_button = QtWidgets.QToolButton()
-        self.maintenance_button.setObjectName("MaintenanceButton")
-        self.maintenance_button.setText("•••")
-        self.maintenance_button.setToolTip("RenderHive tools and maintenance")
-        self.maintenance_button.setPopupMode(_instant_popup_mode())
+        open_logs_btn = QtWidgets.QPushButton("  Open Full Runtime Log File")
+        open_logs_btn.setObjectName("SecondaryBtn")
+        open_logs_btn.setIcon(get_icon("terminal", "#CBD5E1", 13))
+        open_logs_btn.setFixedHeight(32)
+        open_logs_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        open_logs_btn.clicked.connect(self.openRuntimeLogsRequested.emit)
+        utility_row.addWidget(open_logs_btn)
+        utility_row.addStretch()
 
-        menu = QtWidgets.QMenu(self.maintenance_button)
-
-        runtime_logs_action = menu.addAction("Open Runtime Logs")
-        runtime_logs_action.triggered.connect(self.openRuntimeLogsRequested.emit)
-
-        diagnostics_action = menu.addAction("Create Support Bundle")
-        diagnostics_action.triggered.connect(self.createSupportBundleRequested.emit)
-
-        health_action = menu.addAction("Run Production Check")
-        health_action.triggered.connect(self.runProductionCheckRequested.emit)
-
-        reset_action = menu.addAction("Reset Current Scene Settings")
-        reset_action.triggered.connect(self.resetSceneStateRequested.emit)
-
-        menu.addSeparator()
-
-        uninstall_action = menu.addAction("Uninstall RenderHive…")
-        uninstall_action.triggered.connect(self.uninstallRequested.emit)
-
-        self.maintenance_button.setMenu(menu)
-        maintenance_row.addWidget(self.maintenance_button)
-        root.addLayout(maintenance_row)
-        root.addStretch()
+        root.addLayout(utility_row)
 
         self.append_activity("RenderHive Houdini v{} loaded.".format(__version__))
 
+    def _copy_log(self):
+        text = self.log.toPlainText()
+        if text:
+            clipboard = QtWidgets.QApplication.clipboard()
+            if clipboard:
+                clipboard.setText(text)
+                self.append_activity("Activity log copied to clipboard.")
+
+    def _clear_log(self):
+        self.log.clear()
+        self.append_activity("Activity log cleared.")
+
     def set_connection_config(self, source, token_available):
-        source_text = str(source or "").strip()
-        if not source_text or source_text.lower() == "unavailable":
-            display = "Configuration unavailable"
-        elif "managed" in source_text.lower():
-            display = "Managed configuration"
-        else:
-            display = "Managed configuration"
-        if not token_available:
-            display += " · Authentication unavailable"
-        self.config_source.setText(display)
+        pass
 
     def set_connecting(self):
-        self.retry_button.setEnabled(False)
-        self.retry_button.setText("Connecting…")
-        self.connection_state.setText("Connecting to RenderHive…")
-        self.connection_state.setToolTip("")
-        apply_status_appearance(self.connection_state, "info")
+        pass
 
     def set_connected(self, checked_at):
-        self.retry_button.setEnabled(True)
-        self.retry_button.setText("Retry Connection")
-        text = "Connected to RenderHive backend."
-        if checked_at:
-            text += " Last checked {}.".format(checked_at)
-        self.connection_state.setText(text)
-        self.connection_state.setToolTip("")
-        apply_status_appearance(self.connection_state, "good")
+        pass
 
     def set_connection_error(self, message, checked_at):
-        self.retry_button.setEnabled(True)
-        self.retry_button.setText("Retry Connection")
-        detail = str(message or "Backend connection failed.").strip()
-        text = "Backend unavailable."
-        if checked_at:
-            text += " Last checked {}.".format(checked_at)
-        self.connection_state.setText(text)
-        self.connection_state.setToolTip(detail)
-        apply_status_appearance(self.connection_state, "error")
+        pass
 
     def append_activity(self, message):
         stamp = datetime.datetime.now().strftime("%H:%M:%S")

@@ -17,9 +17,10 @@ def _store_window(window):
 
 def show_window():
     """Create or focus one persistent floating RenderHive window."""
+    import sys
+    import importlib
     from renderhive_houdini.bootstrap import install_runtime_hooks
     from renderhive_houdini.core.houdini_compat import has_ui, main_window
-    from renderhive_houdini.ui.main_window import MainWindow
     from renderhive_houdini.ui.qt_compat import object_is_valid
 
     if not has_ui():
@@ -32,17 +33,19 @@ def show_window():
         window = None
         _store_window(None)
 
-    if window is not None and window.__class__.__module__ != MainWindow.__module__:
-        try:
-            window.close()
-        except Exception:
-            pass
-        window = None
-        _store_window(None)
-
     if window is None:
+        for mod_name in list(sys.modules):
+            if (
+                mod_name == "renderhive_houdini"
+                or mod_name.startswith("renderhive_houdini.")
+            ):
+                del sys.modules[mod_name]
+        importlib.invalidate_caches()
+        from renderhive_houdini.ui.main_window import MainWindow
         window = MainWindow(parent=main_window(), embedded=False)
         _store_window(window)
+    else:
+        from renderhive_houdini.ui.main_window import MainWindow
 
     try:
         window.refresh_context()
