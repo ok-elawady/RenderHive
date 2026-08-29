@@ -106,13 +106,25 @@ export function TaskDetailPanel({
     { refreshInterval: 10000, revalidateOnFocus: true }
   );
 
+  const sortedTasks = useMemo(() => {
+    return [...allTasks].sort((a, b) => {
+      if (a.frame_start !== undefined && b.frame_start !== undefined && a.frame_start !== b.frame_start) {
+        return a.frame_start - b.frame_start;
+      }
+      if (a.frame_end !== undefined && b.frame_end !== undefined && a.frame_end !== b.frame_end) {
+        return a.frame_end - b.frame_end;
+      }
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+    });
+  }, [allTasks]);
+
   const filteredTasks = useMemo(() => {
-    if (activeTab === "ALL") return allTasks;
-    if (activeTab === "RUNNING") return allTasks.filter(t => t.state === "RUNNING");
-    if (activeTab === "FAILED") return allTasks.filter(t => t.state === "FAILED");
-    if (activeTab === "READY") return allTasks.filter(t => t.state === "READY" || t.state === "WAITING");
-    return allTasks;
-  }, [allTasks, activeTab]);
+    if (activeTab === "ALL") return sortedTasks;
+    if (activeTab === "RUNNING") return sortedTasks.filter(t => t.state === "RUNNING");
+    if (activeTab === "FAILED") return sortedTasks.filter(t => t.state === "FAILED");
+    if (activeTab === "READY") return sortedTasks.filter(t => t.state === "READY" || t.state === "WAITING");
+    return sortedTasks;
+  }, [sortedTasks, activeTab]);
 
   const commonPrefix = useMemo(() => {
     if (allTasks.length === 0) return "";

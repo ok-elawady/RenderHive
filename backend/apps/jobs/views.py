@@ -436,8 +436,8 @@ class TaskViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Gen
         """
         layer_pk = self.kwargs.get("layer_pk")
         if layer_pk:
-            return Task.objects.filter(layer_id=layer_pk)
-        return Task.objects.all()
+            return Task.objects.filter(layer_id=layer_pk).order_by("frame_start", "frame_end", "id")
+        return Task.objects.all().order_by("frame_start", "frame_end", "id")
 
     def get_serializer_class(self):
         """Return the appropriate serializer for the current action.
